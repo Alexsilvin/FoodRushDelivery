@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+
+const { width } = Dimensions.get('window');
 
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
@@ -20,6 +25,22 @@ export default function LoginScreen({ navigation }: any) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+
+  // Animation for logo fade in (after splash transition)
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Fade in the logo after a short delay (allowing splash transition to complete)
+    const timer = setTimeout(() => {
+      Animated.timing(logoOpacity, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [logoOpacity]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -41,12 +62,27 @@ export default function LoginScreen({ navigation }: any) {
   };
 
   return (
-    <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.container}>
+    <LinearGradient colors={['#0f1419', '#1a2332', '#2a3441']} style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* Logo Header - positioned where splash screen logo transitions to */}
+          <Animated.View style={[styles.logoHeader, { opacity: logoOpacity }]}>
+            <View style={styles.logoContainer}>
+              <Text style={styles.logoText}>Food</Text>
+            </View>
+            <View style={styles.logoImageContainer}>
+              <Image
+                source={require('../../../assets/outoloyout.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+                alt="Food Rush Logo"
+              />
+            </View>
+          </Animated.View>
+
           <View style={styles.header}>
             <Text style={styles.title}>Welcome Back!</Text>
             <Text style={styles.subtitle}>Sign in to continue delivering</Text>
@@ -212,6 +248,35 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  logoHeader: {
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingBottom: 20,
+    marginBottom: 20,
+  },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: -5,
+  },
+  logoText: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -2,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  logoImageContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImage: {
+    width: width * 0.4,
+    height: 60,
+    maxWidth: 200,
   },
   footer: {
     flexDirection: 'row',

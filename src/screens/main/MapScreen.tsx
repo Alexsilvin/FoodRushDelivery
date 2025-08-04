@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,21 @@ interface DeliveryLocation {
   payment: string;
 }
 
+interface DirectionsStep {
+  instruction: string;
+  distance: string;
+  duration: string;
+  maneuver: string;
+}
+
+interface DirectionsRoute {
+  distance: string;
+  duration: string;
+  coordinates: Array<{ latitude: number; longitude: number }>;
+  steps: DirectionsStep[];
+  summary: string;
+}
+
 interface Route {
   id: string;
   name: string;
@@ -37,9 +52,10 @@ interface Route {
   stops: DeliveryLocation[];
   coordinates: Array<{ latitude: number; longitude: number }>;
   isOptimal: boolean;
+  directionsRoute?: DirectionsRoute;
 }
 
-export default function MapScreen({ navigation }: any) {
+export default function MapScreen({ navigation, route }: any) {
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryLocation | null>(null);
   const [availableRoutes, setAvailableRoutes] = useState<Route[]>([]);
@@ -50,7 +66,219 @@ export default function MapScreen({ navigation }: any) {
     longitude: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [activeDirections, setActiveDirections] = useState<DirectionsRoute | null>(null);
+  const [targetClient, setTargetClient] = useState<DeliveryLocation | null>(null);
+  const [showDirections, setShowDirections] = useState(false);
   const mapRef = useRef<MapView>(null);
+
+  // Google Directions API integration
+  const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY'; // You'll need to add your API key
+
+  // Utility function to calculate distance between two points
+  const calculateDistance = useCallback((
+    point1: { latitude: number; longitude: number },
+    point2: { latitude: number; longitude: number }
+  ): number => {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = point1.latitude * Math.PI / 180;
+    const φ2 = point2.latitude * Math.PI / 180;
+    const Δφ = (point2.latitude - point1.latitude) * Math.PI / 180;
+    const Δλ = (point2.longitude - point1.longitude) * Math.PI / 180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; // Distance in meters
+  }, []);
+
+  const createDemoRoute = useCallback((
+    origin: { latitude: number; longitude: number },
+    destination: { latitude: number; longitude: number }
+  ): DirectionsRoute => {
+    // Create a simple route with some waypoints for demo
+    const coordinates = [
+      origin,
+      {
+        latitude: origin.latitude + (destination.latitude - origin.latitude) * 0.3,
+        longitude: origin.longitude + (destination.longitude - origin.longitude) * 0.3,
+      },
+      {
+        latitude: origin.latitude + (destination.latitude - origin.latitude) * 0.7,
+        longitude: origin.longitude + (destination.longitude - origin.longitude) * 0.7,
+      },
+      destination,
+    ];
+
+    // Calculate approximate distance
+    const distance = calculateDistance(origin, destination);
+    const distanceKm = (distance / 1000).toFixed(1);
+    const estimatedTime = Math.ceil(distance / 800); // Rough estimate: 800m per minute in city traffic
+
+    return {
+      distance: `${distanceKm} km`,
+      duration: `${estimatedTime} min`,
+      coordinates,
+      steps: [
+        {
+          instruction: 'Head northeast on current street',
+          distance: '0.2 km',
+          duration: '1 min',
+          maneuver: 'turn-right'
+        },
+        {
+          instruction: `Continue straight`,
+          distance: `${(parseFloat(distanceKm) - 0.2).toFixed(1)} km`,
+          duration: `${estimatedTime - 1} min`,
+          maneuver: 'continue'
+        },
+        {
+          instruction: 'Arrive at destination',
+          distance: '0 km',
+          duration: '0 min',
+          maneuver: 'arrive'
+        }
+      ],
+      summary: `Fastest route to destination`
+    };
+  }, [calculateDistance]);
+
+  const getDirections = useCallback(async (
+    origin: { latitude: number; longitude: number },
+    destination: { latitude: number; longitude: number }
+  ): Promise<DirectionsRoute | null> => {
+    try {
+      const originStr = `${origin.latitude},${origin.longitude}`;
+      const destinationStr = `${destination.latitude},${destination.longitude}`;
+      
+      // For demo purposes, we'll simulate Google Directions API response
+      // In production, uncomment the actual API call below
+      
+      /*
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&key=${GOOGLE_MAPS_API_KEY}&mode=driving&alternatives=true&traffic_model=best_guess&departure_time=now`
+      );
+      
+      const data = await response.json();
+      
+      if (data.status !== 'OK' || !data.routes.length) {
+        throw new Error('No routes found');
+      }
+      
+      const route = data.routes[0];
+      const leg = route.legs[0];
+      
+      // Decode polyline
+      const coordinates = decodePolyline(route.overview_polyline.points);
+      
+      // Extract steps
+      const steps: DirectionsStep[] = leg.steps.map((step: any) => ({
+        instruction: step.html_instructions.replace(/<[^>]*>/g, ''), // Remove HTML tags
+        distance: step.distance.text,
+        duration: step.duration.text,
+        maneuver: step.maneuver || 'continue'
+      }));
+      
+      return {
+        distance: leg.distance.text,
+        duration: leg.duration.text,
+        coordinates,
+        steps,
+        summary: route.summary
+      };
+      */
+      
+      // Demo implementation - replace with actual API call
+      return createDemoRoute(origin, destination);
+      
+    } catch (error) {
+      console.error('Directions API error:', error);
+      return null;
+    }
+  }, [createDemoRoute]);
+
+  const startNavigation = useCallback((client: DeliveryLocation) => {
+    // Open device's default navigation app
+    const url = `maps://app?daddr=${client.lat},${client.lng}`;
+    const androidUrl = `google.navigation:q=${client.lat},${client.lng}`;
+    
+    Alert.alert(
+      'Start Navigation',
+      'This will open your device\'s navigation app',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Open Maps', 
+          onPress: () => {
+            // In a real app, you'd use Linking.openURL() here
+            console.log('Opening navigation to:', client.address);
+          }
+        }
+      ]
+    );
+  }, []);
+
+  const calculateRouteToClient = useCallback(async (client: DeliveryLocation) => {
+    if (!currentLocation) {
+      Alert.alert('Error', 'Current location not available');
+      return;
+    }
+
+    setIsCalculatingRoute(true);
+    setTargetClient(client);
+    
+    try {
+      const directionsRoute = await getDirections(
+        currentLocation,
+        { latitude: client.lat, longitude: client.lng }
+      );
+      
+      if (directionsRoute) {
+        setActiveDirections(directionsRoute);
+        setShowDirections(true);
+        
+        // Center map on route
+        if (mapRef.current) {
+          const allCoordinates = [
+            currentLocation,
+            ...directionsRoute.coordinates,
+            { latitude: client.lat, longitude: client.lng }
+          ];
+          
+          mapRef.current.fitToCoordinates(allCoordinates, {
+            edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
+            animated: true,
+          });
+        }
+        
+        Alert.alert(
+          'Route Calculated',
+          `Distance: ${directionsRoute.distance}\nEstimated time: ${directionsRoute.duration}`,
+          [
+            { text: 'Start Navigation', onPress: () => startNavigation(client) },
+            { text: 'OK', style: 'default' }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error calculating route:', error);
+      Alert.alert('Error', 'Could not calculate route. Please try again.');
+    } finally {
+      setIsCalculatingRoute(false);
+    }
+  }, [currentLocation, getDirections, startNavigation]);
+
+  // Check if a specific client was passed from Dashboard for navigation
+  useEffect(() => {
+    if (route?.params?.clientId) {
+      const client = deliveries.find(d => d.id === route.params.clientId);
+      if (client && currentLocation) {
+        calculateRouteToClient(client);
+      }
+    }
+  }, [route?.params?.clientId, deliveries, currentLocation, calculateRouteToClient]);
 
   useEffect(() => {
     const generateRoutes = (deliveryList: DeliveryLocation[], userLocation?: { latitude: number; longitude: number } | null) => {
@@ -328,25 +556,6 @@ export default function MapScreen({ navigation }: any) {
         animated: true,
       });
     }
-  };
-
-  const startNavigation = (delivery: DeliveryLocation) => {
-    Alert.alert(
-      'Start Navigation',
-      `Navigate to ${delivery.customerName} at ${delivery.address}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Open Maps',
-          onPress: () => {
-            // In a real app, you'd open the device's navigation app
-            const url = `http://maps.google.com/maps?daddr=${delivery.lat},${delivery.lng}`;
-            // Linking.openURL(url);
-            Alert.alert('Navigation', 'Would open navigation to the delivery location');
-          },
-        },
-      ]
-    );
   };
 
   const centerOnLocation = () => {

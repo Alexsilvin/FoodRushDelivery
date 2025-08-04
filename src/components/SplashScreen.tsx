@@ -14,9 +14,10 @@ const { width, height } = Dimensions.get('window');
 
 interface SplashScreenProps {
   onAnimationComplete: () => void;
+  onTransitionStart?: () => void;
 }
 
-export default function SplashScreen({ onAnimationComplete }: SplashScreenProps) {
+export default function SplashScreen({ onAnimationComplete, onTransitionStart }: SplashScreenProps) {
   // Animated values for each letter in "Food"
   const foodLetterAnimations = useRef([
     new Animated.Value(0), // F
@@ -30,6 +31,10 @@ export default function SplashScreen({ onAnimationComplete }: SplashScreenProps)
 
   // Overall fade in animation
   const fadeAnimation = useRef(new Animated.Value(0)).current;
+
+  // Animation for moving logo to top during transition
+  const logoTransitionY = useRef(new Animated.Value(0)).current;
+  const logoScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     const animateFoodLetters = () => {
@@ -52,11 +57,37 @@ export default function SplashScreen({ onAnimationComplete }: SplashScreenProps)
           friction: 8, // Smooth spring animation
           useNativeDriver: true,
         }).start(() => {
-          // Wait a moment then complete the splash
+          // Wait a moment then start transition to top
           setTimeout(() => {
-            onAnimationComplete();
-          }, 1200); // Slightly longer pause to appreciate the animation
+            startTransitionToTop();
+          }, 1200);
         });
+      });
+    };
+
+    const startTransitionToTop = () => {
+      // Notify parent that transition is starting
+      if (onTransitionStart) {
+        onTransitionStart();
+      }
+
+      // Move logo up and scale down
+      Animated.parallel([
+        Animated.timing(logoTransitionY, {
+          toValue: -height * 0.35, // Move to top area
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoScale, {
+          toValue: 0.6, // Scale down to fit header size
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // After transition animation, complete the splash
+        setTimeout(() => {
+          onAnimationComplete();
+        }, 200);
       });
     };
 
@@ -71,7 +102,7 @@ export default function SplashScreen({ onAnimationComplete }: SplashScreenProps)
         animateFoodLetters();
       }, 300);
     });
-  }, [fadeAnimation, foodLetterAnimations, rushAnimation, onAnimationComplete]);
+  }, [fadeAnimation, foodLetterAnimations, rushAnimation, logoTransitionY, logoScale, onAnimationComplete, onTransitionStart]);
 
   return (
     <LinearGradient
@@ -80,7 +111,16 @@ export default function SplashScreen({ onAnimationComplete }: SplashScreenProps)
     >
       <StatusBar barStyle="light-content" backgroundColor="#0f1419" />
       
-      <Animated.View style={[styles.content, { opacity: fadeAnimation }]}>
+      <Animated.View style={[
+        styles.content, 
+        { 
+          opacity: fadeAnimation,
+          transform: [
+            { translateY: logoTransitionY },
+            { scale: logoScale }
+          ]
+        }
+      ]}>
         {/* "Food" text with letter-by-letter animation */}
         <View style={styles.foodContainer}>
           {['F', 'o', 'o', 'd'].map((letter, index) => (
