@@ -15,7 +15,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show delivery routes and navigation."
+        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show delivery routes and navigation.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to provide accurate delivery navigation and tracking."
       }
     },
     "android": {

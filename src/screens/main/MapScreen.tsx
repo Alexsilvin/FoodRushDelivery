@@ -53,12 +53,12 @@ export default function MapScreen({ navigation }: any) {
   const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
-    const generateRoutes = (deliveryList: DeliveryLocation[]) => {
+    const generateRoutes = (deliveryList: DeliveryLocation[], userLocation?: { latitude: number; longitude: number } | null) => {
       // Generate sample route coordinates (in real app, you'd use Google Directions API)
       const generateRouteCoordinates = (stops: DeliveryLocation[]) => {
         const coords = [];
-        if (currentLocation) {
-          coords.push(currentLocation);
+        if (userLocation) {
+          coords.push(userLocation);
         }
         stops.forEach(stop => {
           coords.push({ latitude: stop.lat, longitude: stop.lng });
@@ -154,7 +154,7 @@ export default function MapScreen({ navigation }: any) {
       ];
 
       setDeliveries(mockDeliveries);
-      generateRoutes(mockDeliveries);
+      return mockDeliveries;
     };
 
     const init = async () => {
@@ -163,70 +163,45 @@ export default function MapScreen({ navigation }: any) {
         if (status !== 'granted') {
           Alert.alert('Permission Denied', 'Location permission is required to show your position on the map');
           // Use default location (New York City) if permission denied
-          setCurrentLocation({
+          const defaultLocation = {
             latitude: 40.7128,
             longitude: -74.0060,
-          });
+          };
+          setCurrentLocation(defaultLocation);
           setLoading(false);
-          loadDeliveries();
+          const mockDeliveries = loadDeliveries();
+          generateRoutes(mockDeliveries, defaultLocation);
           return;
         }
 
-        const location = await Location.getCurrentPositionAsync({});
-        setCurrentLocation({
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 10000,
+        });
+        const userLocation = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
-        });
+        };
+        setCurrentLocation(userLocation);
         setLoading(false);
-        loadDeliveries();
+        const mockDeliveries = loadDeliveries();
+        generateRoutes(mockDeliveries, userLocation);
       } catch (error) {
         console.error('Error getting location:', error);
         // Use default location (New York City) if location fails
-        setCurrentLocation({
+        const defaultLocation = {
           latitude: 40.7128,
           longitude: -74.0060,
-        });
+        };
+        setCurrentLocation(defaultLocation);
         setLoading(false);
-        loadDeliveries();
+        const mockDeliveries = loadDeliveries();
+        generateRoutes(mockDeliveries, defaultLocation);
       }
     };
 
     init();
-  }, [currentLocation]);
-
-  const initializeLocation = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to show your position on the map');
-        // Use default location (New York City) if permission denied
-        setCurrentLocation({
-          latitude: 40.7128,
-          longitude: -74.0060,
-        });
-        setLoading(false);
-        loadDeliveries();
-        return;
-      }
-
-      const location = await Location.getCurrentPositionAsync({});
-      setCurrentLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-      setLoading(false);
-      loadDeliveries();
-    } catch (error) {
-      console.error('Error getting location:', error);
-      // Use default location (New York City) if location fails
-      setCurrentLocation({
-        latitude: 40.7128,
-        longitude: -74.0060,
-      });
-      setLoading(false);
-      loadDeliveries();
-    }
-  };
+  }, []); // Remove currentLocation dependency to prevent infinite loop
 
   const loadDeliveries = () => {
     // Mock delivery locations with real coordinates around New York City
