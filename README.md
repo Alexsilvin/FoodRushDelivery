@@ -5,11 +5,13 @@ A comprehensive React Native mobile application for delivery drivers, featuring 
 ## 📱 Features
 
 ### 🔐 Authentication System
+
 - **Login/Register**: Secure driver authentication
 - **Password Recovery**: Forgot password functionality
 - **Demo Credentials**: `driver@demo.com` / `demo123`
 
 ### 🗺️ Google Maps Integration
+
 - **Real-time Location**: GPS tracking with live location updates
 - **Interactive Markers**: Color-coded delivery status indicators
 - **Route Optimization**: Multiple route algorithms (Optimal, Shortest, Fastest)
@@ -17,24 +19,28 @@ A comprehensive React Native mobile application for delivery drivers, featuring 
 - **Traffic Overlay**: Real-time traffic information
 
 ### 📊 Dashboard
+
 - **Active Deliveries**: Live delivery cards with customer info
 - **Search & Filter**: Find deliveries by customer, restaurant, or location
 - **Status Management**: Track delivery progress through multiple stages
 - **Earnings Tracking**: Real-time payment and earnings display
 
 ### 💬 Communication System
+
 - **Customer Chat**: Real-time messaging with delivery customers
 - **Search Conversations**: Find specific chat threads quickly
 - **Call Integration**: Direct calling functionality
 - **Message History**: Complete conversation tracking
 
 ### 🚗 Delivery Management
+
 - **Detailed Delivery View**: Complete order information and customer details
 - **Status Updates**: Mark deliveries as picked up, en route, or delivered
 - **Customer Information**: Contact details and delivery instructions
 - **Payment Tracking**: Order totals and payment methods
 
 ### 👤 Profile Management
+
 - **Driver Profile**: Personal information and vehicle details
 - **Settings**: App preferences and configurations
 - **Statistics**: Delivery performance metrics
@@ -64,23 +70,27 @@ Before running this application, make sure you have:
 ## 🚀 Installation & Setup
 
 ### 1. Clone the Repository
+
 ```bash
 git clone https://github.com/Alexsilvin/FoodRushDelivery.git
 cd FoodRushDelivery
 ```
 
 ### 2. Install Dependencies
+
 ```bash
 npm install
 ```
 
 ### 3. Configure Location Permissions
+
 The app requires location permissions for map functionality. These are already configured in `app.json`:
 
 **iOS**: Location permission descriptions are included
 **Android**: Fine and coarse location permissions are set
 
 ### 4. Start the Development Server
+
 ```bash
 npm start
 # or
@@ -88,6 +98,7 @@ expo start
 ```
 
 ### 5. Run on Device/Emulator
+
 - **Android**: Press `a` in the terminal or scan QR code with Expo Go app
 - **iOS**: Press `i` in the terminal or scan QR code with Expo Go app
 - **Web**: Press `w` for web browser (limited functionality)
@@ -125,6 +136,7 @@ assets/
 ## 🎨 UI/UX Features
 
 ### Color Scheme
+
 - **Primary Blue**: `#1E40AF` - Navigation, buttons, and highlights
 - **Success Green**: `#10B981` - Completed deliveries and success states
 - **Warning Yellow**: `#FCD34D` - Pending deliveries and alerts
@@ -132,6 +144,7 @@ assets/
 - **Text**: `#111827` - Primary text color
 
 ### Design Elements
+
 - **Card-based Layout**: Clean, modern card designs
 - **Smooth Animations**: Animated transitions and interactions
 - **Responsive Design**: Optimized for various screen sizes
@@ -140,17 +153,20 @@ assets/
 ## 🗺️ Map Features
 
 ### Marker System
+
 - **🔵 Blue**: Accepted deliveries
 - **🟡 Yellow**: Pending deliveries
 - **🟢 Green**: Picked up orders
 - **⚫ Gray**: Completed deliveries
 
 ### Route Options
+
 1. **Optimal Route**: Best balance of time and distance
 2. **Shortest Distance**: Minimum total distance
 3. **Fastest Time**: Quickest delivery time
 
 ### Navigation Integration
+
 - Tap any delivery marker to view details
 - Press "Navigate" to open device's default map app
 - Real-time route visualization with polylines
@@ -158,6 +174,7 @@ assets/
 ## 💬 Chat System
 
 ### Features
+
 - Real-time messaging with customers
 - Search functionality for finding conversations
 - Avatar generation based on customer names
@@ -165,6 +182,7 @@ assets/
 - Pattern background for visual appeal
 
 ### Message Types
+
 - Driver messages (blue bubbles, right-aligned)
 - Customer messages (white bubbles, left-aligned)
 - Timestamp display for all messages
@@ -179,18 +197,22 @@ assets/
 ## 🧪 Testing
 
 ### Demo Data
+
 The app includes comprehensive mock data for testing:
+
 - Sample delivery locations in New York City
 - Mock customer conversations
 - Realistic delivery scenarios
 
 ### Test Credentials
+
 - **Email**: `driver@demo.com`
 - **Password**: `demo123`
 
 ## 📦 Dependencies
 
 ### Core Dependencies
+
 ```json
 {
   "@expo/vector-icons": "^14.1.0",
@@ -213,16 +235,19 @@ The app includes comprehensive mock data for testing:
 ### Build for Production
 
 #### Android APK
+
 ```bash
 expo build:android
 ```
 
 #### iOS IPA
+
 ```bash
 expo build:ios
 ```
 
 #### Expo Application Services (EAS)
+
 ```bash
 npm install -g @expo/eas-cli
 eas build --platform android
@@ -232,6 +257,7 @@ eas build --platform ios
 ## 📈 Future Enhancements
 
 ### Planned Features
+
 - [ ] Real-time order tracking
 - [ ] Push notifications for new deliveries
 - [ ] Photo capture for delivery confirmation
@@ -242,6 +268,7 @@ eas build --platform ios
 - [ ] Voice navigation commands
 
 ### API Integration
+
 - [ ] Backend API integration for real data
 - [ ] Real-time WebSocket connections
 - [ ] Google Directions API for accurate routing
