@@ -2,17 +2,25 @@ import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import DeliveriesScreen from '../screens/main/DeliveriesScreen';
 import ChatScreen from '../screens/main/ChatScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
 import DeliveryDetailsScreen from '../screens/main/DeliveryDetailsScreen';
+import CustomerProfileScreen from '../screens/main/CustomerProfileScreen';
 import MapScreen from '../screens/main/MapScreen';
+import GlobalCallOverlay from '../components/GlobalCallOverlay';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function TabNavigator() {
+  const { theme } = useTheme();
+  const { t } = useLanguage();
+  
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -35,17 +43,17 @@ function TabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#1E40AF',
-        tabBarInactiveTintColor: '#6B7280',
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: '#ffffffff',
-          borderTopColor: '#E5E7EB',
+          backgroundColor: theme.colors.card,
+          borderTopColor: theme.colors.border,
           paddingBottom: 5,
           paddingTop: 1,
           height: 60,
         },
         headerStyle: {
-          backgroundColor: '#1E40AF',
+          backgroundColor: theme.colors.primary,
         },
         headerTintColor: '#FFFFFF',
         headerTitleStyle: {
@@ -56,54 +64,80 @@ function TabNavigator() {
       <Tab.Screen 
         name="Dashboard" 
         component={DashboardScreen}
-        options={{ title: 'Dashboard' }}
+        options={{ title: t('dashboard'), headerShown: false }}
       />
       <Tab.Screen 
         name="Deliveries" 
         component={DeliveriesScreen}
-        options={{ title: 'My Deliveries' }}
+        options={{ title: t('myDeliveries'), headerShown: false }}
       />
       <Tab.Screen 
         name="Chat" 
         component={ChatScreen}
-        options={{ title: 'Messages' }}
+        options={{ title: t('messages'), headerShown: false }}
       />
       <Tab.Screen 
         name="Map" 
         component={MapScreen}
-        options={{ title: 'Map' }}
+        options={{ title: t('map'), headerShown: false }}
       />
       <Tab.Screen 
         name="Profile" 
         component={ProfileScreen}
-        options={{ title: 'Profile' }}
+        options={{ title: t('profile'), headerShown: false }}
       />
     </Tab.Navigator>
   );
 }
 
 export default function MainStack() {
+  const { theme } = useTheme();
+  
   return (
-    <Stack.Navigator>
-      <Stack.Screen 
-        name="Main" 
-        component={TabNavigator}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen 
-        name="DeliveryDetails" 
-        component={DeliveryDetailsScreen}
-        options={{
-          title: 'Delivery Details',
-          headerStyle: {
-            backgroundColor: '#1E40AF',
-          },
-          headerTintColor: '#FFFFFF',
-          headerTitleStyle: {
-            fontWeight: 'bold',
-          },
-        }}
-      />
-    </Stack.Navigator>
+    <>
+      <Stack.Navigator>
+        <Stack.Screen 
+          name="Main" 
+          component={TabNavigator}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen 
+          name="DeliveryDetails" 
+          component={DeliveryDetailsScreen}
+          options={{
+            title: 'Delivery Details',
+            headerStyle: {
+              backgroundColor: theme.colors.primary,
+            },
+            headerTintColor: '#FFFFFF',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
+          }}
+        />
+        <Stack.Screen 
+          name="CustomerProfile" 
+          component={CustomerProfileScreen}
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen 
+          name="Settings" 
+          component={SettingsScreen}
+          options={{
+            title: 'Settings',
+            headerStyle: {
+              backgroundColor: theme.colors.primary,
+            },
+            headerTintColor: '#FFFFFF',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+            },
+          }}
+        />
+      </Stack.Navigator>
+      <GlobalCallOverlay />
+    </>
   );
 }

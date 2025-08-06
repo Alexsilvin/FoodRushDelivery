@@ -4,6 +4,9 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet } from 'react-native';
 import { AuthProvider } from './src/contexts/AuthContext';
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+import { LanguageProvider } from './src/contexts/LanguageContext';
+import { CallProvider } from './src/contexts/CallContext';
 import AuthStack from './src/navigation/AuthStack';
 import MainStack from './src/navigation/MainStack';
 import { useAuth } from './src/contexts/AuthContext';
@@ -14,6 +17,7 @@ const Stack = createStackNavigator();
 
 function AppContent() {
   const { user, loading } = useAuth();
+  const { theme } = useTheme();
 
   if (loading) {
     return <LoadingScreen />;
@@ -21,6 +25,7 @@ function AppContent() {
 
   return (
     <NavigationContainer>
+      <StatusBar style={theme.isDark ? "light" : "dark"} backgroundColor={theme.colors.statusBar} />
       {user ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );
@@ -40,25 +45,30 @@ export default function App() {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Show splash screen */}
-      {showSplash && (
-        <SplashScreen 
-          onAnimationComplete={handleSplashComplete}
-          onTransitionStart={handleTransitionStart}
-        />
-      )}
-      
-      {/* Show auth/main content (always rendered but behind splash initially) */}
-      {(isTransitioning || !showSplash) && (
-        <View style={[styles.mainContent, showSplash && styles.behindSplash]}>
-          <AuthProvider>
-            <StatusBar style="light" backgroundColor="#1E40AF" />
-            <AppContent />
-          </AuthProvider>
+    <LanguageProvider>
+      <ThemeProvider>
+        <View style={styles.container}>
+          {/* Show splash screen */}
+          {showSplash && (
+            <SplashScreen 
+              onAnimationComplete={handleSplashComplete}
+              onTransitionStart={handleTransitionStart}
+            />
+          )}
+          
+          {/* Show auth/main content (always rendered but behind splash initially) */}
+          {(isTransitioning || !showSplash) && (
+            <View style={[styles.mainContent, showSplash && styles.behindSplash]}>
+              <CallProvider>
+                <AuthProvider>
+                  <AppContent />
+                </AuthProvider>
+              </CallProvider>
+            </View>
+          )}
         </View>
-      )}
-    </View>
+      </ThemeProvider>
+    </LanguageProvider>
   );
 }
 

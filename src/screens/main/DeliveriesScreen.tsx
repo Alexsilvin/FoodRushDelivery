@@ -8,6 +8,10 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useCall } from '../../contexts/CallContext';
+import { useNavigation } from '@react-navigation/native';
 
 interface Delivery {
   id: string;
@@ -23,6 +27,10 @@ interface Delivery {
 }
 
 export default function DeliveriesScreen() {
+  const { theme } = useTheme();
+  const { t } = useLanguage();
+  const { startCall } = useCall();
+  const navigation = useNavigation();
   const [deliveries, setDeliveries] = useState<Delivery[]>([
     {
       id: '3',
@@ -107,13 +115,51 @@ export default function DeliveriesScreen() {
 
   const callCustomer = (phone: string, name: string) => {
     Alert.alert(
-      'Call Customer',
-      `Call ${name} at ${phone}?`,
+      t('callCustomer'),
+      `${t('call')} ${name} at ${phone}?`,
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Call', onPress: () => Alert.alert('Calling', `Calling ${phone}...`) },
+        { text: t('cancel'), style: 'cancel' },
+        { 
+          text: 'Voice Call', 
+          onPress: () => startCall(name, 'voice')
+        },
+        { 
+          text: 'Video Call', 
+          onPress: () => startCall(name, 'video')
+        },
       ]
     );
+  };
+
+  const handleCustomerNamePress = (delivery: Delivery) => {
+    (navigation as any).navigate('CustomerProfile', {
+      customer: {
+        id: delivery.id,
+        name: delivery.customerName,
+        phone: delivery.customerPhone,
+        email: 'customer@example.com',
+        address: delivery.address,
+        deliveryInstructions: 'Ring doorbell twice. Leave at door if no answer.',
+        rating: 4.8,
+        totalDeliveries: 23,
+        preferredPayment: 'Credit Card',
+        location: {
+          latitude: 40.7128,
+          longitude: -74.0060,
+        },
+      },
+    });
+  };
+
+  const handleAddressPress = (delivery: Delivery) => {
+    (navigation as any).navigate('Map', {
+      targetLocation: {
+        latitude: 40.7128,
+        longitude: -74.0060,
+      },
+      customerName: delivery.customerName,
+      address: delivery.address,
+    });
   };
 
   const getStatusColor = (status: Delivery['status']) => {
@@ -137,14 +183,16 @@ export default function DeliveriesScreen() {
   };
 
   const renderDeliveryCard = (delivery: Delivery) => (
-    <View key={delivery.id} style={styles.deliveryCard}>
+    <View key={delivery.id} style={[styles.deliveryCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
       <View style={styles.deliveryHeader}>
         <View>
-          <Text style={styles.customerName}>{delivery.customerName}</Text>
-          <Text style={styles.restaurant}>{delivery.restaurant}</Text>
+          <TouchableOpacity onPress={() => handleCustomerNamePress(delivery)}>
+            <Text style={[styles.customerName, { color: theme.colors.text }]}>{delivery.customerName}</Text>
+          </TouchableOpacity>
+          <Text style={[styles.restaurant, { color: theme.colors.textSecondary }]}>{delivery.restaurant}</Text>
         </View>
         <View style={styles.paymentContainer}>
-          <Text style={styles.payment}>{delivery.payment}</Text>
+          <Text style={[styles.payment, { color: theme.colors.success }]}>{delivery.payment}</Text>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(delivery.status) }]}>
             <Text style={styles.statusText}>{getStatusText(delivery.status)}</Text>
           </View>
@@ -152,46 +200,48 @@ export default function DeliveriesScreen() {
       </View>
 
       <View style={styles.deliveryInfo}>
-        <View style={styles.infoRow}>
-          <Ionicons name="location-outline" size={16} color="#6B7280" />
-          <Text style={styles.infoText}>{delivery.address}</Text>
-        </View>
+        <TouchableOpacity style={styles.infoRow} onPress={() => handleAddressPress(delivery)}>
+          <Ionicons name="location-outline" size={16} color={theme.colors.textSecondary} />
+          <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>{delivery.address}</Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
         
         <View style={styles.orderItems}>
-          <Text style={styles.itemsTitle}>Order Items:</Text>
+          <Text style={[styles.itemsTitle, { color: theme.colors.text }]}>Order Items:</Text>
           {delivery.orderItems.map((item, index) => (
-            <Text key={index} style={styles.orderItem}>• {item}</Text>
+            <Text key={index} style={[styles.orderItem, { color: theme.colors.textSecondary }]}>• {item}</Text>
           ))}
         </View>
 
         {delivery.pickupTime && (
           <View style={styles.timeRow}>
-            <Ionicons name="time-outline" size={16} color="#6B7280" />
-            <Text style={styles.infoText}>Picked up at {delivery.pickupTime}</Text>
+            <Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} />
+            <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>Picked up at {delivery.pickupTime}</Text>
           </View>
         )}
 
         {delivery.deliveryTime && (
           <View style={styles.timeRow}>
-            <Ionicons name="checkmark-circle-outline" size={16} color="#059669" />
-            <Text style={styles.infoText}>Delivered at {delivery.deliveryTime}</Text>
+            <Ionicons name="checkmark-circle-outline" size={16} color={theme.colors.success} />
+            <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>Delivered at {delivery.deliveryTime}</Text>
           </View>
         )}
       </View>
 
       <View style={styles.deliveryActions}>
         <TouchableOpacity
-          style={styles.callButton}
+          style={[styles.callButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.primary }]}
           onPress={() => callCustomer(delivery.customerPhone, delivery.customerName)}
         >
-          <Ionicons name="call-outline" size={20} color="#1E40AF" />
-          <Text style={styles.callButtonText}>Call</Text>
+          <Ionicons name="call-outline" size={20} color={theme.colors.primary} />
+          <Text style={[styles.callButtonText, { color: theme.colors.primary }]}>{t('call')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[
             styles.statusButton,
-            delivery.status === 'delivered' && styles.completedButton,
+            { backgroundColor: theme.colors.primary },
+            delivery.status === 'delivered' && { backgroundColor: theme.colors.success }
           ]}
           onPress={() => handleStatusUpdate(delivery)}
           disabled={delivery.status === 'delivered'}
@@ -200,10 +250,10 @@ export default function DeliveriesScreen() {
             styles.statusButtonText,
             delivery.status === 'delivered' && styles.completedButtonText,
           ]}>
-            {delivery.status === 'delivered' ? 'Completed' : 
-             delivery.status === 'accepted' ? 'Mark Picked Up' :
-             delivery.status === 'picked_up' ? 'Start Delivery' :
-             'Mark Delivered'}
+            {delivery.status === 'delivered' ? t('completed') : 
+             delivery.status === 'accepted' ? t('markPickedUp') :
+             delivery.status === 'picked_up' ? t('startDelivery') :
+             t('markDelivered')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -214,27 +264,27 @@ export default function DeliveriesScreen() {
   const completedDeliveries = deliveries.filter(d => d.status === 'delivered');
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: 60 }]}>
       <View style={styles.content}>
         {activeDeliveries.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Active Deliveries</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{t('activeDeliveries')}</Text>
             {activeDeliveries.map(renderDeliveryCard)}
           </>
         )}
 
         {completedDeliveries.length > 0 && (
           <>
-            <Text style={[styles.sectionTitle, { marginTop: 30 }]}>Completed Today</Text>
+            <Text style={[styles.sectionTitle, { marginTop: 30, color: theme.colors.text }]}>{t('completedToday')}</Text>
             {completedDeliveries.map(renderDeliveryCard)}
           </>
         )}
 
         {deliveries.length === 0 && (
           <View style={styles.emptyState}>
-            <Ionicons name="car-outline" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyTitle}>No deliveries yet</Text>
-            <Text style={styles.emptySubtitle}>Your accepted deliveries will appear here</Text>
+            <Ionicons name="car-outline" size={64} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>{t('noDeliveries')}</Text>
+            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{t('deliveriesSubtext')}</Text>
           </View>
         )}
       </View>

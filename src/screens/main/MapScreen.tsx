@@ -13,6 +13,9 @@ import {
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useRoute } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 
@@ -56,11 +59,16 @@ interface Route {
 }
 
 export default function MapScreen({ navigation, route }: any) {
+  const { theme } = useTheme();
+  const routeParams = useRoute();
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryLocation | null>(null);
   const [availableRoutes, setAvailableRoutes] = useState<Route[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
   const [showRouteModal, setShowRouteModal] = useState(false);
+  const [isDrivingMode, setIsDrivingMode] = useState(false);
+  const [activeDelivery, setActiveDelivery] = useState<DeliveryLocation | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [currentLocation, setCurrentLocation] = useState<{
     latitude: number;
     longitude: number;
@@ -70,7 +78,13 @@ export default function MapScreen({ navigation, route }: any) {
   const [activeDirections, setActiveDirections] = useState<DirectionsRoute | null>(null);
   const [targetClient, setTargetClient] = useState<DeliveryLocation | null>(null);
   const [showDirections, setShowDirections] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const mapRef = useRef<MapView>(null);
+
+  // Check if we have a target location from navigation params
+  const targetLocation = (routeParams.params as any)?.targetLocation;
+  const targetCustomerName = (routeParams.params as any)?.customerName;
+  const targetAddress = (routeParams.params as any)?.address;
 
   // Google Directions API integration
   const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY'; // You'll need to add your API key
@@ -280,6 +294,24 @@ export default function MapScreen({ navigation, route }: any) {
     }
   }, [route?.params?.clientId, deliveries, currentLocation, calculateRouteToClient]);
 
+  // Handle target location from navigation params
+  useEffect(() => {
+    if (targetLocation && mapRef.current) {
+      // Focus map on target location
+      mapRef.current.animateToRegion({
+        latitude: targetLocation.latitude,
+        longitude: targetLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
+
+      // If we have current location, calculate route to target
+      if (currentLocation) {
+        getDirections(currentLocation, targetLocation);
+      }
+    }
+  }, [targetLocation, currentLocation, getDirections]);
+
   useEffect(() => {
     const generateRoutes = (deliveryList: DeliveryLocation[], userLocation?: { latitude: number; longitude: number } | null) => {
       // Generate sample route coordinates (in real app, you'd use Google Directions API)
@@ -387,35 +419,85 @@ export default function MapScreen({ navigation, route }: any) {
 
     const init = async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission Denied', 'Location permission is required to show your position on the map');
-          // Use default location (New York City) if permission denied
-          const defaultLocation = {
-            latitude: 40.7128,
-            longitude: -74.0060,
-          };
-          setCurrentLocation(defaultLocation);
-          setLoading(false);
-          const mockDeliveries = loadDeliveries();
-          generateRoutes(mockDeliveries, defaultLocation);
-          return;
+        setLocationError(null);
+        
+        // First check if location services are enabled
+        const isLocationEnabled = await Location.hasServicesEnabledAsync();
+        if (!isLocationEnabled) {
+          throw new Error('Location services are disabled. Please enable location services in your device settings.');
         }
 
-        const location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 10000,
-        });
+        // Request permissions with more specific handling
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          throw new Error('Location permission denied. Please grant location permission to use the map.');
+        }
+
+        // Try multiple location methods with fallbacks
+        let location = null;
+        
+        try {
+          // First try with high accuracy
+          location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+        } catch (highAccuracyError) {
+          console.log('High accuracy failed, trying balanced accuracy:', highAccuracyError);
+          
+          try {
+            // Try with balanced accuracy
+            location = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+          } catch (balancedError) {
+            console.log('Balanced accuracy failed, trying low accuracy:', balancedError);
+            
+            try {
+              // Last resort: try with low accuracy
+              location = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Low,
+              });
+            } catch (lowAccuracyError) {
+              console.log('All accuracy levels failed, trying last location:', lowAccuracyError);
+              
+              // Try to get the last known location
+              location = await Location.getLastKnownPositionAsync({
+                requiredAccuracy: 1000, // Accept location within 1km accuracy
+              });
+            }
+          }
+        }
+        
+        if (!location) {
+          throw new Error('Unable to obtain location after multiple attempts');
+        }
+        
         const userLocation = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
         };
+        
+        console.log('Successfully obtained location:', userLocation);
         setCurrentLocation(userLocation);
         setLoading(false);
-        const mockDeliveries = loadDeliveries();
-        generateRoutes(mockDeliveries, userLocation);
+        
+        // Load deliveries but don't generate routes automatically
+        loadDeliveries();
+        
+        // Center map on user location
+        if (mapRef.current && userLocation) {
+          mapRef.current.animateToRegion({
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 1000);
+        }
+        
       } catch (error) {
         console.error('Error getting location:', error);
+        setLocationError(error instanceof Error ? error.message : 'Failed to get location');
+        
         // Use default location (New York City) if location fails
         const defaultLocation = {
           latitude: 40.7128,
@@ -423,8 +505,14 @@ export default function MapScreen({ navigation, route }: any) {
         };
         setCurrentLocation(defaultLocation);
         setLoading(false);
-        const mockDeliveries = loadDeliveries();
-        generateRoutes(mockDeliveries, defaultLocation);
+        loadDeliveries();
+        
+        // Show user-friendly error message
+        Alert.alert(
+          'Location Error', 
+          `Unable to get your current location. Using default location (New York City).\n\nTip: Make sure location services are enabled and try restarting the app.`,
+          [{ text: 'OK' }]
+        );
       }
     };
 
@@ -545,6 +633,91 @@ export default function MapScreen({ navigation, route }: any) {
     }
   };
 
+  // Driving Mode Functions
+  const acceptDelivery = (delivery: DeliveryLocation) => {
+    setActiveDelivery(delivery);
+    setIsDrivingMode(true);
+    setSelectedDelivery(delivery);
+    
+    // Generate route to this delivery
+    if (currentLocation) {
+      const routeCoords = generateSimpleRoute(currentLocation, {
+        latitude: delivery.lat,
+        longitude: delivery.lng
+      });
+      setRouteCoordinates(routeCoords);
+      
+      // Focus map on route
+      if (mapRef.current) {
+        mapRef.current.fitToCoordinates([
+          { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+          { latitude: delivery.lat, longitude: delivery.lng }
+        ], {
+          edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+          animated: true,
+        });
+      }
+    }
+  };
+
+  const generateSimpleRoute = (
+    origin: { latitude: number; longitude: number },
+    destination: { latitude: number; longitude: number }
+  ): Array<{ latitude: number; longitude: number }> => {
+    // Simple route generation - in production, use Google Directions API
+    const latStep = (destination.latitude - origin.latitude) / 20;
+    const lngStep = (destination.longitude - origin.longitude) / 20;
+    
+    const coordinates = [];
+    for (let i = 0; i <= 20; i++) {
+      // Add some randomness to simulate real roads
+      const randomLat = (Math.random() - 0.5) * 0.001;
+      const randomLng = (Math.random() - 0.5) * 0.001;
+      coordinates.push({
+        latitude: origin.latitude + (latStep * i) + randomLat,
+        longitude: origin.longitude + (lngStep * i) + randomLng,
+      });
+    }
+    
+    return coordinates;
+  };
+
+  const exitDrivingMode = () => {
+    setIsDrivingMode(false);
+    setActiveDelivery(null);
+    setRouteCoordinates([]);
+    setSelectedDelivery(null);
+    
+    // Reset map to user location
+    if (mapRef.current && currentLocation) {
+      mapRef.current.animateToRegion({
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
+    }
+  };
+
+  const handleDeliveryPress = (delivery: DeliveryLocation) => {
+    if (!isDrivingMode) {
+      // Show delivery options
+      Alert.alert(
+        'Accept Delivery',
+        `Accept delivery to ${delivery.customerName}?\nAddress: ${delivery.address}\nPayment: ${delivery.payment}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Accept',
+            onPress: () => acceptDelivery(delivery),
+          },
+        ]
+      );
+    } else {
+      setSelectedDelivery(delivery);
+    }
+  };
+
   const selectRoute = (route: Route) => {
     setSelectedRoute(route);
     setShowRouteModal(false);
@@ -574,12 +747,42 @@ export default function MapScreen({ navigation, route }: any) {
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1E40AF" />
         <Text style={styles.loadingText}>Loading map...</Text>
+        {locationError && (
+          <Text style={styles.errorText}>{locationError}</Text>
+        )}
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+          {isDrivingMode ? 'Driving Mode' : 'Map'}
+        </Text>
+        <View style={styles.headerActions}>
+          {isDrivingMode && (
+            <TouchableOpacity
+              style={[styles.exitButton, { backgroundColor: theme.colors.error + '20' }]}
+              onPress={exitDrivingMode}
+            >
+              <Ionicons name="close" size={20} color={theme.colors.error} />
+              <Text style={[styles.exitButtonText, { color: theme.colors.error }]}>Exit</Text>
+            </TouchableOpacity>
+          )}
+          {!isDrivingMode && (
+            <TouchableOpacity
+              style={styles.routeButton}
+              onPress={() => setShowRouteModal(true)}
+            >
+              <Ionicons name="list-outline" size={20} color={theme.colors.primary} />
+              <Text style={[styles.routeButtonText, { color: theme.colors.primary }]}>Deliveries</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       {/* Google Maps */}
       <MapView
         ref={mapRef}
@@ -588,53 +791,73 @@ export default function MapScreen({ navigation, route }: any) {
         initialRegion={{
           latitude: currentLocation?.latitude || 40.7128,
           longitude: currentLocation?.longitude || -74.0060,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
         }}
         showsUserLocation={true}
-        showsMyLocationButton={false}
-        showsTraffic={true}
+        showsMyLocationButton={true}
+        showsTraffic={isDrivingMode}
+        showsBuildings={true}
+        mapType={theme.isDark ? 'standard' : 'standard'}
+        userInterfaceStyle={theme.isDark ? 'dark' : 'light'}
       >
-        {/* Current Location Marker */}
-        {currentLocation && (
+        {/* Show destination marker only in driving mode */}
+        {isDrivingMode && activeDelivery && (
           <Marker
-            coordinate={currentLocation}
-            title="Your Location"
-            description="Driver Location"
-            pinColor="#1E40AF"
+            coordinate={{
+              latitude: activeDelivery.lat,
+              longitude: activeDelivery.lng,
+            }}
+            title={activeDelivery.customerName}
+            description={activeDelivery.address}
+            pinColor={theme.colors.error}
           />
         )}
 
-        {/* Delivery Markers */}
-        {deliveries.map((delivery) => (
+        {/* Show route polyline in driving mode */}
+        {isDrivingMode && routeCoordinates.length > 0 && (
+          <Polyline
+            coordinates={routeCoordinates}
+            strokeColor={theme.colors.primary}
+            strokeWidth={4}
+            lineDashPattern={[1]}
+          />
+        )}
+
+        {/* Show all delivery markers only when NOT in driving mode */}
+        {!isDrivingMode && deliveries.map((delivery) => (
           <Marker
             key={delivery.id}
             coordinate={{ latitude: delivery.lat, longitude: delivery.lng }}
             title={delivery.customerName}
             description={`${delivery.restaurant} - ${delivery.payment}`}
             pinColor={getMarkerColor(delivery.status)}
-            onPress={() => setSelectedDelivery(delivery)}
+            onPress={() => handleDeliveryPress(delivery)}
           />
         ))}
 
-        {/* Route Polyline */}
-        {selectedRoute && selectedRoute.coordinates.length > 1 && (
-          <Polyline
-            coordinates={selectedRoute.coordinates}
-            strokeColor="#1E40AF"
-            strokeWidth={4}
+        {/* Target Location Marker (from navigation params) */}
+        {targetLocation && (
+          <Marker
+            coordinate={targetLocation}
+            title={targetCustomerName || "Target Location"}
+            description={targetAddress || "Delivery Address"}
+            pinColor="#FF6B6B"
           />
         )}
       </MapView>
 
       {/* Control Buttons */}
       <View style={styles.controlsContainer}>
-        <TouchableOpacity style={styles.controlButton} onPress={centerOnLocation}>
-          <Ionicons name="locate" size={24} color="#1E40AF" />
+        <TouchableOpacity 
+          style={[styles.controlButton, { backgroundColor: theme.colors.surface }]} 
+          onPress={centerOnLocation}
+        >
+          <Ionicons name="locate" size={24} color={theme.colors.primary} />
         </TouchableOpacity>
         
         <TouchableOpacity 
-          style={[styles.controlButton, styles.routeButton]} 
+          style={[styles.controlButton, styles.routeButton, { backgroundColor: theme.colors.primary }]} 
           onPress={() => setShowRouteModal(true)}
         >
           <Ionicons name="map" size={24} color="#FFFFFF" />
@@ -644,12 +867,16 @@ export default function MapScreen({ navigation, route }: any) {
 
       {/* Selected Delivery Info */}
       {selectedDelivery && (
-        <View style={styles.deliveryInfo}>
+        <View style={[styles.deliveryInfo, { backgroundColor: theme.colors.card }]}>
           <View style={styles.deliveryHeader}>
             <View>
-              <Text style={styles.deliveryName}>{selectedDelivery.customerName}</Text>
-              <Text style={styles.deliveryAddress}>{selectedDelivery.address}</Text>
-              <Text style={styles.deliveryDetails}>
+              <Text style={[styles.deliveryName, { color: theme.colors.text }]}>
+                {selectedDelivery.customerName}
+              </Text>
+              <Text style={[styles.deliveryAddress, { color: theme.colors.text }]}>
+                {selectedDelivery.address}
+              </Text>
+              <Text style={[styles.deliveryDetails, { color: theme.colors.textSecondary }]}>
                 {selectedDelivery.restaurant} • {selectedDelivery.distance} • {selectedDelivery.estimatedTime}
               </Text>
             </View>
@@ -657,13 +884,13 @@ export default function MapScreen({ navigation, route }: any) {
               style={styles.closeButton}
               onPress={() => setSelectedDelivery(null)}
             >
-              <Ionicons name="close" size={20} color="#6B7280" />
+              <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
           
           <View style={styles.deliveryActions}>
             <TouchableOpacity
-              style={styles.actionButton}
+              style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
               onPress={() => startNavigation(selectedDelivery)}
             >
               <Ionicons name="navigate" size={20} color="#FFFFFF" />
@@ -689,41 +916,52 @@ export default function MapScreen({ navigation, route }: any) {
         onRequestClose={() => setShowRouteModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Route</Text>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Available Deliveries</Text>
               <TouchableOpacity onPress={() => setShowRouteModal(false)}>
-                <Ionicons name="close" size={24} color="#6B7280" />
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.routesList}>
-              {availableRoutes.map((route) => (
+              {deliveries.map((delivery) => (
                 <TouchableOpacity
-                  key={route.id}
+                  key={delivery.id}
                   style={[
                     styles.routeItem,
-                    selectedRoute?.id === route.id && styles.selectedRouteItem,
+                    { backgroundColor: theme.colors.card },
                   ]}
-                  onPress={() => selectRoute(route)}
+                  onPress={() => {
+                    setShowRouteModal(false);
+                    handleDeliveryPress(delivery);
+                  }}
                 >
                   <View style={styles.routeHeader}>
                     <View style={styles.routeInfo}>
-                      <Text style={styles.routeName}>{route.name}</Text>
-                      {route.isOptimal && (
-                        <View style={styles.optimalBadge}>
-                          <Text style={styles.optimalText}>OPTIMAL</Text>
-                        </View>
-                      )}
+                      <Text style={[styles.routeName, { color: theme.colors.text }]}>{delivery.customerName}</Text>
+                      <View style={[styles.statusBadge, { backgroundColor: getMarkerColor(delivery.status) }]}>
+                        <Text style={styles.statusText}>{delivery.status.toUpperCase()}</Text>
+                      </View>
                     </View>
                     <View style={styles.routeStats}>
-                      <Text style={styles.routeDistance}>{route.distance}</Text>
-                      <Text style={styles.routeDuration}>{route.duration}</Text>
+                      <Text style={[styles.routeDistance, { color: theme.colors.primary }]}>
+                        {delivery.distance}
+                      </Text>
+                      <Text style={[styles.routeDuration, { color: theme.colors.textSecondary }]}>
+                        {delivery.estimatedTime}
+                      </Text>
                     </View>
                   </View>
+                  <Text style={[styles.deliveryAddress, { color: theme.colors.textSecondary }]}>
+                    {delivery.address}
+                  </Text>
+                  <Text style={[styles.restaurantName, { color: theme.colors.text }]}>
+                    {delivery.restaurant} • {delivery.payment}
+                  </Text>
                   
-                  <Text style={styles.stopsCount}>
-                    {route.stops.length} stops
+                  <Text style={[styles.stopsCount, { color: theme.colors.textSecondary }]}>
+                    Status: {delivery.status}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -739,6 +977,37 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingTop: 50,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  exitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  exitButtonText: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '600',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -750,17 +1019,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
   },
+  errorText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#EF4444',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
   map: {
     flex: 1,
   },
   controlsContainer: {
     position: 'absolute',
-    top: 50,
+    top: 120,
     right: 20,
     gap: 10,
   },
   controlButton: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 25,
     padding: 12,
     shadowColor: '#000',
@@ -770,14 +1045,16 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   routeButton: {
-    backgroundColor: '#1E40AF',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#EBF4FF',
+    borderRadius: 8,
   },
   routeButtonText: {
-    color: '#FFFFFF',
+    marginLeft: 8,
+    fontSize: 16,
     fontWeight: '600',
   },
   deliveryInfo: {
@@ -785,7 +1062,6 @@ const styles = StyleSheet.create({
     bottom: 20,
     left: 20,
     right: 20,
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     shadowColor: '#000',
@@ -803,11 +1079,9 @@ const styles = StyleSheet.create({
   deliveryName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
   },
   deliveryAddress: {
     fontSize: 14,
-    color: '#6B7280',
     marginTop: 2,
   },
   deliveryDetails: {
@@ -824,7 +1098,6 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: '#1E40AF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -845,7 +1118,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: height * 0.7,
@@ -861,13 +1133,11 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
   },
   routesList: {
     padding: 20,
   },
   routeItem: {
-    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -890,8 +1160,23 @@ const styles = StyleSheet.create({
   routeName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
     marginBottom: 4,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  statusText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  restaurantName: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 4,
   },
   optimalBadge: {
     backgroundColor: '#10B981',
@@ -911,14 +1196,11 @@ const styles = StyleSheet.create({
   routeDistance: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#1E40AF',
   },
   routeDuration: {
     fontSize: 14,
-    color: '#6B7280',
   },
   stopsCount: {
     fontSize: 12,
-    color: '#9CA3AF',
   },
 });
