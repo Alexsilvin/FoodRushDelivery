@@ -15,6 +15,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useCall } from '../../contexts/CallContext';
 import { useRoute } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
@@ -22,6 +23,7 @@ const { width, height } = Dimensions.get('window');
 interface DeliveryLocation {
   id: string;
   customerName: string;
+  customerPhone?: string;
   address: string;
   lat: number;
   lng: number;
@@ -60,6 +62,8 @@ interface Route {
 
 export default function MapScreen({ navigation, route }: any) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
+  const { startCall } = useCall();
   const routeParams = useRoute();
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryLocation | null>(null);
@@ -112,50 +116,96 @@ export default function MapScreen({ navigation, route }: any) {
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number }
   ): DirectionsRoute => {
-    // Create a simple route with some waypoints for demo
-    const coordinates = [
-      origin,
-      {
-        latitude: origin.latitude + (destination.latitude - origin.latitude) * 0.3,
-        longitude: origin.longitude + (destination.longitude - origin.longitude) * 0.3,
-      },
-      {
-        latitude: origin.latitude + (destination.latitude - origin.latitude) * 0.7,
-        longitude: origin.longitude + (destination.longitude - origin.longitude) * 0.7,
-      },
-      destination,
-    ];
+    // Enhanced route algorithm that simulates real road networks
+    const coordinates = [];
+    
+    // Start from origin
+    coordinates.push(origin);
+    
+    // Calculate the difference in coordinates
+    const latDiff = destination.latitude - origin.latitude;
+    const lngDiff = destination.longitude - origin.longitude;
+    
+    // Create waypoints that simulate following roads (grid-like movement)
+    const numberOfSegments = 15;
+    
+    for (let i = 1; i < numberOfSegments; i++) {
+      const progress = i / numberOfSegments;
+      
+      // Add some road-like variation - alternate between lat and lng movement
+      let lat, lng;
+      
+      if (i % 3 === 0) {
+        // Move more in latitude direction (simulating north-south roads)
+        lat = origin.latitude + (latDiff * progress);
+        lng = origin.longitude + (lngDiff * (progress * 0.7));
+      } else if (i % 3 === 1) {
+        // Move more in longitude direction (simulating east-west roads)
+        lat = origin.latitude + (latDiff * (progress * 0.7));
+        lng = origin.longitude + (lngDiff * progress);
+      } else {
+        // Diagonal movement
+        lat = origin.latitude + (latDiff * progress);
+        lng = origin.longitude + (lngDiff * progress);
+      }
+      
+      // Add slight randomness to simulate real road curves
+      const roadVariation = 0.0005;
+      lat += (Math.random() - 0.5) * roadVariation;
+      lng += (Math.random() - 0.5) * roadVariation;
+      
+      coordinates.push({ latitude: lat, longitude: lng });
+    }
+    
+    // End at destination
+    coordinates.push(destination);
 
-    // Calculate approximate distance
-    const distance = calculateDistance(origin, destination);
-    const distanceKm = (distance / 1000).toFixed(1);
-    const estimatedTime = Math.ceil(distance / 800); // Rough estimate: 800m per minute in city traffic
+    // Calculate more accurate distance and time
+    let totalDistance = 0;
+    for (let i = 0; i < coordinates.length - 1; i++) {
+      totalDistance += calculateDistance(coordinates[i], coordinates[i + 1]);
+    }
+    
+    const distanceKm = (totalDistance / 1000).toFixed(1);
+    // More realistic time calculation: city traffic average 20-30 km/h
+    const estimatedTimeMinutes = Math.ceil(totalDistance / 400); // 400m per minute = 24 km/h average
+    
+    // Generate step-by-step directions
+    const steps: DirectionsStep[] = [];
+    const segmentDistance = totalDistance / (coordinates.length - 1);
+    
+    // First step
+    steps.push({
+      instruction: 'Head toward your destination',
+      distance: `${(segmentDistance * 3 / 1000).toFixed(1)} km`,
+      duration: `${Math.ceil(segmentDistance * 3 / 400)} min`,
+      maneuver: 'start'
+    });
+    
+    // Middle steps
+    if (coordinates.length > 4) {
+      steps.push({
+        instruction: 'Continue straight',
+        distance: `${(segmentDistance * (coordinates.length - 6) / 1000).toFixed(1)} km`,
+        duration: `${Math.ceil(segmentDistance * (coordinates.length - 6) / 400)} min`,
+        maneuver: 'continue'
+      });
+    }
+    
+    // Final step
+    steps.push({
+      instruction: 'Arrive at destination',
+      distance: '0 km',
+      duration: '0 min',
+      maneuver: 'arrive'
+    });
 
     return {
       distance: `${distanceKm} km`,
-      duration: `${estimatedTime} min`,
+      duration: `${estimatedTimeMinutes} min`,
       coordinates,
-      steps: [
-        {
-          instruction: 'Head northeast on current street',
-          distance: '0.2 km',
-          duration: '1 min',
-          maneuver: 'turn-right'
-        },
-        {
-          instruction: `Continue straight`,
-          distance: `${(parseFloat(distanceKm) - 0.2).toFixed(1)} km`,
-          duration: `${estimatedTime - 1} min`,
-          maneuver: 'continue'
-        },
-        {
-          instruction: 'Arrive at destination',
-          distance: '0 km',
-          duration: '0 min',
-          maneuver: 'arrive'
-        }
-      ],
-      summary: `Fastest route to destination`
+      steps,
+      summary: `Fastest route via city roads`
     };
   }, [calculateDistance]);
 
@@ -219,12 +269,12 @@ export default function MapScreen({ navigation, route }: any) {
     const androidUrl = `google.navigation:q=${client.lat},${client.lng}`;
     
     Alert.alert(
-      'Start Navigation',
-      'This will open your device\'s navigation app',
+      t('startNavigation'),
+      t('startNavigationConfirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         { 
-          text: 'Open Maps', 
+          text: t('openMaps'), 
           onPress: () => {
             // In a real app, you'd use Linking.openURL() here
             console.log('Opening navigation to:', client.address);
@@ -232,18 +282,36 @@ export default function MapScreen({ navigation, route }: any) {
         }
       ]
     );
-  }, []);
+  }, [t]);
 
+  const handleCall = useCallback((customerName: string, phoneNumber?: string) => {
+    // Directly start the call and navigate to call screen
+    startCall(customerName, 'voice');
+  }, [startCall]);
+
+  // Enhanced route calculation with better algorithm
   const calculateRouteToClient = useCallback(async (client: DeliveryLocation) => {
     if (!currentLocation) {
-      Alert.alert('Error', 'Current location not available');
+      Alert.alert(t('error'), 'Current location not available');
       return;
     }
 
     setIsCalculatingRoute(true);
     setTargetClient(client);
+    setSelectedDelivery(client);
     
     try {
+      // First, focus map on the selected delivery location
+      if (mapRef.current) {
+        mapRef.current.animateToRegion({
+          latitude: client.lat,
+          longitude: client.lng,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 1000);
+      }
+
+      // Calculate route using enhanced algorithm
       const directionsRoute = await getDirections(
         currentLocation,
         { latitude: client.lat, longitude: client.lng }
@@ -251,9 +319,10 @@ export default function MapScreen({ navigation, route }: any) {
       
       if (directionsRoute) {
         setActiveDirections(directionsRoute);
+        setRouteCoordinates(directionsRoute.coordinates);
         setShowDirections(true);
         
-        // Center map on route
+        // Center map on route with better fitting
         if (mapRef.current) {
           const allCoordinates = [
             currentLocation,
@@ -261,28 +330,30 @@ export default function MapScreen({ navigation, route }: any) {
             { latitude: client.lat, longitude: client.lng }
           ];
           
-          mapRef.current.fitToCoordinates(allCoordinates, {
-            edgePadding: { top: 100, right: 50, bottom: 100, left: 50 },
-            animated: true,
-          });
+          setTimeout(() => {
+            mapRef.current?.fitToCoordinates(allCoordinates, {
+              edgePadding: { top: 120, right: 50, bottom: 200, left: 50 },
+              animated: true,
+            });
+          }, 1500);
         }
         
         Alert.alert(
-          'Route Calculated',
-          `Distance: ${directionsRoute.distance}\nEstimated time: ${directionsRoute.duration}`,
+          t('routeCalculated'),
+          `${t('distance')}: ${directionsRoute.distance}\n${t('estTime')}: ${directionsRoute.duration}\n\n${t('startNavigationConfirm')}`,
           [
-            { text: 'Start Navigation', onPress: () => startNavigation(client) },
-            { text: 'OK', style: 'default' }
+            { text: t('cancel'), style: 'cancel' },
+            { text: t('startNavigation'), onPress: () => startNavigation(client) },
           ]
         );
       }
     } catch (error) {
       console.error('Error calculating route:', error);
-      Alert.alert('Error', 'Could not calculate route. Please try again.');
+      Alert.alert(t('error'), 'Could not calculate route. Please try again.');
     } finally {
       setIsCalculatingRoute(false);
     }
-  }, [currentLocation, getDirections, startNavigation]);
+  }, [currentLocation, getDirections, startNavigation, t]);
 
   // Check if a specific client was passed from Dashboard for navigation
   useEffect(() => {
@@ -366,6 +437,7 @@ export default function MapScreen({ navigation, route }: any) {
         {
           id: '1',
           customerName: 'Emma Davis',
+          customerPhone: '+1 (555) 123-4567',
           address: '123 Broadway, New York, NY',
           lat: 40.7589,
           lng: -73.9851,
@@ -378,6 +450,7 @@ export default function MapScreen({ navigation, route }: any) {
         {
           id: '2',
           customerName: 'John Smith',
+          customerPhone: '+1 (555) 234-5678',
           address: '456 5th Avenue, New York, NY',
           lat: 40.7505,
           lng: -73.9934,
@@ -390,6 +463,7 @@ export default function MapScreen({ navigation, route }: any) {
         {
           id: '3',
           customerName: 'Sarah Johnson',
+          customerPhone: '+1 (555) 345-6789',
           address: '789 Madison Avenue, New York, NY',
           lat: 40.7614,
           lng: -73.9776,
@@ -402,6 +476,7 @@ export default function MapScreen({ navigation, route }: any) {
         {
           id: '4',
           customerName: 'Mike Chen',
+          customerPhone: '+1 (555) 456-7890',
           address: '321 Park Avenue, New York, NY',
           lat: 40.7549,
           lng: -73.9707,
@@ -509,15 +584,15 @@ export default function MapScreen({ navigation, route }: any) {
         
         // Show user-friendly error message
         Alert.alert(
-          'Location Error', 
-          `Unable to get your current location. Using default location (New York City).\n\nTip: Make sure location services are enabled and try restarting the app.`,
+          t('locationError'), 
+          t('locationErrorMessage'),
           [{ text: 'OK' }]
         );
       }
     };
 
     init();
-  }, []); // Remove currentLocation dependency to prevent infinite loop
+  }, [t]); // Remove currentLocation dependency to prevent infinite loop
 
   const loadDeliveries = () => {
     // Mock delivery locations with real coordinates around New York City
@@ -525,6 +600,7 @@ export default function MapScreen({ navigation, route }: any) {
       {
         id: '1',
         customerName: 'Emma Davis',
+        customerPhone: '+1 (555) 123-4567',
         address: '123 Broadway, New York, NY',
         lat: 40.7589,
         lng: -73.9851,
@@ -537,6 +613,7 @@ export default function MapScreen({ navigation, route }: any) {
       {
         id: '2',
         customerName: 'John Smith',
+        customerPhone: '+1 (555) 234-5678',
         address: '456 5th Avenue, New York, NY',
         lat: 40.7505,
         lng: -73.9934,
@@ -549,6 +626,7 @@ export default function MapScreen({ navigation, route }: any) {
       {
         id: '3',
         customerName: 'Sarah Johnson',
+        customerPhone: '+1 (555) 345-6789',
         address: '789 Madison Avenue, New York, NY',
         lat: 40.7614,
         lng: -73.9776,
@@ -561,6 +639,7 @@ export default function MapScreen({ navigation, route }: any) {
       {
         id: '4',
         customerName: 'Mike Chen',
+        customerPhone: '+1 (555) 456-7890',
         address: '321 Park Avenue, New York, NY',
         lat: 40.7549,
         lng: -73.9707,
@@ -700,21 +779,36 @@ export default function MapScreen({ navigation, route }: any) {
   };
 
   const handleDeliveryPress = (delivery: DeliveryLocation) => {
+    // Always set the selected delivery to show the pin and info
+    setSelectedDelivery(delivery);
+    
+    // Focus map on the selected delivery
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: delivery.lat,
+        longitude: delivery.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
+    }
+    
     if (!isDrivingMode) {
-      // Show delivery options
+      // Show delivery options with calculate route option
       Alert.alert(
-        'Accept Delivery',
-        `Accept delivery to ${delivery.customerName}?\nAddress: ${delivery.address}\nPayment: ${delivery.payment}`,
+        `${delivery.customerName}`,
+        `${t('address')}: ${delivery.address}\n${delivery.restaurant} • ${delivery.payment}\n${t('distance')}: ${delivery.distance} • ${t('estTime')}: ${delivery.estimatedTime}`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: t('cancel'), style: 'cancel' },
           {
-            text: 'Accept',
+            text: t('calculateRoute'),
+            onPress: () => calculateRouteToClient(delivery),
+          },
+          {
+            text: t('acceptDeliveryAction'),
             onPress: () => acceptDelivery(delivery),
           },
         ]
       );
-    } else {
-      setSelectedDelivery(delivery);
     }
   };
 
@@ -746,7 +840,7 @@ export default function MapScreen({ navigation, route }: any) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1E40AF" />
-        <Text style={styles.loadingText}>Loading map...</Text>
+        <Text style={styles.loadingText}>{t('loadingMap')}</Text>
         {locationError && (
           <Text style={styles.errorText}>{locationError}</Text>
         )}
@@ -759,7 +853,7 @@ export default function MapScreen({ navigation, route }: any) {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-          {isDrivingMode ? 'Driving Mode' : 'Map'}
+          {isDrivingMode ? t('drivingMode') : t('map')}
         </Text>
         <View style={styles.headerActions}>
           {isDrivingMode && (
@@ -768,7 +862,7 @@ export default function MapScreen({ navigation, route }: any) {
               onPress={exitDrivingMode}
             >
               <Ionicons name="close" size={20} color={theme.colors.error} />
-              <Text style={[styles.exitButtonText, { color: theme.colors.error }]}>Exit</Text>
+              <Text style={[styles.exitButtonText, { color: theme.colors.error }]}>{t('exit')}</Text>
             </TouchableOpacity>
           )}
           {!isDrivingMode && (
@@ -777,7 +871,7 @@ export default function MapScreen({ navigation, route }: any) {
               onPress={() => setShowRouteModal(true)}
             >
               <Ionicons name="list-outline" size={20} color={theme.colors.primary} />
-              <Text style={[styles.routeButtonText, { color: theme.colors.primary }]}>Deliveries</Text>
+              <Text style={[styles.routeButtonText, { color: theme.colors.primary }]}>{t('deliveries')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -831,10 +925,27 @@ export default function MapScreen({ navigation, route }: any) {
             coordinate={{ latitude: delivery.lat, longitude: delivery.lng }}
             title={delivery.customerName}
             description={`${delivery.restaurant} - ${delivery.payment}`}
-            pinColor={getMarkerColor(delivery.status)}
+            pinColor={selectedDelivery?.id === delivery.id ? "#FF6B6B" : getMarkerColor(delivery.status)}
             onPress={() => handleDeliveryPress(delivery)}
-          />
+          >
+            {selectedDelivery?.id === delivery.id && (
+              <View style={styles.selectedMarker}>
+                <Ionicons name="location" size={30} color="#FF6B6B" />
+              </View>
+            )}
+          </Marker>
         ))}
+
+        {/* Show route polyline when directions are active */}
+        {activeDirections && routeCoordinates.length > 0 && (
+          <Polyline
+            coordinates={routeCoordinates}
+            strokeColor={theme.colors.primary}
+            strokeWidth={5}
+            lineDashPattern={[1]}
+            geodesic={true}
+          />
+        )}
 
         {/* Target Location Marker (from navigation params) */}
         {targetLocation && (
@@ -861,7 +972,7 @@ export default function MapScreen({ navigation, route }: any) {
           onPress={() => setShowRouteModal(true)}
         >
           <Ionicons name="map" size={24} color="#FFFFFF" />
-          <Text style={styles.routeButtonText}>Routes</Text>
+          <Text style={styles.routeButtonText}>{t('routes')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -889,20 +1000,39 @@ export default function MapScreen({ navigation, route }: any) {
           </View>
           
           <View style={styles.deliveryActions}>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => startNavigation(selectedDelivery)}
-            >
-              <Ionicons name="navigate" size={20} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>Navigate</Text>
-            </TouchableOpacity>
+            {!activeDirections && (
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
+                onPress={() => calculateRouteToClient(selectedDelivery)}
+                disabled={isCalculatingRoute}
+              >
+                {isCalculatingRoute ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="map" size={20} color="#FFFFFF" />
+                )}
+                <Text style={styles.actionButtonText}>
+                  {isCalculatingRoute ? t('calculating') : t('calculateRoute')}
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            {activeDirections && (
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: "#10B981" }]}
+                onPress={() => startNavigation(selectedDelivery)}
+              >
+                <Ionicons name="navigate" size={20} color="#FFFFFF" />
+                <Text style={styles.actionButtonText}>{t('startNavigation')}</Text>
+              </TouchableOpacity>
+            )}
             
             <TouchableOpacity
               style={[styles.actionButton, styles.callButton]}
-              onPress={() => Alert.alert('Call', `Call ${selectedDelivery.customerName}?`)}
+              onPress={() => handleCall(selectedDelivery.customerName, selectedDelivery.customerPhone)}
             >
               <Ionicons name="call" size={20} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>Call</Text>
+              <Text style={styles.actionButtonText}>{t('call')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -918,7 +1048,7 @@ export default function MapScreen({ navigation, route }: any) {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Available Deliveries</Text>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>{t('availableDeliveries')}</Text>
               <TouchableOpacity onPress={() => setShowRouteModal(false)}>
                 <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
               </TouchableOpacity>
@@ -1202,5 +1332,9 @@ const styles = StyleSheet.create({
   },
   stopsCount: {
     fontSize: 12,
+  },
+  selectedMarker: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

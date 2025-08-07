@@ -403,10 +403,10 @@ export default function ChatScreen() {
     setAttachmentType(type);
     setIsMediaMenuVisible(false); // Hide menu after selection
     const actions = {
-      camera: () => Alert.alert('Camera', 'Opening camera...'),
-      gallery: () => Alert.alert('Gallery', 'Opening photo gallery...'),
-      file: () => Alert.alert('Files', 'Opening file browser...'),
-      audio: () => Alert.alert('Audio', 'Opening audio recorder...'),
+      camera: () => Alert.alert(t('camera'), 'Opening camera...'),
+      gallery: () => Alert.alert(t('gallery'), 'Opening photo gallery...'),
+      file: () => Alert.alert(t('files'), 'Opening file browser...'),
+      audio: () => Alert.alert(t('audio'), 'Opening audio recorder...'),
     };
     actions[type]();
   };
@@ -616,17 +616,17 @@ export default function ChatScreen() {
           >
             <TouchableOpacity style={styles.optionItem}>
               <Ionicons name="information-circle-outline" size={18} color={theme.colors.text} />
-              <Text style={[styles.optionText, { color: theme.colors.text }]}>Contact Info</Text>
+              <Text style={[styles.optionText, { color: theme.colors.text }]}>{t('contactInfo')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.optionItem}>
               <Ionicons name="volume-mute-outline" size={18} color={theme.colors.text} />
-              <Text style={[styles.optionText, { color: theme.colors.text }]}>Mute</Text>
+              <Text style={[styles.optionText, { color: theme.colors.text }]}>{t('mute')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.optionItem}>
               <Ionicons name="search-outline" size={18} color={theme.colors.text} />
-              <Text style={[styles.optionText, { color: theme.colors.text }]}>Search in chat</Text>
+              <Text style={[styles.optionText, { color: theme.colors.text }]}>{t('searchInChat')}</Text>
             </TouchableOpacity>
           </Animated.View>
         )}

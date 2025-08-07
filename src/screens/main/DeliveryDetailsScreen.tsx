@@ -253,21 +253,19 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Delivery Details</Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(delivery.status) }]}>
-          <Text style={styles.statusText}>{getStatusText(delivery.status)}</Text>
-        </View>
-      </View>
-
       <ScrollView style={styles.content}>
+        {/* Back Button and Status at top of content */}
+        <View style={styles.topSection}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(delivery.status) }]}>
+            <Text style={styles.statusText}>{getStatusText(delivery.status)}</Text>
+          </View>
+        </View>
         {/* Customer Info */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Customer Information</Text>
@@ -434,6 +432,13 @@ const styles = StyleSheet.create({
   centered: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  topSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginBottom: 8,
   },
   header: {
     flexDirection: 'row',

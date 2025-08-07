@@ -238,12 +238,12 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Support</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>{t('support')}</Text>
           
           <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]} onPress={handleSupport}>
             <View style={styles.menuItemLeft}>
               <Ionicons name="help-circle-outline" size={24} color={theme.colors.textSecondary} />
-              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Help & Support</Text>
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('helpSupport')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
@@ -251,7 +251,7 @@ export default function ProfileScreen() {
           <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]} onPress={handlePrivacy}>
             <View style={styles.menuItemLeft}>
               <Ionicons name="shield-outline" size={24} color={theme.colors.textSecondary} />
-              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Privacy Policy</Text>
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('privacyPolicy')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
