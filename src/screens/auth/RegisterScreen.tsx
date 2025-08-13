@@ -93,7 +93,18 @@ export default function RegisterScreen({ navigation }: any) {
         Alert.alert(t('error') || 'Error', t('registrationFailed') || 'Failed to create account. Please try again.');
       }
     } catch (error: any) {
-      const errorMsg = error?.response?.data?.message || t('somethingWentWrong') || 'Something went wrong. Please try again.';
+      console.error('Registration error:', error);
+      let errorMsg = t('somethingWentWrong') || 'Something went wrong. Please try again.';
+      
+      // Try to extract a more specific error message
+      if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      } else if (error.response?.data?.error) {
+        errorMsg = error.response.data.error;
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+      
       Alert.alert(t('error') || 'Error', errorMsg);
     } finally {
       setLoading(false);

@@ -62,8 +62,15 @@ export const authAPI = {
     role?: string;
     vehicleName?: string;
   }) => {
+    // Strip out any unexpected fields that might cause validation errors
+    const { firstName, lastName, email, password, phoneNumber, role } = userData;
+    
     const response = await api.post('/auth/register', {
-      ...userData,
+      firstName,
+      lastName,
+      email,
+      password,
+      phoneNumber,
       role: 'rider', // Always set to rider for the delivery app
     });
     return response.data;

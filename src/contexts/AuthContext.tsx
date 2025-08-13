@@ -135,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     driverLicense?: string | null
   ): Promise<boolean> => {
     try {
+      // Basic registration data without any extra fields
       const registrationData = {
         firstName,
         lastName,
@@ -143,16 +144,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         phoneNumber,
         role: 'rider' // Set role to rider for delivery driver app
       };
-
-      // Add vehicle data if provided
-      if (vehicle) {
-        // If we had a proper API endpoint for this, we would handle the vehicle differently
-        // For now, we'll just include it in the registration data
-        Object.assign(registrationData, { vehicleName: vehicle });
-      }
       
-      // Note: driverLicense would typically be uploaded separately in a real implementation
-      // Here we're just simulating that it's part of the registration process
+      // Note: vehicle and driverLicense would typically be uploaded separately 
+      // after registration in a real implementation
       
       const response = await authAPI.register(registrationData);
       
