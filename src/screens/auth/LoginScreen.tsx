@@ -48,18 +48,44 @@ export default function LoginScreen({ navigation }: any) {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert(t('error'), t('fillAllFields'));
+      return;
+    }
+
+    if (!email.includes('@')) {
+      Alert.alert(t('error'), t('invalidEmail'));
       return;
     }
 
     setLoading(true);
     try {
       const success = await login(email, password);
+      
       if (!success) {
-        Alert.alert('Error', 'Invalid credentials. Try: driver@demo.com / demo123');
+        Alert.alert(
+          t('loginFailed'), 
+          t('invalidCredentials'), 
+          [
+            {
+              text: t('ok'),
+              style: 'cancel',
+            },
+            {
+              text: t('demoLogin'),
+              onPress: async () => {
+                setEmail('driver@demo.com');
+                setPassword('demo123');
+                setTimeout(async () => {
+                  await login('driver@demo.com', 'demo123');
+                }, 500);
+              },
+            }
+          ]
+        );
       }
-    } catch (error) {
-      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.message || t('somethingWentWrong');
+      Alert.alert(t('error'), errorMsg);
     } finally {
       setLoading(false);
     }

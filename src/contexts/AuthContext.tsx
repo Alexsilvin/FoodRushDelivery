@@ -1,20 +1,31 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { authAPI, riderAPI } from '../services/api';
 
 interface User {
   id: string;
   email: string;
-  name: string;
-  phone?: string;
-  vehicle?: string;
+  firstName: string;
+  lastName: string;
+  phoneNumber?: string;
+  role: string;
+  isVerified: boolean;
+  phoneNumbers?: { id: string; number: string; isPrimary: boolean }[];
+  vehicles?: { id: string; name: string; type: string; default: boolean }[];
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (name: string, email: string, password: string, phone: string, vehicle: string) => Promise<boolean>;
+  register: (firstName: string, lastName: string, email: string, password: string, phoneNumber: string, vehicle?: string, driverLicense?: string | null) => Promise<boolean>;
   logout: () => Promise<void>;
+  forgotPassword: (email: string) => Promise<boolean>;
+  resetPassword: (token: string, newPassword: string) => Promise<boolean>;
+  updateUserProfile: (data: { firstName: string; lastName: string; email: string }) => Promise<boolean>;
+  updateUserVehicles: (vehicles: { id: string; name: string; type: string; default: boolean }[], defaultVehicle: string) => Promise<boolean>;
+  updateUserPhoneNumbers: (phoneNumbers: { id: string; number: string; isPrimary: boolean }[], primaryNumber: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,30 +34,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Development flag - set to true to force showing auth screens
-  const FORCE_SHOW_AUTH = true;
+  // Development flag - set to false to use real API
+  const FORCE_SHOW_AUTH = false;
 
   useEffect(() => {
     const initAuth = async () => {
       try {
         if (FORCE_SHOW_AUTH) {
           // Clear any existing auth data for development
-          await SecureStore.deleteItemAsync('auth_token');
+          await AsyncStorage.removeItem('auth_token');
           await SecureStore.deleteItemAsync('user');
           setUser(null);
           setLoading(false);
           return;
         }
 
-        const token = await SecureStore.getItemAsync('auth_token');
-        const userString = await SecureStore.getItemAsync('user');
-        
-        if (token && userString) {
-          const userData = JSON.parse(userString);
-          setUser(userData);
+        const token = await AsyncStorage.getItem('auth_token');
+        if (token) {
+          try {
+            // Get the user profile from the API
+            const userData = await authAPI.getProfile();
+            if (userData.data) {
+              setUser(userData.data);
+            } else {
+              // Token exists but profile fetch failed, clear token
+              await AsyncStorage.removeItem('auth_token');
+              setUser(null);
+            }
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+            // If there's an error fetching the profile, remove the token
+            await AsyncStorage.removeItem('auth_token');
+            setUser(null);
+          }
+        } else {
+          setUser(null);
         }
       } catch (error) {
         console.error('Error checking auth status:', error);
+        setUser(null);
       } finally {
         setLoading(false);
       }
@@ -55,77 +81,100 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
   }, [FORCE_SHOW_AUTH]);
 
-  const checkAuthStatus = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      const userString = await SecureStore.getItemAsync('user');
-      
-      if (token && userString) {
-        const userData = JSON.parse(userString);
-        setUser(userData);
-      }
-    } catch (error) {
-      console.error('Error checking auth status:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      // For demo purposes - in production, this would call your API
-      if (email === 'driver@demo.com' && password === 'demo123') {
+      if (FORCE_SHOW_AUTH && email === 'driver@demo.com' && password === 'demo123') {
+        // Demo mode
         const demoUser: User = {
           id: '1',
           email: 'driver@demo.com',
-          name: 'John Driver',
-          phone: '+1234567890',
-          vehicle: 'Honda Civic'
+          firstName: 'John',
+          lastName: 'Driver',
+          phoneNumber: '+1234567890',
+          role: 'rider',
+          isVerified: true
         };
 
-        await SecureStore.setItemAsync('auth_token', 'demo_token_123');
+        await AsyncStorage.setItem('auth_token', 'demo_token_123');
         await SecureStore.setItemAsync('user', JSON.stringify(demoUser));
         setUser(demoUser);
+        return true;
+      }
+      
+      // Real API call
+      const response = await authAPI.login(email, password);
+      
+      if (response.success && response.data) {
+        const { token, user } = response.data;
+        
+        // Ensure the user is a rider
+        if (user.role !== 'rider') {
+          throw new Error('This app is for delivery drivers only');
+        }
+        
+        await AsyncStorage.setItem('auth_token', token);
+        await SecureStore.setItemAsync('user', JSON.stringify(user));
+        setUser(user);
         return true;
       }
       
       return false;
     } catch (error) {
       console.error('Login error:', error);
-      return false;
+      throw error; // Rethrow to handle in the component
     }
   };
 
   const register = async (
-    name: string, 
-    email: string, 
-    password: string, 
-    phone: string, 
-    vehicle: string
+    firstName: string,
+    lastName: string,
+    email: string,
+    password: string,
+    phoneNumber: string,
+    vehicle?: string,
+    driverLicense?: string | null
   ): Promise<boolean> => {
     try {
-      // Demo registration
-      const newUser: User = {
-        id: Date.now().toString(),
+      const registrationData = {
+        firstName,
+        lastName,
         email,
-        name,
-        phone,
-        vehicle
+        password,
+        phoneNumber,
+        role: 'rider' // Set role to rider for delivery driver app
       };
 
-      await SecureStore.setItemAsync('auth_token', `token_${Date.now()}`);
-      await SecureStore.setItemAsync('user', JSON.stringify(newUser));
-      setUser(newUser);
-      return true;
+      // Add vehicle data if provided
+      if (vehicle) {
+        // If we had a proper API endpoint for this, we would handle the vehicle differently
+        // For now, we'll just include it in the registration data
+        Object.assign(registrationData, { vehicleName: vehicle });
+      }
+      
+      // Note: driverLicense would typically be uploaded separately in a real implementation
+      // Here we're just simulating that it's part of the registration process
+      
+      const response = await authAPI.register(registrationData);
+      
+      if (response.success && response.data) {
+        const { token, user } = response.data;
+        
+        await AsyncStorage.setItem('auth_token', token);
+        await SecureStore.setItemAsync('user', JSON.stringify(user));
+        setUser(user);
+        return true;
+      }
+      
+      return false;
     } catch (error) {
       console.error('Registration error:', error);
-      return false;
+      throw error; // Rethrow to handle in the component
     }
   };
 
-  const logout = async () => {
+  const logout = async (): Promise<void> => {
     try {
-      await SecureStore.deleteItemAsync('auth_token');
+      await AsyncStorage.removeItem('auth_token');
       await SecureStore.deleteItemAsync('user');
       setUser(null);
     } catch (error) {
@@ -133,8 +182,112 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const forgotPassword = async (email: string): Promise<boolean> => {
+    try {
+      const response = await authAPI.forgotPassword(email);
+      return response.success || false;
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      return false;
+    }
+  };
+
+  const resetPassword = async (token: string, newPassword: string): Promise<boolean> => {
+    try {
+      const response = await authAPI.resetPassword(token, newPassword);
+      return response.success || false;
+    } catch (error) {
+      console.error('Reset password error:', error);
+      return false;
+    }
+  };
+
+  const updateUserProfile = async (data: { firstName: string; lastName: string; email: string }): Promise<boolean> => {
+    try {
+      if (!user) return false;
+      
+      const response = await authAPI.updateProfile(data);
+      
+      if (response.success && response.data) {
+        const updatedUser = {
+          ...user,
+          ...data
+        };
+        
+        await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Profile update error:', error);
+      return false;
+    }
+  };
+
+  const updateUserVehicles = async (
+    vehicles: { id: string; name: string; type: string; default: boolean }[],
+    defaultVehicle: string
+  ): Promise<boolean> => {
+    try {
+      if (!user) return false;
+      
+      // In a real app, we would make an API call to update the vehicles
+      // For now, we'll just update the local user data
+      
+      const updatedUser = {
+        ...user,
+        vehicles
+      };
+
+      await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      return true;
+    } catch (error) {
+      console.error('Vehicle update error:', error);
+      return false;
+    }
+  };
+
+  const updateUserPhoneNumbers = async (
+    phoneNumbers: { id: string; number: string; isPrimary: boolean }[],
+    primaryNumber: string
+  ): Promise<boolean> => {
+    try {
+      if (!user) return false;
+      
+      // In a real app, we would make an API call to update the phone numbers
+      // For now, we'll just update the local user data
+      
+      const updatedUser = {
+        ...user,
+        phoneNumbers,
+        phoneNumber: primaryNumber
+      };
+
+      await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      return true;
+    } catch (error) {
+      console.error('Phone numbers update error:', error);
+      return false;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      login, 
+      register, 
+      logout,
+      forgotPassword,
+      resetPassword,
+      updateUserProfile,
+      updateUserVehicles,
+      updateUserPhoneNumbers
+    }}>
       {children}
     </AuthContext.Provider>
   );

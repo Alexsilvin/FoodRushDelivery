@@ -716,6 +716,7 @@ export default function MapScreen({ navigation, route }: any) {
   const acceptDelivery = (delivery: DeliveryLocation) => {
     setActiveDelivery(delivery);
     setIsDrivingMode(true);
+    // Keep selectedDelivery set so the info panel shows the right delivery
     setSelectedDelivery(delivery);
     
     // Generate route to this delivery
@@ -765,7 +766,7 @@ export default function MapScreen({ navigation, route }: any) {
     setIsDrivingMode(false);
     setActiveDelivery(null);
     setRouteCoordinates([]);
-    setSelectedDelivery(null);
+    // Don't clear selectedDelivery - keep it selected for reference
     
     // Reset map to user location
     if (mapRef.current && currentLocation) {
@@ -850,6 +851,13 @@ export default function MapScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
+      {/* Coming Soon Overlay */}
+      <View style={styles.comingSoonOverlay} pointerEvents="none">
+        <Ionicons name="construct" size={64} color={theme.colors.primary} />
+        <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]}>{t('comingSoon')}</Text>
+        <Text style={[styles.comingSoonMessage, { color: theme.colors.textSecondary }]}>{t('mapComingSoonMessage')}</Text>
+      </View>
+      {/* Original content below kept for future reactivation */}
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
@@ -977,33 +985,35 @@ export default function MapScreen({ navigation, route }: any) {
       </View>
 
       {/* Selected Delivery Info */}
-      {selectedDelivery && (
+      {(selectedDelivery || activeDelivery) && (
         <View style={[styles.deliveryInfo, { backgroundColor: theme.colors.card }]}>
           <View style={styles.deliveryHeader}>
             <View>
               <Text style={[styles.deliveryName, { color: theme.colors.text }]}>
-                {selectedDelivery.customerName}
+                {(selectedDelivery || activeDelivery)?.customerName}
               </Text>
               <Text style={[styles.deliveryAddress, { color: theme.colors.text }]}>
-                {selectedDelivery.address}
+                {(selectedDelivery || activeDelivery)?.address}
               </Text>
               <Text style={[styles.deliveryDetails, { color: theme.colors.textSecondary }]}>
-                {selectedDelivery.restaurant} • {selectedDelivery.distance} • {selectedDelivery.estimatedTime}
+                {(selectedDelivery || activeDelivery)?.restaurant} • {(selectedDelivery || activeDelivery)?.distance} • {(selectedDelivery || activeDelivery)?.estimatedTime}
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setSelectedDelivery(null)}
-            >
-              <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
-            </TouchableOpacity>
+            {!isDrivingMode && (
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setSelectedDelivery(null)}
+              >
+                <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            )}
           </View>
           
           <View style={styles.deliveryActions}>
-            {!activeDirections && (
+            {!activeDirections && !isDrivingMode && (
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => calculateRouteToClient(selectedDelivery)}
+                onPress={() => calculateRouteToClient(selectedDelivery!)}
                 disabled={isCalculatingRoute}
               >
                 {isCalculatingRoute ? (
@@ -1017,10 +1027,10 @@ export default function MapScreen({ navigation, route }: any) {
               </TouchableOpacity>
             )}
             
-            {activeDirections && (
+            {(activeDirections || isDrivingMode) && (
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: "#10B981" }]}
-                onPress={() => startNavigation(selectedDelivery)}
+                onPress={() => startNavigation(selectedDelivery || activeDelivery!)}
               >
                 <Ionicons name="navigate" size={20} color="#FFFFFF" />
                 <Text style={styles.actionButtonText}>{t('startNavigation')}</Text>
@@ -1029,7 +1039,10 @@ export default function MapScreen({ navigation, route }: any) {
             
             <TouchableOpacity
               style={[styles.actionButton, styles.callButton]}
-              onPress={() => handleCall(selectedDelivery.customerName, selectedDelivery.customerPhone)}
+              onPress={() => handleCall(
+                (selectedDelivery || activeDelivery)?.customerName || '', 
+                (selectedDelivery || activeDelivery)?.customerPhone
+              )}
             >
               <Ionicons name="call" size={20} color="#FFFFFF" />
               <Text style={styles.actionButtonText}>{t('call')}</Text>
@@ -1336,5 +1349,24 @@ const styles = StyleSheet.create({
   selectedMarker: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  comingSoonOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 32,
+    zIndex: 999,
+  },
+  comingSoonTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    marginTop: 24,
+  },
+  comingSoonMessage: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 12,
+    lineHeight: 22,
   },
 });

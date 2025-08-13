@@ -12,6 +12,9 @@ import SettingsScreen from '../screens/main/SettingsScreen';
 import DeliveryDetailsScreen from '../screens/main/DeliveryDetailsScreen';
 import CustomerProfileScreen from '../screens/main/CustomerProfileScreen';
 import MapScreen from '../screens/main/MapScreen';
+import EditProfileScreen from '../screens/main/EditProfileScreen';
+import VehicleInfoScreen from '../screens/main/VehicleInfoScreen';
+import PhoneNumbersScreen from '../screens/main/PhoneNumbersScreen';
 import GlobalCallOverlay from '../components/GlobalCallOverlay';
 
 const Stack = createStackNavigator();
@@ -134,6 +137,27 @@ export default function MainStack() {
             headerTitleStyle: {
               fontWeight: 'bold',
             },
+          }}
+        />
+        <Stack.Screen 
+          name="EditProfile" 
+          component={EditProfileScreen}
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen 
+          name="VehicleInfo" 
+          component={VehicleInfoScreen}
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen 
+          name="PhoneNumbers" 
+          component={PhoneNumbersScreen}
+          options={{
+            headerShown: false,
           }}
         />
       </Stack.Navigator>

@@ -54,7 +54,7 @@ export default function ProfileScreen() {
   };
 
   const handleEditProfile = () => {
-    Alert.alert(t('editProfile'), t('editProfileComingSoon'));
+    navigation.navigate('EditProfile' as never);
   };
 
   const handleSupport = () => {
@@ -111,7 +111,8 @@ export default function ProfileScreen() {
                 ]}
               >
                 <Text style={styles.avatarText}>
-                  {user?.name?.split(' ').map(n => n[0]).join('') || 'U'}
+                  {/* Get initials from first and last name */}
+                  {(user?.firstName?.[0] || '') + (user?.lastName?.[0] || '') || 'U'}
                 </Text>
               </Animated.View>
               
@@ -124,7 +125,7 @@ export default function ProfileScreen() {
                   })
                 }}
               >
-                <Text style={styles.name}>{user?.name || 'User'}</Text>
+                <Text style={styles.name}>{`${user?.firstName || ''} ${user?.lastName || ''}` || 'User'}</Text>
                 <Text style={styles.email}>{user?.email || 'No email'}</Text>
               </Animated.View>
               
@@ -214,24 +215,39 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity 
+            style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}
+            onPress={() => navigation.navigate('VehicleInfo' as never)}
+          >
             <View style={styles.menuItemLeft}>
               <Ionicons name="car-outline" size={24} color={theme.colors.textSecondary} />
               <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('vehicleInformation')}</Text>
             </View>
             <View style={styles.vehicleInfo}>
-              <Text style={[styles.vehicleText, { color: theme.colors.textSecondary }]}>{user?.vehicle || t('notSet')}</Text>
+              <Text style={[styles.vehicleText, { color: theme.colors.textSecondary }]}>
+                {user?.vehicles && user.vehicles.length > 0 
+                  ? user.vehicles.find(v => v.default)?.name || user.vehicles[0].name 
+                  : t('notSet') || 'Not set'}
+              </Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity 
+            style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}
+            onPress={() => navigation.navigate('PhoneNumbers' as never)}
+          >
             <View style={styles.menuItemLeft}>
               <Ionicons name="call-outline" size={24} color={theme.colors.textSecondary} />
               <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('phoneNumber')}</Text>
             </View>
             <View style={styles.phoneInfo}>
-              <Text style={[styles.phoneText, { color: theme.colors.textSecondary }]}>{user?.phone || t('notSet')}</Text>
+              <Text style={[styles.phoneText, { color: theme.colors.textSecondary }]}>
+                {user?.phoneNumber || 
+                 (user?.phoneNumbers && user.phoneNumbers.length > 0 
+                  ? user.phoneNumbers.find(p => p.isPrimary)?.number || user.phoneNumbers[0].number 
+                  : t('notSet') || 'Not set')}
+              </Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
             </View>
           </TouchableOpacity>

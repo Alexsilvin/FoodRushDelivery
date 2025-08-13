@@ -15,7 +15,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage } from '../contexts/LanguageContext';
 
-export default function LanguageSelector() {
+interface LanguageSelectorProps {
+  compact?: boolean;
+}
+
+export default function LanguageSelector({ compact = false }: LanguageSelectorProps) {
   const { theme } = useTheme();
   const { currentLanguage, changeLanguage, t, availableLanguages } = useLanguage();
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -100,25 +104,36 @@ export default function LanguageSelector() {
 
   return (
     <View>
-      <TouchableOpacity
-        style={[styles.languageSelector, { backgroundColor: theme.colors.card }]}
-        onPress={() => setIsModalVisible(true)}
-      >
-        <View style={styles.languageSelectorContent}>
-          <View style={styles.languageInfo}>
-            <Ionicons name="language-outline" size={24} color={theme.colors.primary} />
-            <View style={styles.languageText}>
-              <Text style={[styles.languageLabel, { color: theme.colors.text }]}>
-                {t('language')}
-              </Text>
-              <Text style={[styles.languageValue, { color: theme.colors.textSecondary }]}>
-                {currentLanguageInfo?.nativeName || 'English'}
-              </Text>
+      {compact ? (
+        <TouchableOpacity
+          style={[styles.compactSelector]}
+          onPress={() => setIsModalVisible(true)}
+        >
+          <Text style={[styles.compactText, { color: theme.colors.primary }]}>
+            {currentLanguageInfo?.nativeName || 'English'}
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={[styles.languageSelector, { backgroundColor: theme.colors.card }]}
+          onPress={() => setIsModalVisible(true)}
+        >
+          <View style={styles.languageSelectorContent}>
+            <View style={styles.languageInfo}>
+              <Ionicons name="language-outline" size={24} color={theme.colors.primary} />
+              <View style={styles.languageText}>
+                <Text style={[styles.languageLabel, { color: theme.colors.text }]}>
+                  {t('language')}
+                </Text>
+                <Text style={[styles.languageValue, { color: theme.colors.textSecondary }]}>
+                  {currentLanguageInfo?.nativeName || 'English'}
+                </Text>
+              </View>
             </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
           </View>
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      )}
 
       <Modal
         visible={isModalVisible}
@@ -237,6 +252,16 @@ const styles = StyleSheet.create({
   languageValue: {
     fontSize: 14,
   },
+  // Compact mode styles
+  compactSelector: {
+    padding: 6,
+    borderRadius: 8,
+  },
+  compactText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

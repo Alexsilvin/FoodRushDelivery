@@ -255,7 +255,7 @@ export default function DashboardScreen({ navigation }: any) {
             : ['#1E40AF', '#3B82F6']} 
           style={[styles.header, { paddingTop: 60 }]}
         >
-        <Text style={styles.greeting}>{t('welcomeBack')}, {user?.name?.split(' ')[0]}!</Text>
+        <Text style={styles.greeting}>{t('welcomeBack') || 'Welcome back'}, {user?.firstName || 'User'}!</Text>
         <Text style={styles.subGreeting}>{t('readyToDeliver')}</Text>
 
         <View style={styles.statsContainer}>
