@@ -63,39 +63,68 @@ export const authAPI = {
     vehicleName?: string;
   }) => {
     try {
-      // Streamlined approach with focused fields
+      // Based on API test results, we need to use fullName instead of firstName/lastName
       const payload = {
-        // Try all variations in case backend expects different formats
         email: userData.email,
         password: userData.password,
-        // Include both combined and separate name fields
-        name: `${userData.firstName} ${userData.lastName}`,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        // Include both phone formats
+        // API requires fullName, not firstName/lastName
+        fullName: `${userData.firstName} ${userData.lastName}`,
+        // Include phone field (not phoneNumber)
         phone: userData.phoneNumber,
-        phoneNumber: userData.phoneNumber,
-        // Always specify role
-        role: 'rider',
-        // Include userType for APIs that might use this instead
-        userType: 'rider'
+        role: 'rider'
       };
       
-      console.log('Registration payload:', JSON.stringify(payload));
+      console.log('Registration attempt with payload:', JSON.stringify(payload));
       
-      // Use the most common endpoint pattern
-      const response = await api.post('/auth/register', payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+      // Try the primary endpoint that gave us a validation error (not 404)
+      try {
+        const response = await axios.post(
+          `${API_URL}/auth/register`, 
+          payload,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          }
+        );
+        console.log('Registration successful with /auth/register');
+        return response.data;
+      } catch (error: any) {
+        console.log('First endpoint failed, trying backup...', error.message);
+        
+        // If first attempt fails, try alternate possible endpoints
+        try {
+          const response = await axios.post(
+            `${API_URL}/auth/signup`, 
+            payload,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              }
+            }
+          );
+          console.log('Registration successful with /auth/signup');
+          return response.data;
+        } catch (secondError: any) {
+          // Try one more time with the base URL directly
+          const response = await axios.post(
+            `https://foodrush-be.onrender.com/auth/register`, 
+            payload,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              }
+            }
+          );
+          console.log('Registration successful with direct URL');
+          return response.data;
         }
-      });
-      
-      console.log('Registration response:', JSON.stringify(response.data));
-      
-      return response.data;
+      }
     } catch (error: any) {
-      console.error('API Registration error:', error);
+      console.error('All registration attempts failed');
       
       // Log specific information about the error
       if (error.response) {
@@ -231,47 +260,72 @@ export const riderAPI = {
 export const testAPI = {
   // Test auth endpoints with various formats
   testRegister: async () => {
+    // First, try to get API information
+    try {
+      console.log('Checking API base URL...');
+      const baseResponse = await axios.get(API_URL);
+      console.log('Base URL Response:', JSON.stringify(baseResponse.data));
+    } catch (error: any) {
+      console.log('Base URL check failed:', error.message);
+    }
+    
+    // Also try OPTIONS request to see available methods
+    try {
+      console.log('Checking API OPTIONS...');
+      const optionsResponse = await axios.options(API_URL, {
+        headers: { 'Accept': 'application/json' }
+      });
+      console.log('OPTIONS Response:', JSON.stringify(optionsResponse.data));
+      console.log('OPTIONS Headers:', JSON.stringify(optionsResponse.headers));
+    } catch (error: any) {
+      console.log('OPTIONS check failed:', error.message);
+    }
+
+    // Test various formats of the registration payload
+    // Based on validation error, API requires fullName instead of firstName/lastName
+    const correctPayload = {
+      email: 'test.driver@example.com',
+      password: 'Password123',
+      fullName: 'Test Driver',
+      phone: '1234567890',
+      role: 'rider'
+    };
+
+    // Test with the corrected payload format
     const testCases = [
+      // Primary endpoint with corrected payload
       {
         endpoint: '/auth/register',
         payload: {
-          email: 'test@example.com',
-          password: 'Password123',
-          name: 'Test User',
-          phone: '1234567890',
-          role: 'rider'
+          ...correctPayload
         }
+      },
+      // Try with different base URLs
+      {
+        endpoint: '/auth/register',
+        payload: {
+          ...correctPayload
+        },
+        baseUrl: 'https://foodrush-be.onrender.com'
       },
       {
         endpoint: '/auth/register',
         payload: {
-          email: 'test2@example.com',
-          password: 'Password123',
-          firstName: 'Test',
-          lastName: 'User',
-          phoneNumber: '1234567890',
-          role: 'rider'
+          ...correctPayload
+        },
+        baseUrl: 'https://foodrush-be.onrender.com/api'
+      },
+      // Try some alternate endpoints too
+      {
+        endpoint: '/auth/signup',
+        payload: {
+          ...correctPayload
         }
       },
       {
-        endpoint: '/users/register',
+        endpoint: '/register',
         payload: {
-          email: 'test3@example.com',
-          password: 'Password123',
-          name: 'Test User',
-          phone: '1234567890',
-          role: 'rider'
-        }
-      },
-      {
-        endpoint: '/users/register',
-        payload: {
-          email: 'test4@example.com',
-          password: 'Password123',
-          firstName: 'Test',
-          lastName: 'User',
-          phoneNumber: '1234567890',
-          role: 'rider'
+          ...correctPayload
         }
       }
     ];
@@ -280,8 +334,14 @@ export const testAPI = {
     
     for (const testCase of testCases) {
       try {
+        const url = testCase.baseUrl ? 
+          `${testCase.baseUrl}${testCase.endpoint}` : 
+          `${API_URL}${testCase.endpoint}`;
+          
+        console.log(`Testing endpoint: ${url}`);
+        
         const response = await axios.post(
-          `${API_URL}${testCase.endpoint}`,
+          url,
           testCase.payload,
           {
             headers: {
@@ -291,17 +351,20 @@ export const testAPI = {
           }
         );
         results.push({
-          endpoint: testCase.endpoint,
+          endpoint: url,
           payload: testCase.payload,
           success: true,
           data: response.data
         });
       } catch (error: any) {
         results.push({
-          endpoint: testCase.endpoint,
+          endpoint: testCase.baseUrl ? 
+            `${testCase.baseUrl}${testCase.endpoint}` : 
+            `${API_URL}${testCase.endpoint}`,
           payload: testCase.payload,
           success: false,
-          error: error.response?.data || error.message
+          error: error.response?.data || error.message,
+          status: error.response?.status
         });
       }
     }

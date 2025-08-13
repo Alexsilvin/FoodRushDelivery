@@ -135,13 +135,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     driverLicense?: string | null
   ): Promise<boolean> => {
     try {
-      // Basic registration data without any extra fields
+      // Based on API error validation, we need to use fullName instead of firstName/lastName
       const registrationData = {
         firstName,
         lastName,
         email,
         password,
         phoneNumber,
+        // We'll include this for the service to use
+        fullName: `${firstName} ${lastName}`,
         role: 'rider' // Set role to rider for delivery driver app
       };
       
@@ -150,18 +152,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       const response = await authAPI.register(registrationData);
       
-      if (response.success && response.data) {
-        const { token, user } = response.data;
-        
-        await AsyncStorage.setItem('auth_token', token);
-        await SecureStore.setItemAsync('user', JSON.stringify(user));
-        setUser(user);
-        return true;
+      // Check if we have a response from any of the endpoints
+      if (response) {
+        // Different API structures might return data differently
+        // Handle various response structures
+        if (response.token && response.user) {
+          // Format 1: { token, user }
+          await AsyncStorage.setItem('auth_token', response.token);
+          await SecureStore.setItemAsync('user', JSON.stringify(response.user));
+          setUser(response.user);
+          return true;
+        } else if (response.data && response.data.token && response.data.user) {
+          // Format 2: { data: { token, user } }
+          const { token, user } = response.data;
+          await AsyncStorage.setItem('auth_token', token);
+          await SecureStore.setItemAsync('user', JSON.stringify(user));
+          setUser(user);
+          return true;
+        } else if (response.accessToken && response.user) {
+          // Format 3: { accessToken, user }
+          await AsyncStorage.setItem('auth_token', response.accessToken);
+          await SecureStore.setItemAsync('user', JSON.stringify(response.user));
+          setUser(response.user);
+          return true;
+        } else if (typeof response === 'object') {
+          // Try to find token and user in unknown response structure
+          console.log('Attempting to extract auth data from response:', JSON.stringify(response));
+          
+          // Look for token in common fields
+          const token = 
+            response.token || 
+            response.accessToken || 
+            (response.data && response.data.token) || 
+            (response.data && response.data.accessToken);
+          
+          // Look for user in common fields
+          const userObj = 
+            response.user || 
+            (response.data && response.data.user) || 
+            response;
+          
+          if (token && userObj) {
+            await AsyncStorage.setItem('auth_token', token);
+            await SecureStore.setItemAsync('user', JSON.stringify(userObj));
+            setUser(userObj);
+            return true;
+          }
+        }
       }
       
+      console.error('Registration succeeded but response format is unexpected:', response);
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
+      
+      // Enhanced error logging
+      if (error.response) {
+        console.error('Error response:', {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers
+        });
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+      } else {
+        console.error('Error message:', error.message);
+      }
+      
       throw error; // Rethrow to handle in the component
     }
   };
