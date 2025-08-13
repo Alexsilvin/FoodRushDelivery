@@ -132,6 +132,11 @@ export default function RegisterScreen({ navigation }: any) {
         } else {
           errorMsg = JSON.stringify(data);
         }
+        
+        // In DEV mode, also include status code for better debugging
+        if (__DEV__) {
+          errorMsg = `Status: ${error.response.status}\n${errorMsg}`;
+        }
       } else if (error.message) {
         errorMsg = error.message;
       }
@@ -418,9 +423,30 @@ export default function RegisterScreen({ navigation }: any) {
                   try {
                     Alert.alert('API Tests', 'Running API tests, check console for results');
                     const results = await testAPI.testRegister();
-                    console.log('Test complete');
-                  } catch (error) {
+                    
+                    // Find if any test was successful
+                    const successfulTest = results.find(r => r.success);
+                    
+                    if (successfulTest) {
+                      Alert.alert(
+                        'Test Success!', 
+                        `Found working endpoint: ${successfulTest.endpoint}\n\nCheck console for details.`
+                      );
+                    } else {
+                      // Create a summary of the failures
+                      const errorSummary = results
+                        .slice(0, 3) // Just show first few to avoid huge alert
+                        .map(r => `${r.endpoint}: ${r.status || 'Error'}`)
+                        .join('\n');
+                        
+                      Alert.alert(
+                        'API Tests Failed', 
+                        `All endpoints failed. Examples:\n${errorSummary}\n\nSee console for complete details.`
+                      );
+                    }
+                  } catch (error: any) {
                     console.error('Test error:', error);
+                    Alert.alert('Test Error', error.message);
                   }
                 }}
               >

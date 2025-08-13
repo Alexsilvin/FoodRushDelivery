@@ -63,14 +63,14 @@ export const authAPI = {
     vehicleName?: string;
   }) => {
     try {
-      // Based on API test results, we need to use fullName instead of firstName/lastName
+      // Based on API test results, we need to use fullName and phoneNumber
       const payload = {
         email: userData.email,
         password: userData.password,
         // API requires fullName, not firstName/lastName
         fullName: `${userData.firstName} ${userData.lastName}`,
-        // Include phone field (not phoneNumber)
-        phone: userData.phoneNumber,
+        // API requires phoneNumber, not phone
+        phoneNumber: userData.phoneNumber,
         role: 'rider'
       };
       
@@ -282,12 +282,12 @@ export const testAPI = {
     }
 
     // Test various formats of the registration payload
-    // Based on validation error, API requires fullName instead of firstName/lastName
+    // Based on validation error, API requires fullName and phoneNumber
     const correctPayload = {
       email: 'test.driver@example.com',
       password: 'Password123',
       fullName: 'Test Driver',
-      phone: '1234567890',
+      phoneNumber: '1234567890',
       role: 'rider'
     };
 
@@ -300,24 +300,15 @@ export const testAPI = {
           ...correctPayload
         }
       },
-      // Try with different base URLs
+      // Try different permutations of the endpoints
       {
-        endpoint: '/auth/register',
+        endpoint: '/users/register',
         payload: {
           ...correctPayload
-        },
-        baseUrl: 'https://foodrush-be.onrender.com'
+        }
       },
       {
-        endpoint: '/auth/register',
-        payload: {
-          ...correctPayload
-        },
-        baseUrl: 'https://foodrush-be.onrender.com/api'
-      },
-      // Try some alternate endpoints too
-      {
-        endpoint: '/auth/signup',
+        endpoint: '/driver/register',
         payload: {
           ...correctPayload
         }
@@ -327,6 +318,14 @@ export const testAPI = {
         payload: {
           ...correctPayload
         }
+      },
+      // Try without the API_URL prefix and directly to base URL
+      {
+        endpoint: '/auth/register',
+        payload: {
+          ...correctPayload
+        },
+        baseUrl: 'https://foodrush-be.onrender.com'
       }
     ];
     
