@@ -459,9 +459,11 @@ export default function RegisterScreen({ navigation }: any) {
                     const successfulTest = results.find(r => r.success);
                     
                     if (successfulTest) {
+                      // Show details about the registration
+                      const userData = successfulTest.data.data;
                       Alert.alert(
                         'Test Success!', 
-                        `Found working endpoint: ${successfulTest.endpoint}\n\nCheck console for details.`
+                        `Successfully registered test user:\n\nName: ${userData.name}\nEmail: ${userData.email}\nPhone: ${userData.phoneNumber}\n\nEndpoint: ${successfulTest.endpoint}`
                       );
                     } else {
                       // Create a summary of the failures

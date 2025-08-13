@@ -4,6 +4,27 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Base URL for the API
 const API_URL = 'https://foodrush-be.onrender.com/api/v1';
 
+/**
+ * API Integration Notes:
+ * 
+ * Registration Endpoint: /api/v1/auth/register
+ * Required fields: 
+ *   - email: User's email address
+ *   - password: User's password
+ *   - fullName: Full name (not firstName/lastName separately)
+ *   - phoneNumber: Phone number (not 'phone')
+ *   - role: User role (e.g. 'rider' for delivery drivers)
+ * 
+ * Successful response: 
+ *   - status_code: 201
+ *   - userId, name, email, phoneNumber, role returned in data object
+ * 
+ * Common error codes:
+ *   - 400: Validation error (missing or invalid fields)
+ *   - 409: Email or phone number already in use
+ *   - 500: Server error
+ */
+
 // Create axios instance with default config
 const api = axios.create({
   baseURL: API_URL,
