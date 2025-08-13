@@ -62,7 +62,7 @@ export const authAPI = {
     role?: string;
     vehicleName?: string;
   }) => {
-    const response = await api.post('/users/register', {
+    const response = await api.post('/auth/register', {
       ...userData,
       role: 'rider', // Always set to rider for the delivery app
     });
@@ -71,7 +71,7 @@ export const authAPI = {
 
   // Login with email and password
   login: async (email: string, password: string) => {
-    const response = await api.post('/users/login', {
+    const response = await api.post('/auth/login', {
       email,
       password,
     });
@@ -80,13 +80,13 @@ export const authAPI = {
 
   // Forgot password request
   forgotPassword: async (email: string) => {
-    const response = await api.post('/users/forgot-password', { email });
+    const response = await api.post('/auth/forgot-password', { email });
     return response.data;
   },
 
   // Reset password with token
   resetPassword: async (token: string, newPassword: string) => {
-    const response = await api.post('/users/reset-password', {
+    const response = await api.post('/auth/reset-password', {
       token,
       newPassword,
     });
@@ -95,25 +95,25 @@ export const authAPI = {
 
   // Get current user profile
   getProfile: async () => {
-    const response = await api.get('/users/me');
+    const response = await api.get('/auth/me');
     return response.data;
   },
 
   // Update user profile
   updateProfile: async (userData: any) => {
-    const response = await api.put('/users/update-profile', userData);
+    const response = await api.put('/auth/update-profile', userData);
     return response.data;
   },
 
   // Verify email address
   verifyEmail: async (token: string) => {
-    const response = await api.post('/users/verify-email', { token });
+    const response = await api.post('/auth/verify-email', { token });
     return response.data;
   },
 
   // Change password when logged in
   changePassword: async (currentPassword: string, newPassword: string) => {
-    const response = await api.post('/users/change-password', {
+    const response = await api.post('/auth/change-password', {
       currentPassword,
       newPassword,
     });
