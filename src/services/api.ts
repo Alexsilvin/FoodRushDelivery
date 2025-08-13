@@ -19,8 +19,12 @@ const API_URL = 'https://foodrush-be.onrender.com/api/v1';
  *   - status_code: 201
  *   - userId, name, email, phoneNumber, role returned in data object
  * 
+ * IMPORTANT: Email verification is required after registration. Users cannot
+ * login until they verify their email address by clicking the link sent to their email.
+ * 
  * Common error codes:
  *   - 400: Validation error (missing or invalid fields)
+ *   - 401: Unauthorized (for login - often means account not verified)
  *   - 409: Email or phone number already in use
  *   - 500: Server error
  */
@@ -141,11 +145,49 @@ export const authAPI = {
 
   // Login with email and password
   login: async (email: string, password: string) => {
-    const response = await api.post('/auth/login', {
-      email,
-      password,
-    });
-    return response.data;
+    try {
+      // Use direct axios for login to match our registration implementation
+      const response = await axios.post(
+        `${API_URL}/auth/login`,
+        {
+          email,
+          password
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }
+      );
+      
+      console.log('Login response:', JSON.stringify(response.data));
+      return response.data;
+    } catch (error: any) {
+      console.error('Login failed');
+      
+      // Log specific information about the error
+      if (error.response) {
+        console.error('Status:', error.response.status);
+        console.error('Data:', JSON.stringify(error.response.data));
+        
+        // Handle account verification required
+        if (error.response.status === 401) {
+          const errorMessage = error.response.data?.message || '';
+          
+          // Check for different verification-related messages
+          if (errorMessage.toLowerCase().includes('verify') || 
+              errorMessage.toLowerCase().includes('not active') ||
+              errorMessage.toLowerCase().includes('activation')) {
+            const verificationError = new Error('Please check your email and verify your account before logging in');
+            verificationError.name = 'VerificationError';
+            throw verificationError;
+          }
+        }
+      }
+      
+      throw error;
+    }
   },
 
   // Forgot password request
@@ -295,6 +337,9 @@ export const testAPI = {
     };
 
     console.log(`Testing with unique email: ${uniqueEmail} and phone: ${uniquePhone}`);
+    console.log('IMPORTANT: The API requires email verification after registration.');
+    console.log('In a real environment, users must verify email before logging in.');
+    console.log('For testing, use the demo account credentials.');
 
     // Test with the corrected payload format
     const testCases = [

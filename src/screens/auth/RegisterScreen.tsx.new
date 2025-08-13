@@ -19,7 +19,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { testAPI } from '../../services/api';
 
 export default function RegisterScreen({ navigation }: any) {
   const [firstName, setFirstName] = useState('');
@@ -89,89 +88,12 @@ export default function RegisterScreen({ navigation }: any) {
       );
       
       if (success) {
-        Alert.alert(
-          t('success') || 'Success', 
-          t('accountCreatedPleaseLogin') || 'Account created successfully! Please check your email and verify your account before logging in.',
-          [
-            {
-              text: t('goToLogin') || 'Go to Login',
-              onPress: () => navigation.navigate('Login')
-            }
-          ]
-        );
+        Alert.alert(t('success') || 'Success', t('accountCreated') || 'Account created successfully!');
       } else {
         Alert.alert(t('error') || 'Error', t('registrationFailed') || 'Failed to create account. Please try again.');
       }
     } catch (error: any) {
-      console.error('Registration error:', error);
-      let errorMsg = t('somethingWentWrong') || 'Something went wrong. Please try again.';
-      
-      // Handle conflict error specifically
-      if (error.name === 'ConflictError') {
-        errorMsg = error.message || 'Email or phone number already in use. Please use different credentials.';
-        
-        Alert.alert(
-          t('accountExists') || 'Account Exists', 
-          errorMsg,
-          [
-            {
-              text: t('goToLogin') || 'Go to Login',
-              onPress: () => navigation.navigate('Login')
-            },
-            {
-              text: t('tryAgain') || 'Try Again',
-              style: 'cancel'
-            }
-          ]
-        );
-        setLoading(false);
-        return;
-      }
-      
-      // Log detailed error information
-      console.error('Error response:', JSON.stringify(error.response?.data));
-      console.error('Status code:', error.response?.status);
-      console.error('Headers:', JSON.stringify(error.response?.headers));
-      
-      // Extract error message with a detailed approach
-      if (error.response?.data) {
-        const data = error.response.data;
-        
-        if (typeof data === 'string') {
-          errorMsg = data;
-        } else if (data.message) {
-          errorMsg = data.message;
-        } else if (data.error) {
-          errorMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
-        } else if (data.errors) {
-          if (Array.isArray(data.errors)) {
-            errorMsg = data.errors.map((e: any) => 
-              typeof e === 'string' ? e : (e.message || JSON.stringify(e))
-            ).join('\n');
-          } else {
-            const errorMessages = [];
-            for (const key in data.errors) {
-              const value = data.errors[key];
-              if (Array.isArray(value)) {
-                errorMessages.push(`${key}: ${value.join(', ')}`);
-              } else {
-                errorMessages.push(`${key}: ${value}`);
-              }
-            }
-            errorMsg = errorMessages.join('\n');
-          }
-        } else {
-          errorMsg = JSON.stringify(data);
-        }
-        
-        // In DEV mode, also include status code for better debugging
-        if (__DEV__) {
-          errorMsg = `Status: ${error.response.status}\n${errorMsg}`;
-        }
-      } else if (error.message) {
-        errorMsg = error.message;
-      }
-      
+      const errorMsg = error?.response?.data?.message || t('somethingWentWrong') || 'Something went wrong. Please try again.';
       Alert.alert(t('error') || 'Error', errorMsg);
     } finally {
       setLoading(false);
@@ -192,7 +114,7 @@ export default function RegisterScreen({ navigation }: any) {
 
       // Launch image picker
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -346,10 +268,7 @@ export default function RegisterScreen({ navigation }: any) {
                     source={{ 
                       uri: driverLicense || 'https://via.placeholder.com/400x300?text=License+Preview'
                     }} 
-                    style={styles.uploadedImage}
-                    accessible={true}
-                    accessibilityLabel="Driver's license photo"
-                    alt="Driver's license photo" // Added for ESLint compatibility
+                    style={styles.uploadedImage} 
                   />
                   <TouchableOpacity 
                     style={styles.changeImageButton}
@@ -446,58 +365,6 @@ export default function RegisterScreen({ navigation }: any) {
                 {loading ? 'Creating Account...' : 'Create Account'}
               </Text>
             </TouchableOpacity>
-            
-            {__DEV__ && (
-              <TouchableOpacity
-                style={[styles.registerButton, styles.diagnosticButton]}
-                onPress={async () => {
-                  try {
-                    Alert.alert('API Tests', 'Running API tests, check console for results');
-                    const results = await testAPI.testRegister();
-                    
-                    // Find if any test was successful
-                    const successfulTest = results.find(r => r.success);
-                    
-                    if (successfulTest) {
-                      // Show details about the registration
-                      const userData = successfulTest.data.data;
-                      Alert.alert(
-                        'Test Success!', 
-                        `Successfully registered test user:\n\nName: ${userData.name}\nEmail: ${userData.email}\nPhone: ${userData.phoneNumber}\n\nIMPORTANT: The API requires email verification before login. In a real environment, check your email for the verification link.\n\nFor testing, use the demo account in the login screen.`,
-                        [
-                          {
-                            text: "OK",
-                            style: "cancel"
-                          },
-                          {
-                            text: "Go to Login",
-                            onPress: () => navigation.navigate('Login')
-                          }
-                        ]
-                      );
-                    } else {
-                      // Create a summary of the failures
-                      const errorSummary = results
-                        .slice(0, 3) // Just show first few to avoid huge alert
-                        .map(r => `${r.endpoint}: ${r.status || 'Error'}`)
-                        .join('\n');
-                        
-                      Alert.alert(
-                        'API Tests Failed', 
-                        `All endpoints failed. Examples:\n${errorSummary}\n\nSee console for complete details.`
-                      );
-                    }
-                  } catch (error: any) {
-                    console.error('Test error:', error);
-                    Alert.alert('Test Error', error.message);
-                  }
-                }}
-              >
-                <Text style={[styles.registerButtonText, { color: '#FF5722' }]}>
-                  Run API Tests (DEV)
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
 
           <View style={styles.footer}>
@@ -583,12 +450,6 @@ const styles = StyleSheet.create({
     color: '#1E40AF',
     fontSize: 18,
     fontWeight: 'bold',
-  },
-  diagnosticButton: {
-    backgroundColor: '#FFF8E1',
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#FF9800',
   },
   footer: {
     flexDirection: 'row',

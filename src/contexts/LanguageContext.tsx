@@ -94,6 +94,9 @@ const translations = {
     registrationFailed: 'Failed to create account. Please try again.',
     accountExists: 'Account Exists',
     tryAgain: 'Try Again',
+    verificationRequired: 'Verification Required',
+    pleaseVerifyEmail: 'Please check your email and verify your account before logging in.',
+    accountNotActive: 'Your account has not been activated yet. Please check your email for the verification link.',
     
     // Loading Screen
     deliveryDriver: 'Delivery Driver',

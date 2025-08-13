@@ -9,8 +9,50 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
-  Animated,
+  Image              <Text style={[styles.loginButtonText, { color: theme.colors.text }]}>
+                {loading ? 'Signing In...' : 'Sign In'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={[styles.demoContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Text style={[styles.demoText, { color: theme.colors.textSecondary }]}>Demo Account:</Text>
+              <Text style={[styles.demoCredentials, { color: theme.colors.text }]}>driver@demo.com / demo123</Text>
+            </View>
+            
+            {/* Verification help link */}
+            <TouchableOpacity
+              style={styles.verificationHelp}
+              onPress={() => {
+                Alert.alert(
+                  'Account Verification',
+                  'After registration, you need to verify your email address by clicking the link sent to your email.\n\nIf you haven\'t received the verification email, you can request a new one or contact support for assistance.',
+                  [
+                    {
+                      text: 'OK',
+                      style: 'cancel'
+                    },
+                    {
+                      text: 'Use Demo Account',
+                      onPress: () => {
+                        setEmail('driver@demo.com');
+                        setPassword('demo123');
+                        setTimeout(async () => {
+                          try {
+                            await login('driver@demo.com', 'demo123');
+                          } catch (e) {
+                            console.error("Demo login failed:", e);
+                          }
+                        }, 500);
+                      }
+                    }
+                  ]
+                );
+              }}
+            >
+              <Text style={[styles.verificationHelpText, { color: theme.colors.primary }]}>
+                Need help with account verification?
+              </Text>
+            </TouchableOpacity>ated,
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -84,8 +126,44 @@ export default function LoginScreen({ navigation }: any) {
         );
       }
     } catch (error: any) {
-      const errorMsg = error?.response?.data?.message || t('somethingWentWrong');
-      Alert.alert(t('error'), errorMsg);
+      console.error('Login error details:', error);
+      
+      // Handle specific error types
+      if (error.name === 'VerificationError') {
+        Alert.alert(
+          t('verificationRequired'), 
+          t('pleaseVerifyEmail'), 
+          [
+            {
+              text: t('ok'),
+              style: 'cancel',
+            },
+            {
+              text: 'Use Demo Account',
+              onPress: async () => {
+                setEmail('driver@demo.com');
+                setPassword('demo123');
+                setTimeout(async () => {
+                  await login('driver@demo.com', 'demo123');
+                }, 500);
+              },
+            }
+          ]
+        );
+      } else {
+        // Extract error message from different possible formats
+        let errorMsg = t('somethingWentWrong');
+        
+        if (error.response?.data?.message) {
+          errorMsg = error.response.data.message;
+        } else if (error.response?.data?.error) {
+          errorMsg = error.response.data.error;
+        } else if (error.message) {
+          errorMsg = error.message;
+        }
+        
+        Alert.alert(t('loginFailed'), errorMsg);
+      }
     } finally {
       setLoading(false);
     }
@@ -180,6 +258,110 @@ export default function LoginScreen({ navigation }: any) {
               <Text style={[styles.demoText, { color: theme.colors.textSecondary }]}>Demo Account:</Text>
               <Text style={[styles.demoCredentials, { color: theme.colors.text }]}>driver@demo.com / demo123</Text>
             </View>
+            
+            {/* Verification help link */}
+            <TouchableOpacity
+              style={styles.verificationHelp}
+              onPress={() => {
+                Alert.alert(
+                  'Account Verification',
+                  'After registration, you need to verify your email address by clicking the link sent to your email.\n\nIf you haven\'t received the verification email, you can request a new one or contact support for assistance.',
+                  [
+                    {
+                      text: 'OK',
+                      style: 'cancel'
+                    },
+                    {
+                      text: 'Use Demo Account',
+                      onPress: () => {
+                        setEmail('driver@demo.com');
+                        setPassword('demo123');
+                        setTimeout(async () => {
+                          try {
+                            await login('driver@demo.com', 'demo123');
+                          } catch (e) {
+                            console.error("Demo login failed:", e);
+                          }
+                        }, 500);
+                      }
+                    }
+                  ]
+                );
+              }}
+            >
+              <Text style={[styles.verificationHelpText, { color: theme.colors.primary }]}>
+                Need help with account verification?
+              </Text>
+            </TouchableOpacity>
+            
+            {/* Test login button for debugging purposes (remove for production) */}
+            <TouchableOpacity
+              style={[styles.testButton, { backgroundColor: '#ff5722' }]}
+              onPress={async () => {
+                try {
+                  // Generate a unique email to avoid conflicts
+                  const timestamp = new Date().getTime();
+                  const testEmail = `test${timestamp}@example.com`;
+                  const testPassword = "Test123!";
+                  
+                  // First register a test user
+                  Alert.alert("Test Login", "Creating test account...");
+                  
+                  const { authAPI } = require('../../services/api');
+                  const testData = {
+                    firstName: "Test",
+                    lastName: "User",
+                    email: testEmail,
+                    password: testPassword,
+                    phoneNumber: `123${timestamp.toString().substring(6)}`,
+                    role: "rider"
+                  };
+                  
+                  console.log("Testing with credentials:", JSON.stringify(testData));
+                  
+                  try {
+                    const registerResult = await authAPI.register(testData);
+                    console.log("Registration result:", JSON.stringify(registerResult));
+                    
+                    // Show more helpful message explaining verification
+                    Alert.alert(
+                      "Test Account Created", 
+                      `A test account has been created:\n\nEmail: ${testEmail}\nPassword: ${testPassword}\n\nIMPORTANT: The API requires email verification before login. In a real environment, check your email for verification link.\n\nFor testing, please use the demo account instead.`,
+                      [
+                        {
+                          text: "OK",
+                          style: "cancel"
+                        },
+                        {
+                          text: "Use Demo Account",
+                          onPress: () => {
+                            setEmail('driver@demo.com');
+                            setPassword('demo123');
+                            setTimeout(async () => {
+                              try {
+                                await login('driver@demo.com', 'demo123');
+                              } catch (e) {
+                                console.error("Demo login failed:", e);
+                              }
+                            }, 500);
+                          }
+                        }
+                      ]
+                    );
+                      
+                  } catch (regError: any) {
+                    console.error("Test registration failed:", regError);
+                    Alert.alert("Test Registration Failed", 
+                      regError?.message || "Could not create test account");
+                  }
+                } catch (error: any) {
+                  console.error("Test login setup failed:", error);
+                  Alert.alert("Test Failed", error?.message || "Test login failed");
+                }
+              }}
+            >
+              <Text style={styles.testButtonText}>Create & Test Login</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.footer}>
@@ -319,5 +501,25 @@ const styles = StyleSheet.create({
   signUpText: {
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  testButton: {
+    borderRadius: 12,
+    height: 46,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  testButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  verificationHelp: {
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  verificationHelpText: {
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 });
