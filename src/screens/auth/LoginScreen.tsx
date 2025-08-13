@@ -108,6 +108,32 @@ export default function LoginScreen({ navigation }: any) {
             }
           ]
         );
+      } else if (error.name === 'InvalidCredentialsError') {
+        // Handle specifically invalid credentials
+        Alert.alert(
+          t('loginFailed') || 'Login Failed', 
+          t('invalidCredentials') || 'The email or password you entered is incorrect',
+          [
+            {
+              text: t('ok') || 'OK',
+              style: 'cancel',
+            },
+            {
+              text: 'Use Demo Account',
+              onPress: async () => {
+                setEmail('driver@demo.com');
+                setPassword('demo123');
+                setTimeout(async () => {
+                  try {
+                    await login('driver@demo.com', 'demo123');
+                  } catch (e) {
+                    console.error("Demo login failed:", e);
+                  }
+                }, 500);
+              },
+            }
+          ]
+        );
       } else {
         // Extract error message from different possible formats
         let errorMsg = t('somethingWentWrong') || 'Something went wrong';
@@ -215,6 +241,26 @@ export default function LoginScreen({ navigation }: any) {
             <View style={[styles.demoContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
               <Text style={[styles.demoText, { color: theme.colors.textSecondary }]}>Demo Account:</Text>
               <Text style={[styles.demoCredentials, { color: theme.colors.text }]}>driver@demo.com / demo123</Text>
+              <TouchableOpacity 
+                style={styles.demoLoginButton}
+                onPress={async () => {
+                  setEmail('driver@demo.com');
+                  setPassword('demo123');
+                  setTimeout(async () => {
+                    try {
+                      setLoading(true);
+                      await login('driver@demo.com', 'demo123');
+                    } catch (e) {
+                      console.error("Demo login failed:", e);
+                      Alert.alert("Demo Login Failed", "Unable to log in with demo account. Please try again.");
+                    } finally {
+                      setLoading(false);
+                    }
+                  }, 300);
+                }}
+              >
+                <Text style={styles.demoLoginButtonText}>Login with Demo</Text>
+              </TouchableOpacity>
             </View>
             
             {/* Verification help link */}
@@ -251,6 +297,57 @@ export default function LoginScreen({ navigation }: any) {
                 Need help with account verification?
               </Text>
             </TouchableOpacity>
+            
+            {/* Debug/test button in development */}
+            {__DEV__ && (
+              <TouchableOpacity
+                style={[styles.testButton, { backgroundColor: '#ff5722', marginTop: 16 }]}
+                onPress={async () => {
+                  try {
+                    Alert.alert('API Tests', 'Testing login endpoints, check console for results');
+                    const { testAPI } = require('../../services/api');
+                    
+                    // Generate a unique test email if needed
+                    // const timestamp = new Date().getTime();
+                    // const testEmail = `test${timestamp}@example.com`;
+                    
+                    // Use the demo account credentials for login test
+                    const results = await testAPI.testLogin('driver@demo.com', 'demo123');
+                    
+                    // Find if any test was successful
+                    const successfulTest = results.find((r: any) => r.success);
+                    
+                    if (successfulTest) {
+                      // Show details about the successful login
+                      Alert.alert(
+                        'Test Success!', 
+                        `Successfully found working login endpoint: ${successfulTest.endpoint}\n\nStatus: ${successfulTest.status}`
+                      );
+                      
+                      // Automatically fill in the credentials
+                      setEmail('driver@demo.com');
+                      setPassword('demo123');
+                    } else {
+                      // Create a summary of the failures
+                      const errorSummary = results
+                        .slice(0, 3) // Just show first few to avoid huge alert
+                        .map((r: any) => `${r.endpoint}: ${r.status || 'Error'}`)
+                        .join('\n');
+                        
+                      Alert.alert(
+                        'API Tests Failed', 
+                        `All endpoints failed. Examples:\n${errorSummary}\n\nSee console for complete details.`
+                      );
+                    }
+                  } catch (error: any) {
+                    console.error('Test error:', error);
+                    Alert.alert('Test Error', error.message);
+                  }
+                }}
+              >
+                <Text style={styles.testButtonText}>Test Login API (DEV)</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.footer}>
@@ -398,5 +495,30 @@ const styles = StyleSheet.create({
   verificationHelpText: {
     fontSize: 14,
     textDecorationLine: 'underline',
+  },
+  demoLoginButton: {
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#4a5568',
+    borderRadius: 8,
+  },
+  demoLoginButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  testButton: {
+    borderRadius: 8,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  testButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

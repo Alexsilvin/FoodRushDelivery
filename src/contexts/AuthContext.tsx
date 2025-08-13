@@ -107,11 +107,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('Login response structure:', JSON.stringify(response));
       
       // Handle different API response formats
-      if (response.data) {
+      if (response) {
         // Extract token and user based on response format
         let token, userData;
         
-        if (response.data.token) {
+        // Check various token locations
+        if (response.data?.token) {
           // Direct token in data
           token = response.data.token;
           userData = response.data.user || response.data;
@@ -123,6 +124,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // JWT style response
           token = response.access_token;
           userData = response.user || response.data;
+        } else if (response.data?.access_token) {
+          // Nested JWT style
+          token = response.data.access_token;
+          userData = response.data.user || response.data;
         }
         
         if (!token) {

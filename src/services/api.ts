@@ -15,8 +15,13 @@ const API_URL = 'https://foodrush-be.onrender.com/api/v1';
  *   - phoneNumber: Phone number (not 'phone')
  *   - role: User role (e.g. 'rider' for delivery drivers)
  * 
+ * Login Endpoint: /api/v1/auth/login
+ * Required fields:
+ *   - email: User's email address
+ *   - password: User's password
+ * 
  * Successful response: 
- *   - status_code: 201
+ *   - status_code: 201 (registration) or 200 (login)
  *   - userId, name, email, phoneNumber, role returned in data object
  * 
  * IMPORTANT: Email verification is required after registration. Users cannot
@@ -24,7 +29,7 @@ const API_URL = 'https://foodrush-be.onrender.com/api/v1';
  * 
  * Common error codes:
  *   - 400: Validation error (missing or invalid fields)
- *   - 401: Unauthorized (for login - often means account not verified)
+ *   - 401: Unauthorized (for login - often means account not verified or invalid credentials)
  *   - 409: Email or phone number already in use
  *   - 500: Server error
  */
@@ -146,23 +151,59 @@ export const authAPI = {
   // Login with email and password
   login: async (email: string, password: string) => {
     try {
-      // Use direct axios for login to match our registration implementation
-      const response = await axios.post(
-        `${API_URL}/auth/login`,
-        {
-          email,
-          password
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+      // Log the login attempt for debugging
+      console.log(`Attempting login with email: ${email}`);
+      
+      // Try different endpoints to find the correct one
+      const endpoints = [
+        '/auth/login',  // Primary endpoint
+        '/api/v1/auth/login', // Full path (in case API_URL doesn't include /api/v1)
+        '/auth/signin',  // Alternative name
+        '/users/login',  // Alternative path
+        '/login'        // Root path
+      ];
+      
+      let lastError = null;
+      
+      // Try each endpoint until one works
+      for (const endpoint of endpoints) {
+        try {
+          const url = endpoint.startsWith('/api') 
+            ? `${API_URL.replace('/api/v1', '')}${endpoint}`
+            : `${API_URL}${endpoint}`;
+            
+          console.log(`Trying login endpoint: ${url}`);
+          
+          const response = await axios.post(
+            url,
+            {
+              email,
+              password
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              }
+            }
+          );
+          
+          console.log('Login successful with endpoint:', endpoint);
+          console.log('Login response:', JSON.stringify(response.data));
+          return response.data;
+        } catch (err: any) {
+          lastError = err;
+          console.log(`Login failed with endpoint ${endpoint}: ${err.response?.status || err.message}`);
+          
+          // If it's not a 404, then the endpoint might be correct but credentials are wrong
+          if (err.response && err.response.status !== 404) {
+            throw err;
           }
         }
-      );
+      }
       
-      console.log('Login response:', JSON.stringify(response.data));
-      return response.data;
+      // If we get here, all endpoints failed
+      throw lastError || new Error('All login endpoints failed');
     } catch (error: any) {
       console.error('Login failed');
       
@@ -182,6 +223,14 @@ export const authAPI = {
             const verificationError = new Error('Please check your email and verify your account before logging in');
             verificationError.name = 'VerificationError';
             throw verificationError;
+          }
+          
+          // If it's just invalid credentials, provide a clearer error
+          if (errorMessage.toLowerCase().includes('invalid credential') ||
+              errorMessage.toLowerCase().includes('incorrect password')) {
+            const credentialsError = new Error('The email or password you entered is incorrect');
+            credentialsError.name = 'InvalidCredentialsError';
+            throw credentialsError;
           }
         }
       }
@@ -298,7 +347,7 @@ export const riderAPI = {
 
 // Additional helper to test API connection
 export const testAPI = {
-  // Test auth endpoints with various formats
+  // Test registration endpoints
   testRegister: async () => {
     // First, try to get API information
     try {
@@ -419,6 +468,85 @@ export const testAPI = {
     }
     
     console.log('API Test Results:', JSON.stringify(results, null, 2));
+    return results;
+  },
+  
+  // Test login endpoints
+  testLogin: async (email: string = 'driver@demo.com', password: string = 'demo123') => {
+    console.log(`Testing login with email: ${email}`);
+    
+    // Create test cases with different endpoints to try
+    const testCases = [
+      // Primary endpoint
+      {
+        endpoint: '/auth/login',
+        payload: { email, password }
+      },
+      // Try API prefix variations
+      {
+        endpoint: '/api/v1/auth/login',
+        payload: { email, password }
+      },
+      // Try different names
+      {
+        endpoint: '/auth/signin',
+        payload: { email, password }
+      },
+      {
+        endpoint: '/users/login',
+        payload: { email, password }
+      },
+      {
+        endpoint: '/login',
+        payload: { email, password }
+      },
+      // Try different base URL
+      {
+        endpoint: '/auth/login',
+        payload: { email, password },
+        baseUrl: 'https://foodrush-be.onrender.com'
+      }
+    ];
+    
+    const results = [];
+    
+    for (const testCase of testCases) {
+      try {
+        const url = testCase.baseUrl ? 
+          `${testCase.baseUrl}${testCase.endpoint}` : 
+          `${API_URL}${testCase.endpoint}`;
+          
+        console.log(`Testing login endpoint: ${url}`);
+        
+        const response = await axios.post(
+          url,
+          testCase.payload,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          }
+        );
+        results.push({
+          endpoint: url,
+          success: true,
+          data: response.data,
+          status: response.status
+        });
+      } catch (error: any) {
+        results.push({
+          endpoint: testCase.baseUrl ? 
+            `${testCase.baseUrl}${testCase.endpoint}` : 
+            `${API_URL}${testCase.endpoint}`,
+          success: false,
+          error: error.response?.data || error.message,
+          status: error.response?.status
+        });
+      }
+    }
+    
+    console.log('Login Test Results:', JSON.stringify(results, null, 2));
     return results;
   }
 };
