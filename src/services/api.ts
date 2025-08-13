@@ -63,70 +63,47 @@ export const authAPI = {
     vehicleName?: string;
   }) => {
     try {
-      // Based on API test results, we need to use fullName and phoneNumber
+      // Using the exact working payload structure confirmed by our tests
       const payload = {
         email: userData.email,
         password: userData.password,
-        // API requires fullName, not firstName/lastName
         fullName: `${userData.firstName} ${userData.lastName}`,
-        // API requires phoneNumber, not phone
         phoneNumber: userData.phoneNumber,
         role: 'rider'
       };
       
       console.log('Registration attempt with payload:', JSON.stringify(payload));
       
-      // Try the primary endpoint that gave us a validation error (not 404)
-      try {
-        const response = await axios.post(
-          `${API_URL}/auth/register`, 
-          payload,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
+      // Use the confirmed working endpoint
+      const response = await axios.post(
+        `${API_URL}/auth/register`, 
+        payload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
           }
-        );
-        console.log('Registration successful with /auth/register');
-        return response.data;
-      } catch (error: any) {
-        console.log('First endpoint failed, trying backup...', error.message);
-        
-        // If first attempt fails, try alternate possible endpoints
-        try {
-          const response = await axios.post(
-            `${API_URL}/auth/signup`, 
-            payload,
-            {
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-              }
-            }
-          );
-          console.log('Registration successful with /auth/signup');
-          return response.data;
-        } catch (secondError: any) {
-          // Try one more time with the base URL directly
-          const response = await axios.post(
-            `https://foodrush-be.onrender.com/auth/register`, 
-            payload,
-            {
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-              }
-            }
-          );
-          console.log('Registration successful with direct URL');
-          return response.data;
         }
-      }
-    } catch (error: any) {
-      console.error('All registration attempts failed');
+      );
       
-      // Log specific information about the error
+      console.log('Registration successful:', JSON.stringify(response.data));
+      return response.data;
+    } catch (error: any) {
+      console.error('Registration failed');
+      
+      // Specific handling for known error types
+      if (error.response?.status === 409) {
+        // Email or phone already exists
+        const errorData = error.response.data;
+        console.error('Conflict error:', JSON.stringify(errorData));
+        
+        // Throw a more specific error for the component to handle
+        const conflictError = new Error(errorData.message || 'Email or phone number already in use');
+        conflictError.name = 'ConflictError';
+        throw conflictError;
+      }
+      
+      // Log specific information about other errors
       if (error.response) {
         console.error('Status:', error.response.status);
         console.error('Data:', JSON.stringify(error.response.data));
@@ -281,15 +258,22 @@ export const testAPI = {
       console.log('OPTIONS check failed:', error.message);
     }
 
+    // Generate unique email and phone for each test to prevent conflicts
+    const timestamp = new Date().getTime();
+    const uniqueEmail = `test.driver${timestamp}@example.com`;
+    const uniquePhone = `123${timestamp.toString().substring(6)}`;
+
     // Test various formats of the registration payload
     // Based on validation error, API requires fullName and phoneNumber
     const correctPayload = {
-      email: 'test.driver@example.com',
-      password: 'Password123',
-      fullName: 'Test Driver',
-      phoneNumber: '1234567890',
-      role: 'rider'
+      email: uniqueEmail,
+      password: "Password123",
+      fullName: "Test Driver",
+      phoneNumber: uniquePhone,
+      role: "rider"
     };
+
+    console.log(`Testing with unique email: ${uniqueEmail} and phone: ${uniquePhone}`);
 
     // Test with the corrected payload format
     const testCases = [

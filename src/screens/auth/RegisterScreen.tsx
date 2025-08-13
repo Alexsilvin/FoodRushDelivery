@@ -106,6 +106,28 @@ export default function RegisterScreen({ navigation }: any) {
       console.error('Registration error:', error);
       let errorMsg = t('somethingWentWrong') || 'Something went wrong. Please try again.';
       
+      // Handle conflict error specifically
+      if (error.name === 'ConflictError') {
+        errorMsg = error.message || 'Email or phone number already in use. Please use different credentials.';
+        
+        Alert.alert(
+          t('accountExists') || 'Account Exists', 
+          errorMsg,
+          [
+            {
+              text: t('goToLogin') || 'Go to Login',
+              onPress: () => navigation.navigate('Login')
+            },
+            {
+              text: t('tryAgain') || 'Try Again',
+              style: 'cancel'
+            }
+          ]
+        );
+        setLoading(false);
+        return;
+      }
+      
       // Log detailed error information
       console.error('Error response:', JSON.stringify(error.response?.data));
       console.error('Status code:', error.response?.status);
