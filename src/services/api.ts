@@ -62,18 +62,40 @@ export const authAPI = {
     role?: string;
     vehicleName?: string;
   }) => {
-    // Strip out any unexpected fields that might cause validation errors
-    const { firstName, lastName, email, password, phoneNumber, role } = userData;
-    
-    const response = await api.post('/auth/register', {
-      firstName,
-      lastName,
-      email,
-      password,
-      phoneNumber,
-      role: 'rider', // Always set to rider for the delivery app
-    });
-    return response.data;
+    try {
+      // Try a simpler approach with only the absolute essential fields
+      const payload = {
+        name: `${userData.firstName} ${userData.lastName}`, // Try combining into single name
+        email: userData.email,
+        password: userData.password,
+        phone: userData.phoneNumber, // Try phone instead of phoneNumber
+        role: 'rider'
+      };
+      
+      console.log('Registration payload:', JSON.stringify(payload));
+      
+      // Try several potential endpoints
+      let response;
+      try {
+        response = await api.post('/auth/register', payload);
+      } catch (err) {
+        console.log('First endpoint failed, trying another...');
+        try {
+          response = await api.post('/auth/signup', payload);
+        } catch (err2) {
+          console.log('Second endpoint failed, trying another...');
+          response = await api.post('/users/register', payload);
+        }
+      }
+      
+      console.log('Registration response:', JSON.stringify(response.data));
+      
+      return response.data;
+    } catch (error: any) {
+      console.error('API Registration error:', error);
+      console.error('Error details:', JSON.stringify(error.response?.data));
+      throw error;
+    }
   },
 
   // Login with email and password

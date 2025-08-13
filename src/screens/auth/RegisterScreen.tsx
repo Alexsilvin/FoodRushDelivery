@@ -96,11 +96,24 @@ export default function RegisterScreen({ navigation }: any) {
       console.error('Registration error:', error);
       let errorMsg = t('somethingWentWrong') || 'Something went wrong. Please try again.';
       
+      // Log detailed error information
+      console.error('Error response:', JSON.stringify(error.response?.data));
+      console.error('Status code:', error.response?.status);
+      console.error('Headers:', JSON.stringify(error.response?.headers));
+      
       // Try to extract a more specific error message
       if (error.response?.data?.message) {
         errorMsg = error.response.data.message;
       } else if (error.response?.data?.error) {
         errorMsg = error.response.data.error;
+      } else if (error.response?.data?.errors) {
+        // Handle validation errors array
+        const errors = error.response.data.errors;
+        if (Array.isArray(errors) && errors.length > 0) {
+          errorMsg = errors.map(e => e.message || e).join('\n');
+        } else if (typeof errors === 'object') {
+          errorMsg = Object.values(errors).flat().join('\n');
+        }
       } else if (error.message) {
         errorMsg = error.message;
       }
