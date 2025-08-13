@@ -114,7 +114,7 @@ export default function RegisterScreen({ navigation }: any) {
 
       // Launch image picker
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: [ImagePicker.MediaType.image],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
