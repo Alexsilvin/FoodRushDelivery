@@ -63,37 +63,51 @@ export const authAPI = {
     vehicleName?: string;
   }) => {
     try {
-      // Try a simpler approach with only the absolute essential fields
+      // Streamlined approach with focused fields
       const payload = {
-        name: `${userData.firstName} ${userData.lastName}`, // Try combining into single name
+        // Try all variations in case backend expects different formats
         email: userData.email,
         password: userData.password,
-        phone: userData.phoneNumber, // Try phone instead of phoneNumber
-        role: 'rider'
+        // Include both combined and separate name fields
+        name: `${userData.firstName} ${userData.lastName}`,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        // Include both phone formats
+        phone: userData.phoneNumber,
+        phoneNumber: userData.phoneNumber,
+        // Always specify role
+        role: 'rider',
+        // Include userType for APIs that might use this instead
+        userType: 'rider'
       };
       
       console.log('Registration payload:', JSON.stringify(payload));
       
-      // Try several potential endpoints
-      let response;
-      try {
-        response = await api.post('/auth/register', payload);
-      } catch (err) {
-        console.log('First endpoint failed, trying another...');
-        try {
-          response = await api.post('/auth/signup', payload);
-        } catch (err2) {
-          console.log('Second endpoint failed, trying another...');
-          response = await api.post('/users/register', payload);
+      // Use the most common endpoint pattern
+      const response = await api.post('/auth/register', payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
-      }
+      });
       
       console.log('Registration response:', JSON.stringify(response.data));
       
       return response.data;
     } catch (error: any) {
       console.error('API Registration error:', error);
-      console.error('Error details:', JSON.stringify(error.response?.data));
+      
+      // Log specific information about the error
+      if (error.response) {
+        console.error('Status:', error.response.status);
+        console.error('Data:', JSON.stringify(error.response.data));
+        console.error('Headers:', JSON.stringify(error.response.headers));
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+      } else {
+        console.error('Error message:', error.message);
+      }
+      
       throw error;
     }
   },
@@ -211,6 +225,90 @@ export const riderAPI = {
     const response = await api.put('/riders/vehicle', vehicleData);
     return response.data;
   },
+};
+
+// Additional helper to test API connection
+export const testAPI = {
+  // Test auth endpoints with various formats
+  testRegister: async () => {
+    const testCases = [
+      {
+        endpoint: '/auth/register',
+        payload: {
+          email: 'test@example.com',
+          password: 'Password123',
+          name: 'Test User',
+          phone: '1234567890',
+          role: 'rider'
+        }
+      },
+      {
+        endpoint: '/auth/register',
+        payload: {
+          email: 'test2@example.com',
+          password: 'Password123',
+          firstName: 'Test',
+          lastName: 'User',
+          phoneNumber: '1234567890',
+          role: 'rider'
+        }
+      },
+      {
+        endpoint: '/users/register',
+        payload: {
+          email: 'test3@example.com',
+          password: 'Password123',
+          name: 'Test User',
+          phone: '1234567890',
+          role: 'rider'
+        }
+      },
+      {
+        endpoint: '/users/register',
+        payload: {
+          email: 'test4@example.com',
+          password: 'Password123',
+          firstName: 'Test',
+          lastName: 'User',
+          phoneNumber: '1234567890',
+          role: 'rider'
+        }
+      }
+    ];
+    
+    const results = [];
+    
+    for (const testCase of testCases) {
+      try {
+        const response = await axios.post(
+          `${API_URL}${testCase.endpoint}`,
+          testCase.payload,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          }
+        );
+        results.push({
+          endpoint: testCase.endpoint,
+          payload: testCase.payload,
+          success: true,
+          data: response.data
+        });
+      } catch (error: any) {
+        results.push({
+          endpoint: testCase.endpoint,
+          payload: testCase.payload,
+          success: false,
+          error: error.response?.data || error.message
+        });
+      }
+    }
+    
+    console.log('API Test Results:', JSON.stringify(results, null, 2));
+    return results;
+  }
 };
 
 export default api;

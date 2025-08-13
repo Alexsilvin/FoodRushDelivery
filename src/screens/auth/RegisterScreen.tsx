@@ -19,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { testAPI } from '../../services/api';
 
 export default function RegisterScreen({ navigation }: any) {
   const [firstName, setFirstName] = useState('');
@@ -101,18 +102,35 @@ export default function RegisterScreen({ navigation }: any) {
       console.error('Status code:', error.response?.status);
       console.error('Headers:', JSON.stringify(error.response?.headers));
       
-      // Try to extract a more specific error message
-      if (error.response?.data?.message) {
-        errorMsg = error.response.data.message;
-      } else if (error.response?.data?.error) {
-        errorMsg = error.response.data.error;
-      } else if (error.response?.data?.errors) {
-        // Handle validation errors array
-        const errors = error.response.data.errors;
-        if (Array.isArray(errors) && errors.length > 0) {
-          errorMsg = errors.map(e => e.message || e).join('\n');
-        } else if (typeof errors === 'object') {
-          errorMsg = Object.values(errors).flat().join('\n');
+      // Extract error message with a detailed approach
+      if (error.response?.data) {
+        const data = error.response.data;
+        
+        if (typeof data === 'string') {
+          errorMsg = data;
+        } else if (data.message) {
+          errorMsg = data.message;
+        } else if (data.error) {
+          errorMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+        } else if (data.errors) {
+          if (Array.isArray(data.errors)) {
+            errorMsg = data.errors.map((e: any) => 
+              typeof e === 'string' ? e : (e.message || JSON.stringify(e))
+            ).join('\n');
+          } else {
+            const errorMessages = [];
+            for (const key in data.errors) {
+              const value = data.errors[key];
+              if (Array.isArray(value)) {
+                errorMessages.push(`${key}: ${value.join(', ')}`);
+              } else {
+                errorMessages.push(`${key}: ${value}`);
+              }
+            }
+            errorMsg = errorMessages.join('\n');
+          }
+        } else {
+          errorMsg = JSON.stringify(data);
         }
       } else if (error.message) {
         errorMsg = error.message;
@@ -392,6 +410,25 @@ export default function RegisterScreen({ navigation }: any) {
                 {loading ? 'Creating Account...' : 'Create Account'}
               </Text>
             </TouchableOpacity>
+            
+            {__DEV__ && (
+              <TouchableOpacity
+                style={[styles.registerButton, styles.diagnosticButton]}
+                onPress={async () => {
+                  try {
+                    Alert.alert('API Tests', 'Running API tests, check console for results');
+                    const results = await testAPI.testRegister();
+                    console.log('Test complete');
+                  } catch (error) {
+                    console.error('Test error:', error);
+                  }
+                }}
+              >
+                <Text style={[styles.registerButtonText, { color: '#FF5722' }]}>
+                  Run API Tests (DEV)
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.footer}>
@@ -477,6 +514,12 @@ const styles = StyleSheet.create({
     color: '#1E40AF',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  diagnosticButton: {
+    backgroundColor: '#FFF8E1',
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#FF9800',
   },
   footer: {
     flexDirection: 'row',
