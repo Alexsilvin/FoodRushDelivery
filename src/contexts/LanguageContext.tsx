@@ -88,6 +88,10 @@ const translations = {
     loading: 'Loading...',
     accept: 'Accept',
     decline: 'Decline',
+    accountCreated: 'Account created successfully!',
+    accountCreatedPleaseLogin: 'Account created successfully! Please check your email and verify your account before logging in.',
+    goToLogin: 'Go to Login',
+    registrationFailed: 'Failed to create account. Please try again.',
     
     // Loading Screen
     deliveryDriver: 'Delivery Driver',
@@ -349,6 +353,10 @@ const translations = {
     loading: 'Chargement...',
     accept: 'Accepter',
     decline: 'Refuser',
+    accountCreated: 'Compte créé avec succès!',
+    accountCreatedPleaseLogin: 'Compte créé avec succès! Veuillez vérifier votre email et confirmer votre compte avant de vous connecter.',
+    goToLogin: 'Aller à la Connexion',
+    registrationFailed: 'Échec de la création du compte. Veuillez réessayer.',
     
     // Loading Screen
     deliveryDriver: 'Chauffeur-Livreur',

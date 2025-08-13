@@ -89,7 +89,16 @@ export default function RegisterScreen({ navigation }: any) {
       );
       
       if (success) {
-        Alert.alert(t('success') || 'Success', t('accountCreated') || 'Account created successfully!');
+        Alert.alert(
+          t('success') || 'Success', 
+          t('accountCreatedPleaseLogin') || 'Account created successfully! Please check your email and verify your account before logging in.',
+          [
+            {
+              text: t('goToLogin') || 'Go to Login',
+              onPress: () => navigation.navigate('Login')
+            }
+          ]
+        );
       } else {
         Alert.alert(t('error') || 'Error', t('registrationFailed') || 'Failed to create account. Please try again.');
       }
