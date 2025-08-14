@@ -34,21 +34,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Development flag - set to false to use real API
-  const FORCE_SHOW_AUTH = false;
-
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (FORCE_SHOW_AUTH) {
-          // Clear any existing auth data for development
-          await AsyncStorage.removeItem('auth_token');
-          await SecureStore.deleteItemAsync('user');
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-
+        // First, clear any existing auth data to ensure we start fresh
+        await AsyncStorage.removeItem('auth_token');
+        await SecureStore.deleteItemAsync('user');
+        setUser(null);
+        
+        // Now, let's initialize auth properly
         const token = await AsyncStorage.getItem('auth_token');
         if (token) {
           try {
@@ -79,88 +73,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     initAuth();
-  }, [FORCE_SHOW_AUTH]);
+  }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      if (FORCE_SHOW_AUTH && email === 'driver@demo.com' && password === 'demo123') {
-        // Demo mode
-        const demoUser: User = {
-          id: '1',
-          email: 'driver@demo.com',
-          firstName: 'John',
-          lastName: 'Driver',
-          phoneNumber: '+1234567890',
-          role: 'rider',
-          isVerified: true
-        };
-
-        await AsyncStorage.setItem('auth_token', 'demo_token_123');
-        await SecureStore.setItemAsync('user', JSON.stringify(demoUser));
-        setUser(demoUser);
-        return true;
-      }
-      
       // Real API call
       const response = await authAPI.login(email, password);
       
-      console.log('Login response structure:', JSON.stringify(response));
-      
-      // Handle different API response formats
-      if (response) {
-        // Extract token and user based on response format
-        let token, userData;
-        
-        // Check various token locations
-        if (response.data?.token) {
-          // Direct token in data
-          token = response.data.token;
-          userData = response.data.user || response.data;
-        } else if (response.token) {
-          // Token at response root
-          token = response.token;
-          userData = response.user || response.data;
-        } else if (response.access_token) {
-          // JWT style response
-          token = response.access_token;
-          userData = response.user || response.data;
-        } else if (response.data?.access_token) {
-          // Nested JWT style
-          token = response.data.access_token;
-          userData = response.data.user || response.data;
-        }
-        
-        if (!token) {
-          console.error('No token found in response:', response);
-          return false;
-        }
+      if (response.success && response.data) {
+        const { token, user } = response.data;
         
         // Ensure the user is a rider
-        if (userData.role && userData.role !== 'rider') {
+        if (user.role !== 'rider') {
           throw new Error('This app is for delivery drivers only');
         }
         
-        // Create a standardized user object
-        const standardizedUser: User = {
-          id: userData.id || userData.userId || '',
-          email: userData.email || '',
-          firstName: userData.firstName || (userData.fullName ? userData.fullName.split(' ')[0] : ''),
-          lastName: userData.lastName || (userData.fullName ? userData.fullName.split(' ').slice(1).join(' ') : ''),
-          phoneNumber: userData.phoneNumber || '',
-          role: userData.role || 'rider',
-          isVerified: userData.isVerified || true
-        };
-        
         await AsyncStorage.setItem('auth_token', token);
-        await SecureStore.setItemAsync('user', JSON.stringify(standardizedUser));
-        setUser(standardizedUser);
+        await SecureStore.setItemAsync('user', JSON.stringify(user));
+        setUser(user);
         return true;
       }
       
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
-      throw error; // Rethrow to handle in the component
+      
+      // Provide more specific error messages based on response
+      if (error?.response?.status === 401) {
+        throw new Error('Invalid email or password');
+      } else if (error?.response?.status === 403) {
+        throw new Error('Account not verified. Please check your email for verification link.');
+      } else if (error?.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      } else {
+        throw error; // Rethrow original error if we can't categorize it
+      }
     }
   };
 
@@ -174,64 +121,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     driverLicense?: string | null
   ): Promise<boolean> => {
     try {
-      // Use the verified working payload format
       const registrationData = {
         firstName,
         lastName,
         email,
         password,
         phoneNumber,
-        fullName: `${firstName} ${lastName}`,
         role: 'rider' // Set role to rider for delivery driver app
       };
+
+      // Add vehicle data if provided
+      if (vehicle) {
+        // If we had a proper API endpoint for this, we would handle the vehicle differently
+        // For now, we'll just include it in the registration data
+        Object.assign(registrationData, { vehicleName: vehicle });
+      }
       
-      // Note: vehicle and driverLicense would typically be uploaded separately 
-      // after registration in a real implementation
+      // Note: driverLicense would typically be uploaded separately in a real implementation
+      // Here we're just simulating that it's part of the registration process
       
       const response = await authAPI.register(registrationData);
       
-      if (response && response.status_code === 201) {
-        // The API doesn't return a token directly, so we would need to login
-        // But for now, we'll store the user data and redirect to the login screen
-        console.log('Registration successful:', JSON.stringify(response));
+      if (response.success && response.data) {
+        const { token, user } = response.data;
         
-        // Inform the user they need to login or verify their email
-        return true;
-      } else if (response && response.data) {
-        // Handle if there's a nested data object with auth info
-        const { data } = response;
-        
-        if (data.token && data.user) {
-          // Format: { data: { token, user } }
-          await AsyncStorage.setItem('auth_token', data.token);
-          await SecureStore.setItemAsync('user', JSON.stringify(data.user));
-          setUser(data.user);
-          return true;
-        }
-        
-        // Registration was technically successful but no token
+        await AsyncStorage.setItem('auth_token', token);
+        await SecureStore.setItemAsync('user', JSON.stringify(user));
+        setUser(user);
         return true;
       }
       
-      // Unexpected response format
-      console.error('Registration succeeded but response format is unexpected:', response);
       return false;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Registration error:', error);
-      
-      // Enhanced error logging
-      if (error.response) {
-        console.error('Error response:', {
-          status: error.response.status,
-          data: error.response.data,
-          headers: error.response.headers
-        });
-      } else if (error.request) {
-        console.error('No response received:', error.request);
-      } else {
-        console.error('Error message:', error.message);
-      }
-      
       throw error; // Rethrow to handle in the component
     }
   };

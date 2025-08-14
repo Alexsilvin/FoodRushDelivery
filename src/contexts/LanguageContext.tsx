@@ -88,15 +88,6 @@ const translations = {
     loading: 'Loading...',
     accept: 'Accept',
     decline: 'Decline',
-    accountCreated: 'Account created successfully!',
-    accountCreatedPleaseLogin: 'Account created successfully! Please check your email and verify your account before logging in.',
-    goToLogin: 'Go to Login',
-    registrationFailed: 'Failed to create account. Please try again.',
-    accountExists: 'Account Exists',
-    tryAgain: 'Try Again',
-    verificationRequired: 'Verification Required',
-    pleaseVerifyEmail: 'Please check your email and verify your account before logging in.',
-    accountNotActive: 'Your account has not been activated yet. Please check your email for the verification link.',
     
     // Loading Screen
     deliveryDriver: 'Delivery Driver',
@@ -358,12 +349,6 @@ const translations = {
     loading: 'Chargement...',
     accept: 'Accepter',
     decline: 'Refuser',
-    accountCreated: 'Compte créé avec succès!',
-    accountCreatedPleaseLogin: 'Compte créé avec succès! Veuillez vérifier votre email et confirmer votre compte avant de vous connecter.',
-    goToLogin: 'Aller à la Connexion',
-    registrationFailed: 'Échec de la création du compte. Veuillez réessayer.',
-    accountExists: 'Compte Existant',
-    tryAgain: 'Réessayer',
     
     // Loading Screen
     deliveryDriver: 'Chauffeur-Livreur',
