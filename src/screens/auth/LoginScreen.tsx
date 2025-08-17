@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { authAPI } from '../../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -76,7 +77,82 @@ export default function LoginScreen({ navigation }: any) {
     } catch (error: any) {
       // Display the specific error message from the AuthContext
       const errorMsg = error.message || t('somethingWentWrong');
-      Alert.alert(t('error'), errorMsg);
+      
+      if (errorMsg.includes('not activated') || errorMsg.includes('not verified')) {
+        // Special handling for account verification issues
+        Alert.alert(
+          t('accountNotVerified') || 'Account Not Verified',
+          'Your account needs to be verified before you can log in. Please check your email for a verification link.',
+          [
+            {
+              text: t('ok') || 'OK',
+              style: 'cancel',
+            },
+            {
+              text: t('resendVerification') || 'Resend Verification',
+              onPress: async () => {
+                try {
+                  setLoading(true);
+                  const result = await authAPI.resendVerificationEmail(email);
+                  if (result.success) {
+                    Alert.alert(
+                      t('verificationSent') || 'Verification Sent',
+                      t('verificationEmailResent') || 'A new verification email has been sent. Please check your inbox and click the verification link.'
+                    );
+                  } else {
+                    Alert.alert(
+                      t('error') || 'Error',
+                      result.message || t('somethingWentWrong')
+                    );
+                  }
+                } catch (resendError: any) {
+                  Alert.alert(
+                    t('error') || 'Error',
+                    resendError.message || t('somethingWentWrong')
+                  );
+                } finally {
+                  setLoading(false);
+                }
+              }
+            },
+            {
+              text: t('activateNow') || 'Activate Now',
+              onPress: async () => {
+                try {
+                  setLoading(true);
+                  const result = await authAPI.activateAccount(email);
+                  if (result.success) {
+                    Alert.alert(
+                      t('accountActivated') || 'Account Activated',
+                      t('accountActivationSuccess') || 'Your account has been activated! You can now log in.',
+                      [
+                        {
+                          text: t('login') || 'Log In',
+                          onPress: () => handleLogin()
+                        }
+                      ]
+                    );
+                  } else {
+                    Alert.alert(
+                      t('activationFailed') || 'Activation Failed',
+                      result.message || t('activationNotSupported') || 'Account activation through the app is not supported. Please check your email for a verification link.'
+                    );
+                  }
+                } catch (activateError: any) {
+                  Alert.alert(
+                    t('error') || 'Error',
+                    activateError.message || t('somethingWentWrong')
+                  );
+                } finally {
+                  setLoading(false);
+                }
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert(t('error') || 'Error', errorMsg);
+      }
     } finally {
       setLoading(false);
     }
@@ -96,16 +172,15 @@ export default function LoginScreen({ navigation }: any) {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {/* Logo Header - positioned where splash screen logo transitions to */}
           <Animated.View style={[styles.logoHeader, { opacity: logoOpacity }]}>
-            <View style={styles.logoContainer}>
-              <Text style={styles.logoText}>Food</Text>
-            </View>
-            <View style={styles.logoImageContainer}>
-              <Image
-                source={require('../../../assets/outoloyout.png')}
-                style={styles.logoImage}
-                resizeMode="contain"
-                alt="Food Rush Logo"
-              />
+            <Image
+              source={require('../../../assets/outoloyout.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+              alt="Food Rush Logo"
+            />
+            <View style={styles.logoTextContainer}>
+              <Text style={styles.logoText}>Food Rush</Text>
+              <Text style={styles.logoSubText}>Delivery Partner</Text>
             </View>
           </Animated.View>
 
@@ -199,12 +274,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#FFFFFF',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#DBEAFE',
   },
   form: {
     marginBottom: 30,
@@ -212,22 +285,24 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
     marginBottom: 16,
-    paddingHorizontal: 16,
-    height: 56,
+    borderRadius: 12,
     borderWidth: 1,
+    overflow: 'hidden',
   },
   inputIcon: {
-    marginRight: 12,
+    paddingHorizontal: 12,
   },
   input: {
     flex: 1,
+    height: 56,
     fontSize: 16,
   },
   eyeIcon: {
     position: 'absolute',
-    right: 16,
+    right: 12,
+    height: '100%',
+    justifyContent: 'center',
   },
   forgotPassword: {
     alignSelf: 'flex-end',
@@ -237,73 +312,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   loginButton: {
-    borderRadius: 12,
     height: 56,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.7,
   },
   loginButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
+    color: '#fff',
+    fontSize: 16,
     fontWeight: 'bold',
-  },
-  demoContainer: {
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  demoText: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  demoCredentials: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  logoHeader: {
-    alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: 20,
-    marginBottom: 20,
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: -5,
-  },
-  logoText: {
-    fontSize: 48,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    letterSpacing: -2,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  logoImageContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoImage: {
-    width: width * 0.4,
-    height: 60,
-    maxWidth: 200,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
+    marginTop: 20,
   },
   footerText: {
-    fontSize: 16,
+    fontSize: 14,
   },
   signUpText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
+  },
+  logoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logoTextContainer: {
+    marginLeft: 10,
+  },
+  logoText: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#ff6b00',
+  },
+  logoSubText: {
+    fontSize: 14,
+    color: '#ff9a4d',
+    fontStyle: 'italic',
+  },
+  logoImage: {
+    width: 60,
+    height: 60,
   },
 });

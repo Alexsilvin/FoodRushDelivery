@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,103 +12,109 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCall } from '../../contexts/CallContext';
 import { useNavigation } from '@react-navigation/native';
+import { riderAPI } from '../../services/api';
+import { Delivery } from '../../types/api';
+import { mapApiDeliveries } from '../../utils/mappers';
 
-interface Delivery {
-  id: string;
-  customerName: string;
-  address: string;
-  restaurant: string;
-  status: 'accepted' | 'picked_up' | 'delivering' | 'delivered';
-  payment: string;
-  orderItems: string[];
-  customerPhone: string;
-  pickupTime?: string;
-  deliveryTime?: string;
-}
+// Helper to format currency fallback
+const formatCurrency = (amount?: number) => {
+  if (amount == null) return '$0.00';
+  try { return `$${amount.toFixed(2)}`; } catch { return `$${amount}`; }
+};
 
 export default function DeliveriesScreen() {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const { startCall } = useCall();
   const navigation = useNavigation();
-  const [deliveries, setDeliveries] = useState<Delivery[]>([
-    {
-      id: '3',
-      customerName: 'Emma Davis',
-      address: '789 Pine Road, Uptown',
-      restaurant: 'Sushi Spot',
-      status: 'accepted',
-      payment: '$15.25',
-      orderItems: ['California Roll', 'Salmon Nigiri', 'Miso Soup'],
-      customerPhone: '+1234567891',
-    },
-    {
-      id: '4',
-      customerName: 'John Smith',
-      address: '321 Maple Drive, Downtown',
-      restaurant: 'Taco Bell',
-      status: 'picked_up',
-      payment: '$22.80',
-      orderItems: ['2x Crunchy Tacos', 'Burrito Supreme', 'Nachos'],
-      customerPhone: '+1234567892',
-      pickupTime: '2:30 PM',
-    },
-    {
-      id: '5',
-      customerName: 'Lisa Wilson',
-      address: '654 Cedar Lane, Westside',
-      restaurant: 'Italian Bistro',
-      status: 'delivered',
-      payment: '$35.50',
-      orderItems: ['Spaghetti Carbonara', 'Caesar Salad', 'Tiramisu'],
-      customerPhone: '+1234567893',
-      pickupTime: '1:15 PM',
-      deliveryTime: '1:45 PM',
-    },
-  ]);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const updateDeliveryStatus = (deliveryId: string, newStatus: Delivery['status']) => {
-    setDeliveries(prev =>
-      prev.map(delivery =>
-        delivery.id === deliveryId
-          ? {
-              ...delivery,
-              status: newStatus,
-              ...(newStatus === 'picked_up' && { pickupTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }),
-              ...(newStatus === 'delivered' && { deliveryTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }),
-            }
-          : delivery
-      )
-    );
+  const normalizeDeliveries = (raw: any[]): Delivery[] => mapApiDeliveries(raw);
+
+  const fetchDeliveries = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const current = await riderAPI.getCurrentDeliveries().catch(e => { console.warn('Current deliveries failed', e?.response?.status); return { success: false, data: [] }; });
+      const history = await riderAPI.getDeliveryHistory(1, 50).catch(e => { console.warn('History deliveries failed', e?.response?.status); return { success: false, data: [] }; });
+      const merged = [
+        ...(current.data || []),
+        ...(history.data || [])
+      ];
+      setDeliveries(normalizeDeliveries(merged));
+    } catch (e: any) {
+      console.error('Fetch deliveries error', e);
+      setError(e?.response?.data?.message || e.message || 'Failed to load deliveries');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchDeliveries(); }, [fetchDeliveries]);
+
+  const updateDeliveryStatusLocal = (deliveryId: string, newStatus: Delivery['status']) => {
+    setDeliveries(prev => prev.map(d => d.id === deliveryId ? {
+      ...d,
+      status: newStatus,
+      ...(newStatus === 'picked_up' && { pickupTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }),
+      ...(newStatus === 'delivered' && { deliveryTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }),
+    } : d));
   };
 
   const handleStatusUpdate = (delivery: Delivery) => {
-    const statusFlow: Record<Delivery['status'], { next: Delivery['status']; action: string }> = {
-      accepted: { next: 'picked_up', action: 'Mark as Picked Up' },
-      picked_up: { next: 'delivering', action: 'Start Delivery' },
-      delivering: { next: 'delivered', action: 'Mark as Delivered' },
-      delivered: { next: 'delivered', action: 'Completed' },
-    };
-
-    const { next, action } = statusFlow[delivery.status];
-
     if (delivery.status === 'delivered') {
-      Alert.alert('Completed', 'This delivery has already been completed.');
+      Alert.alert(t('completed') || 'Completed', t('alreadyCompleted') || 'This delivery has already been completed.');
       return;
     }
 
+    let action: 'accept' | 'start' | 'complete';
+    let nextStatus: Delivery['status'];
+    if (delivery.status === 'accepted') {
+      action = 'start';
+      nextStatus = 'picked_up';
+    } else if (delivery.status === 'picked_up' || delivery.status === 'delivering') {
+      action = 'complete';
+      nextStatus = 'delivered';
+    } else {
+      // pending or other
+      action = 'accept';
+      nextStatus = 'accepted';
+    }
+
+    const actionLabel = (
+      action === 'accept' ? (t('acceptDelivery') || 'Accept Delivery') :
+      action === 'start' ? (t('startDelivery') || 'Start Delivery') :
+      (t('markDelivered') || 'Complete Delivery')
+    );
+
     Alert.alert(
-      'Update Status',
-      `${action} for ${delivery.customerName}?`,
+      t('updateStatus') || 'Update Status',
+      `${actionLabel} ?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: action,
-          onPress: () => {
-            updateDeliveryStatus(delivery.id, next);
-            Alert.alert('Success', `Delivery status updated to ${next.replace('_', ' ')}`);
-          },
-        },
+          text: actionLabel,
+          onPress: async () => {
+            try {
+              if (action === 'accept') {
+                const res = await riderAPI.acceptDelivery(delivery.id);
+                updateDeliveryStatusLocal(delivery.id, (res.data?.status as any) || nextStatus);
+              } else if (action === 'start') {
+                const res = await riderAPI.startDelivery(delivery.id);
+                updateDeliveryStatusLocal(delivery.id, (res.data?.status as any) || nextStatus);
+              } else if (action === 'complete') {
+                const res = await riderAPI.completeDelivery(delivery.id);
+                updateDeliveryStatusLocal(delivery.id, (res.data?.status as any) || nextStatus);
+              }
+              Alert.alert(t('success'), t('statusUpdated') || 'Status updated');
+            } catch (e: any) {
+              console.error('Status update failed', e);
+              Alert.alert(t('error'), e?.response?.data?.message || e.message || 'Failed to update status');
+            }
+          }
+        }
       ]
     );
   };
@@ -208,7 +214,7 @@ export default function DeliveriesScreen() {
         
         <View style={styles.orderItems}>
           <Text style={[styles.itemsTitle, { color: theme.colors.text }]}>Order Items:</Text>
-          {delivery.orderItems.map((item, index) => (
+          {(delivery.orderItems || []).map((item, index) => (
             <Text key={index} style={[styles.orderItem, { color: theme.colors.textSecondary }]}>• {item}</Text>
           ))}
         </View>
@@ -231,7 +237,7 @@ export default function DeliveriesScreen() {
       <View style={styles.deliveryActions}>
         <TouchableOpacity
           style={[styles.callButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.primary }]}
-          onPress={() => callCustomer(delivery.customerPhone, delivery.customerName)}
+          onPress={() => callCustomer(delivery.customerPhone || '+0000000000', delivery.customerName || 'Customer')}
         >
           <Ionicons name="call-outline" size={20} color={theme.colors.primary} />
           <Text style={[styles.callButtonText, { color: theme.colors.primary }]}>{t('call')}</Text>
@@ -266,7 +272,23 @@ export default function DeliveriesScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: 60 }]}>
       <View style={styles.content}>
-        {activeDeliveries.length > 0 && (
+        {loading && (
+          <View style={styles.emptyState}>
+            <Ionicons name="refresh" size={48} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{t('loading') || 'Loading...'}</Text>
+          </View>
+        )}
+        {!!error && !loading && (
+          <View style={styles.emptyState}>
+            <Ionicons name="warning-outline" size={48} color={theme.colors.error} />
+            <Text style={[styles.emptyTitle, { color: theme.colors.error }]}>{t('error')}</Text>
+            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{error}</Text>
+            <TouchableOpacity onPress={fetchDeliveries} style={{ marginTop: 12 }}>
+              <Text style={{ color: theme.colors.primary }}>{t('retry') || 'Retry'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!loading && !error && activeDeliveries.length > 0 && (
           <>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{t('activeDeliveries')}</Text>
             {activeDeliveries.map(renderDeliveryCard)}
@@ -280,7 +302,7 @@ export default function DeliveriesScreen() {
           </>
         )}
 
-        {deliveries.length === 0 && (
+  {!loading && !error && deliveries.length === 0 && (
           <View style={styles.emptyState}>
             <Ionicons name="car-outline" size={64} color={theme.colors.textSecondary} />
             <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>{t('noDeliveries')}</Text>

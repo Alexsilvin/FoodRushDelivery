@@ -16,6 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCall } from '../../contexts/CallContext';
+import { riderAPI } from '../../services/api';
+import { GOOGLE_MAPS_API_KEY } from '../../config/env';
+import { mapApiDeliveries } from '../../utils/mappers';
+import { Delivery } from '../../types/api';
 import { useRoute } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
@@ -66,6 +70,7 @@ export default function MapScreen({ navigation, route }: any) {
   const { startCall } = useCall();
   const routeParams = useRoute();
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
+  const [fetchingDeliveries, setFetchingDeliveries] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryLocation | null>(null);
   const [availableRoutes, setAvailableRoutes] = useState<Route[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
@@ -209,57 +214,44 @@ export default function MapScreen({ navigation, route }: any) {
     };
   }, [calculateDistance]);
 
+  const decodePolyline = (poly: string) => {
+    let index = 0, len = poly.length; let lat = 0, lng = 0; const coords: { latitude:number; longitude:number }[] = [];
+    while (index < len) {
+      let b, shift = 0, result = 0; do { b = poly.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1)); lat += dlat;
+      shift = 0; result = 0; do { b = poly.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1)); lng += dlng;
+      coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+    }
+    return coords;
+  };
+
   const getDirections = useCallback(async (
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number }
   ): Promise<DirectionsRoute | null> => {
     try {
-      const originStr = `${origin.latitude},${origin.longitude}`;
-      const destinationStr = `${destination.latitude},${destination.longitude}`;
-      
-      // For demo purposes, we'll simulate Google Directions API response
-      // In production, uncomment the actual API call below
-      
-      /*
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&key=${GOOGLE_MAPS_API_KEY}&mode=driving&alternatives=true&traffic_model=best_guess&departure_time=now`
-      );
-      
-      const data = await response.json();
-      
-      if (data.status !== 'OK' || !data.routes.length) {
-        throw new Error('No routes found');
+  const key = String(GOOGLE_MAPS_API_KEY || '');
+  if (!key || ['DEMO_KEY','CHANGE_ME_ADD_REAL_KEY','YOUR_GOOGLE_MAPS_API_KEY'].includes(key)) {
+        return createDemoRoute(origin, destination);
       }
-      
+  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${key}&mode=driving&alternatives=false`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.status !== 'OK' || !data.routes?.length) return createDemoRoute(origin, destination);
       const route = data.routes[0];
       const leg = route.legs[0];
-      
-      // Decode polyline
       const coordinates = decodePolyline(route.overview_polyline.points);
-      
-      // Extract steps
-      const steps: DirectionsStep[] = leg.steps.map((step: any) => ({
-        instruction: step.html_instructions.replace(/<[^>]*>/g, ''), // Remove HTML tags
-        distance: step.distance.text,
-        duration: step.duration.text,
-        maneuver: step.maneuver || 'continue'
+      const steps: DirectionsStep[] = leg.steps.map((s: any) => ({
+        instruction: s.html_instructions.replace(/<[^>]*>/g,'') ,
+        distance: s.distance.text,
+        duration: s.duration.text,
+        maneuver: s.maneuver || 'continue'
       }));
-      
-      return {
-        distance: leg.distance.text,
-        duration: leg.duration.text,
-        coordinates,
-        steps,
-        summary: route.summary
-      };
-      */
-      
-      // Demo implementation - replace with actual API call
+      return { distance: leg.distance.text, duration: leg.duration.text, coordinates, steps, summary: route.summary };
+    } catch (e) {
+      console.warn('Directions fallback to demo route', e);
       return createDemoRoute(origin, destination);
-      
-    } catch (error) {
-      console.error('Directions API error:', error);
-      return null;
     }
   }, [createDemoRoute]);
 
@@ -556,8 +548,8 @@ export default function MapScreen({ navigation, route }: any) {
         setCurrentLocation(userLocation);
         setLoading(false);
         
-        // Load deliveries but don't generate routes automatically
-        loadDeliveries();
+  // Fetch real deliveries after location resolves
+  fetchDeliveries();
         
         // Center map on user location
         if (mapRef.current && userLocation) {
@@ -580,7 +572,7 @@ export default function MapScreen({ navigation, route }: any) {
         };
         setCurrentLocation(defaultLocation);
         setLoading(false);
-        loadDeliveries();
+  fetchDeliveries();
         
         // Show user-friendly error message
         Alert.alert(
@@ -592,115 +584,124 @@ export default function MapScreen({ navigation, route }: any) {
     };
 
     init();
-  }, [t]); // Remove currentLocation dependency to prevent infinite loop
+  // Intentionally excluding fetchDeliveries to avoid early call before set; fetchDeliveries triggers after location set
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
 
-  const loadDeliveries = () => {
-    // Mock delivery locations with real coordinates around New York City
-    const mockDeliveries: DeliveryLocation[] = [
-      {
-        id: '1',
-        customerName: 'Emma Davis',
-        customerPhone: '+1 (555) 123-4567',
-        address: '123 Broadway, New York, NY',
-        lat: 40.7589,
-        lng: -73.9851,
-        status: 'accepted',
-        distance: '1.2 km',
-        estimatedTime: '15 min',
-        restaurant: 'Sushi Spot',
-        payment: '$25.50',
-      },
-      {
-        id: '2',
-        customerName: 'John Smith',
-        customerPhone: '+1 (555) 234-5678',
-        address: '456 5th Avenue, New York, NY',
-        lat: 40.7505,
-        lng: -73.9934,
-        status: 'pending',
-        distance: '2.1 km',
-        estimatedTime: '12 min',
-        restaurant: 'Taco Bell',
-        payment: '$18.75',
-      },
-      {
-        id: '3',
-        customerName: 'Sarah Johnson',
-        customerPhone: '+1 (555) 345-6789',
-        address: '789 Madison Avenue, New York, NY',
-        lat: 40.7614,
-        lng: -73.9776,
-        status: 'picked_up',
-        distance: '0.8 km',
-        estimatedTime: '8 min',
-        restaurant: 'Pizza Palace',
-        payment: '$32.25',
-      },
-      {
-        id: '4',
-        customerName: 'Mike Chen',
-        customerPhone: '+1 (555) 456-7890',
-        address: '321 Park Avenue, New York, NY',
-        lat: 40.7549,
-        lng: -73.9707,
-        status: 'pending',
-        distance: '1.7 km',
-        estimatedTime: '20 min',
-        restaurant: 'Burger King',
-        payment: '$22.00',
-      },
-    ];
+  // Compute haversine distance in meters
+  const haversineMeters = useCallback((a: {latitude:number; longitude:number}, b: {latitude:number; longitude:number}) => {
+    const R = 6371e3;
+    const dLat = (b.latitude - a.latitude) * Math.PI / 180;
+    const dLon = (b.longitude - a.longitude) * Math.PI / 180;
+    const lat1 = a.latitude * Math.PI/180;
+    const lat2 = b.latitude * Math.PI/180;
+    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+    return 2*R*Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  }, []);
 
-    setDeliveries(mockDeliveries);
-    generateRoutes(mockDeliveries);
-  };
+  const synthesizeCoordinate = useCallback((index: number): { latitude: number; longitude: number } => {
+      const base = currentLocation || { latitude: 40.7128, longitude: -74.0060 };
+      const radius = 0.01;
+      const angle = (index * 137.508) % 360;
+      const rad = angle * Math.PI/180;
+      return {
+        latitude: base.latitude + Math.cos(rad) * radius * 0.5,
+        longitude: base.longitude + Math.sin(rad) * radius * 0.5,
+      };
+    }, [currentLocation]);
 
-  const generateRoutes = (deliveryList: DeliveryLocation[]) => {
-    // Generate sample route coordinates (in real app, you'd use Google Directions API)
-    const generateRouteCoordinates = (stops: DeliveryLocation[]) => {
-      const coords = [];
-      if (currentLocation) {
-        coords.push(currentLocation);
+  const generateRoutes = useCallback((deliveryList: DeliveryLocation[]) => {
+      const generateRouteCoordinates = (stops: DeliveryLocation[]) => {
+        const coords = [] as { latitude: number; longitude: number }[];
+        if (currentLocation) coords.push(currentLocation);
+        stops.forEach(s => coords.push({ latitude: s.lat, longitude: s.lng }));
+        return coords;
+      };
+      const remaining = [...deliveryList];
+      const ordered: DeliveryLocation[] = [];
+      let cursor = currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : null;
+      while (remaining.length) {
+        let bestIdx = 0; let bestDist = Number.MAX_VALUE;
+        for (let i=0;i<remaining.length;i++) {
+          const d = remaining[i];
+          const dist = cursor ? haversineMeters(cursor, { latitude: d.lat, longitude: d.lng }) : 0;
+          if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+        }
+        const next = remaining.splice(bestIdx,1)[0];
+        ordered.push(next);
+        cursor = { latitude: next.lat, longitude: next.lng };
       }
-      stops.forEach(stop => {
-        coords.push({ latitude: stop.lat, longitude: stop.lng });
+      const coordinates = generateRouteCoordinates(ordered);
+      const totalMeters = coordinates.reduce((acc, cur, idx, arr)=> idx? acc + haversineMeters(arr[idx-1], cur): acc, 0);
+      const totalKm = (totalMeters/1000).toFixed(1);
+      const totalMinutes = Math.round((totalMeters/1000)/0.4);
+      const route: Route = { id:'shortest_path', name:'Shortest Path', distance:`${totalKm} km`, duration:`${totalMinutes} min`, stops: ordered, coordinates, isOptimal:true };
+      setAvailableRoutes([route]); setSelectedRoute(route);
+    }, [currentLocation, haversineMeters]);
+
+  const fetchDeliveries = useCallback(async () => {
+    if (!currentLocation) return; // wait for location
+    setFetchingDeliveries(true);
+    try {
+      const currentRes = await riderAPI.getCurrentDeliveries().catch(()=>({ success:false, data: [] }));
+      const raw: Delivery[] = (currentRes.data || []) as any;
+      const mapped = mapApiDeliveries(raw);
+      // Decorate deliveries with location + computed distance/time
+      const enriched: DeliveryLocation[] = mapped.map((d, idx) => {
+  // Prefer dropoff coordinates, fallback to pickup, else synthesized
+  const hasDrop = typeof d.dropoffLat === 'number' && typeof d.dropoffLng === 'number';
+  const hasPickup = typeof d.pickupLat === 'number' && typeof d.pickupLng === 'number';
+  const baseCoord = hasDrop ? { latitude: d.dropoffLat as number, longitude: d.dropoffLng as number }
+           : hasPickup ? { latitude: d.pickupLat as number, longitude: d.pickupLng as number }
+           : (synthesizeCoordinate(idx+1));
+  const coord = baseCoord;
+        const distanceM = haversineMeters(currentLocation, coord);
+        const distanceKm = distanceM/1000;
+        const estMinutes = Math.max(2, Math.round((distanceKm / 0.4))); // assume 24km/h ~0.4km/min
+        return {
+          id: d.id,
+          customerName: d.customerName || 'Customer',
+          customerPhone: d.customerPhone,
+          address: d.address || d.customerAddress || 'Unknown address',
+          lat: coord.latitude,
+          lng: coord.longitude,
+          status: (d.status as any) || 'pending',
+          distance: `${distanceKm.toFixed(1)} km`,
+          estimatedTime: `${estMinutes} min`,
+          restaurant: d.restaurant || d.restaurantName || 'Restaurant',
+          payment: d.payment || d.paymentAmount != null ? `$${d.paymentAmount}` : '$0.00',
+        } as DeliveryLocation;
       });
-      return coords;
-    };
+      setDeliveries(enriched);
+      generateRoutes(enriched);
+    } catch (e) {
+      console.warn('Fetch deliveries (map) failed', e);
+    } finally {
+      setFetchingDeliveries(false);
+    }
+  }, [currentLocation, haversineMeters, synthesizeCoordinate, generateRoutes]);
 
-    const routes: Route[] = [
-      {
-        id: 'optimal',
-        name: 'Optimal Route',
-        distance: '7.2 km',
-        duration: '45 min',
-        stops: deliveryList.slice().sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)),
-        coordinates: generateRouteCoordinates(deliveryList),
-        isOptimal: true,
-      },
-      {
-        id: 'shortest',
-        name: 'Shortest Distance',
-        distance: '6.8 km',
-        duration: '52 min',
-        stops: deliveryList.slice().sort((a, b) => a.customerName.localeCompare(b.customerName)),
-        coordinates: generateRouteCoordinates(deliveryList),
-        isOptimal: false,
-      },
-      {
-        id: 'fastest',
-        name: 'Fastest Time',
-        distance: '8.1 km',
-        duration: '38 min',
-        stops: deliveryList.slice().sort((a, b) => parseFloat(a.estimatedTime) - parseFloat(b.estimatedTime)),
-        coordinates: generateRouteCoordinates(deliveryList),
-        isOptimal: false,
-      },
-    ];
+  // Refresh deliveries whenever screen gains focus
+  useEffect(() => {
+    if (currentLocation) fetchDeliveries();
+  }, [currentLocation, fetchDeliveries]);
 
-    setAvailableRoutes(routes);
-    setSelectedRoute(routes[0]); // Select optimal route by default
-  };
+  // Live polling for location & deliveries (every 30s) - lightweight
+  useEffect(() => {
+    let locInterval: any; let delInterval: any;
+    if (currentLocation) {
+      locInterval = setInterval(async () => {
+        try {
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          setCurrentLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+        } catch {}
+      }, 30000);
+      delInterval = setInterval(fetchDeliveries, 30000);
+    }
+    return () => { locInterval && clearInterval(locInterval); delInterval && clearInterval(delInterval); };
+  }, [currentLocation, fetchDeliveries]);
+
+  // removed old generateRoutes (replaced by useCallback version above)
 
   const getMarkerColor = (status: string) => {
     switch (status) {
@@ -851,13 +852,7 @@ export default function MapScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
-      {/* Coming Soon Overlay */}
-      <View style={styles.comingSoonOverlay} pointerEvents="none">
-        <Ionicons name="construct" size={64} color={theme.colors.primary} />
-        <Text style={[styles.comingSoonTitle, { color: theme.colors.text }]}>{t('comingSoon')}</Text>
-        <Text style={[styles.comingSoonMessage, { color: theme.colors.textSecondary }]}>{t('mapComingSoonMessage')}</Text>
-      </View>
-      {/* Original content below kept for future reactivation */}
+  {/* Map content (overlay removed to enable full interaction) */}
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
@@ -1350,23 +1345,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  comingSoonOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 32,
-    zIndex: 999,
-  },
-  comingSoonTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    marginTop: 24,
-  },
-  comingSoonMessage: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 12,
-    lineHeight: 22,
-  },
+  // Removed comingSoonOverlay styles
 });

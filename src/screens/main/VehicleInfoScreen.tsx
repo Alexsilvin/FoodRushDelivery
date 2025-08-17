@@ -16,11 +16,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { Vehicle as ApiVehicle } from '../../types/api';
 
-type Vehicle = {
-  id: string;
-  name: string;
-  type: string;
+// Local Vehicle ensures required fields while tolerating optional id from API
+type Vehicle = Required<Pick<ApiVehicle, 'name' | 'type'>> & {
+  id: string; // force presence in UI list
   default: boolean;
 };
 
@@ -30,9 +30,13 @@ export default function VehicleInfoScreen({ navigation }: { navigation: any }) {
   const { user, updateUserVehicles } = useAuth();
   
   const [vehicles, setVehicles] = useState<Vehicle[]>(() => {
-    // Check if user has vehicles array
     if (user?.vehicles && user.vehicles.length > 0) {
-      return user.vehicles;
+      return user.vehicles.map(v => ({
+        id: (v.id as string) || Math.random().toString(36).slice(2),
+        name: v.name || 'Vehicle',
+        type: (v.type as string) || 'Car',
+        default: !!v.default,
+      }));
     }
     return [];
   });

@@ -27,11 +27,14 @@ export default function RegisterScreen({ navigation }: any) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [vehicle, setVehicle] = useState('');
+  const [vehicleType, setVehicleType] = useState(''); // BICYCLE | MOTORBIKE | CAR | VAN | TRUCK | WALKER
+  const [vehicleTypeOpen, setVehicleTypeOpen] = useState(false);
+  const VEHICLE_TYPES = ['BICYCLE','MOTORBIKE','CAR','VAN','TRUCK','WALKER'];
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [driverLicense, setDriverLicense] = useState<string | null>(null);
+  const [documentUri, setDocumentUri] = useState<string | null>(null); // ID card / driver license image
+  const [vehiclePhotoUri, setVehiclePhotoUri] = useState<string | null>(null); // Vehicle with plate visible
   const [uploadingImage, setUploadingImage] = useState(false);
   const [verifyingLicense, setVerifyingLicense] = useState(false);
   const { register } = useAuth();
@@ -39,7 +42,7 @@ export default function RegisterScreen({ navigation }: any) {
   const { t } = useLanguage();
 
   const handleRegister = async () => {
-    if (!firstName || !lastName || !email || !password || !confirmPassword || !phoneNumber || !vehicle) {
+  if (!firstName || !lastName || !email || !password || !confirmPassword || !phoneNumber || !vehicleType) {
       Alert.alert(t('error') || 'Error', t('fillAllFields') || 'Please fill in all fields');
       return;
     }
@@ -59,8 +62,8 @@ export default function RegisterScreen({ navigation }: any) {
       return;
     }
 
-    // Show license verification modal if we have a license
-    if (driverLicense) {
+  // Show document verification modal if we have a document
+  if (documentUri) {
       setVerifyingLicense(true);
       
       // Simulate license verification process (would be handled by API in production)
@@ -83,24 +86,54 @@ export default function RegisterScreen({ navigation }: any) {
         email,
         password,
         phoneNumber,
-        vehicle,
-        driverLicense
+        vehicleType,
+        documentUri,
+        vehiclePhotoUri
       );
       
       if (success) {
-        Alert.alert(t('success') || 'Success', t('accountCreated') || 'Account created successfully!');
+        Alert.alert(
+          t('success') || 'Success', 
+          t('accountCreated') || 'Account created successfully! Please check your email for a verification link. You can now log in.',
+          [
+            {
+              text: t('goToLogin') || 'Go to Login',
+              onPress: () => navigation.navigate('Login')
+            }
+          ]
+        );
       } else {
         Alert.alert(t('error') || 'Error', t('registrationFailed') || 'Failed to create account. Please try again.');
       }
     } catch (error: any) {
-      const errorMsg = error?.response?.data?.message || t('somethingWentWrong') || 'Something went wrong. Please try again.';
-      Alert.alert(t('error') || 'Error', errorMsg);
+      // Display the specific error message from the AuthContext
+      const errorMsg = error.message || t('somethingWentWrong') || 'Something went wrong. Please try again.';
+      
+      // If it's a duplicate account error (409 conflict), offer to go to login
+      if (errorMsg.includes('already registered') || errorMsg.includes('already in use')) {
+        Alert.alert(
+          t('error') || 'Error', 
+          errorMsg,
+          [
+            {
+              text: t('goToLogin') || 'Go to Login',
+              onPress: () => navigation.navigate('Login')
+            },
+            {
+              text: t('tryAgain') || 'Try Again',
+              style: 'cancel'
+            }
+          ]
+        );
+      } else {
+        Alert.alert(t('error') || 'Error', errorMsg);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const pickImage = async () => {
+  const pickImage = async (target: 'document' | 'vehicle') => {
     try {
       setUploadingImage(true);
       
@@ -123,7 +156,7 @@ export default function RegisterScreen({ navigation }: any) {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const selectedAsset = result.assets[0];
         // Store the image URI
-        setDriverLicense(selectedAsset.uri);
+  if (target === 'document') setDocumentUri(selectedAsset.uri); else setVehiclePhotoUri(selectedAsset.uri);
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -133,7 +166,7 @@ export default function RegisterScreen({ navigation }: any) {
     }
   };
 
-  const takePhoto = async () => {
+  const takePhoto = async (target: 'document' | 'vehicle') => {
     try {
       setUploadingImage(true);
       
@@ -155,7 +188,7 @@ export default function RegisterScreen({ navigation }: any) {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const selectedAsset = result.assets[0];
         // Store the image URI
-        setDriverLicense(selectedAsset.uri);
+  if (target === 'document') setDocumentUri(selectedAsset.uri); else setVehiclePhotoUri(selectedAsset.uri);
       }
     } catch (error) {
       console.error('Error taking photo:', error);
@@ -176,7 +209,7 @@ export default function RegisterScreen({ navigation }: any) {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <ActivityIndicator size="large" color="#1E40AF" style={styles.modalSpinner} />
-            <Text style={styles.modalText}>Checking license...</Text>
+            <Text style={styles.modalText}>Validating document...</Text>
             <Text style={styles.modalSubText}>This won&apos;t take long</Text>
           </View>
         </View>
@@ -246,74 +279,101 @@ export default function RegisterScreen({ navigation }: any) {
               />
             </View>
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="car-outline" size={20} color="#6B7280" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Vehicle (e.g., Honda Civic)"
-                value={vehicle}
-                onChangeText={setVehicle}
-                placeholderTextColor="#9CA3AF"
-              />
+            {/* Vehicle Type Dropdown */}
+            <View style={styles.selectorContainer}>
+              <Text style={styles.selectorLabel}>Vehicle Type</Text>
+              <TouchableOpacity style={styles.dropdownSelected} onPress={() => setVehicleTypeOpen(o => !o)}>
+                <Text style={[styles.dropdownText, !vehicleType && styles.dropdownPlaceholder]}>
+                  {vehicleType || 'Select vehicle type'}
+                </Text>
+                <Ionicons name={vehicleTypeOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#374151" />
+              </TouchableOpacity>
+              {vehicleTypeOpen && (
+                <View style={styles.dropdownOptionsContainer}>
+                  {VEHICLE_TYPES.map(opt => (
+                    <TouchableOpacity key={opt} style={styles.dropdownOption} onPress={() => { setVehicleType(opt); setVehicleTypeOpen(false); }}>
+                      <Text style={styles.dropdownOptionText}>{opt}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
 
-            {/* Driver License Upload */}
+            {/* Document Upload */}
             <View style={styles.licenseContainer}>
-              <Text style={styles.licenseLabel}>Driver License</Text>
-              <Text style={styles.licenseSubLabel}>Upload a clear photo of your driver license</Text>
-              
-              {driverLicense ? (
+              <Text style={styles.licenseLabel}>Identification Document</Text>
+              <Text style={styles.licenseSubLabel}>Upload ID card or driver license (optional now)</Text>
+              {documentUri ? (
                 <View style={styles.uploadedImageContainer}>
-                  <Image 
-                    source={{ 
-                      uri: driverLicense || 'https://via.placeholder.com/400x300?text=License+Preview'
-                    }} 
+                  <Image
+                    source={{ uri: documentUri || 'https://via.placeholder.com/400x300?text=Document' }}
                     style={styles.uploadedImage}
                     accessible={true}
-                    accessibilityLabel="Driver's license photo"
-                    alt="Driver's license photo" // Added for ESLint compatibility
+                    accessibilityLabel="Identification document"
+                    alt="Identification document"
                   />
-                  <TouchableOpacity 
-                    style={styles.changeImageButton}
-                    onPress={pickImage}
-                  >
-                    <Text style={styles.changeImageText}>Change Image</Text>
-                  </TouchableOpacity>
+                  <View style={styles.inlineButtons}>
+                    <TouchableOpacity style={styles.smallButton} onPress={() => pickImage('document')}>
+                      <Text style={styles.smallButtonText}>Replace</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.smallButtonOutline} onPress={() => takePhoto('document')}>
+                      <Text style={styles.smallButtonOutlineText}>Camera</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.removeBtn} onPress={() => setDocumentUri(null)}>
+                      <Ionicons name="trash" size={18} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : (
-                <View style={styles.uploadButtonsContainer}>
-                  <TouchableOpacity 
-                    style={styles.uploadButton}
-                    onPress={pickImage}
-                    disabled={uploadingImage}
-                  >
-                    {uploadingImage ? (
-                      <ActivityIndicator size="small" color="#1E40AF" />
-                    ) : (
-                      <>
-                        <Ionicons name="images-outline" size={20} color="#1E40AF" style={styles.uploadIcon} />
-                        <Text style={styles.uploadButtonText}>Gallery</Text>
-                      </>
-                    )}
+                <View style={styles.inlineButtons}>
+                  <TouchableOpacity style={styles.smallButton} onPress={() => pickImage('document')}>
+                    <Text style={styles.smallButtonText}>Pick</Text>
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.uploadButton}
-                    onPress={takePhoto}
-                    disabled={uploadingImage}
-                  >
-                    {uploadingImage ? (
-                      <ActivityIndicator size="small" color="#1E40AF" />
-                    ) : (
-                      <>
-                        <Ionicons name="camera-outline" size={20} color="#1E40AF" style={styles.uploadIcon} />
-                        <Text style={styles.uploadButtonText}>Camera</Text>
-                      </>
-                    )}
+                  <TouchableOpacity style={styles.smallButtonOutline} onPress={() => takePhoto('document')}>
+                    <Text style={styles.smallButtonOutlineText}>Camera</Text>
                   </TouchableOpacity>
                 </View>
               )}
             </View>
+
+            {/* Vehicle Photo Upload */}
+            <View style={styles.licenseContainer}>
+              <Text style={styles.licenseLabel}>Vehicle Photo</Text>
+              <Text style={styles.licenseSubLabel}>Plate visible if motorized vehicle</Text>
+              {vehiclePhotoUri ? (
+                <View style={styles.uploadedImageContainer}>
+                  <Image
+                    source={{ uri: vehiclePhotoUri || 'https://via.placeholder.com/400x300?text=Vehicle' }}
+                    style={styles.uploadedImage}
+                    accessible={true}
+                    accessibilityLabel="Vehicle photo"
+                    alt="Vehicle photo"
+                  />
+                  <View style={styles.inlineButtons}>
+                    <TouchableOpacity style={styles.smallButton} onPress={() => pickImage('vehicle')}>
+                      <Text style={styles.smallButtonText}>Replace</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.smallButtonOutline} onPress={() => takePhoto('vehicle')}>
+                      <Text style={styles.smallButtonOutlineText}>Camera</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.removeBtn} onPress={() => setVehiclePhotoUri(null)}>
+                      <Ionicons name="trash" size={18} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.inlineButtons}>
+                  <TouchableOpacity style={styles.smallButton} onPress={() => pickImage('vehicle')}>
+                    <Text style={styles.smallButtonText}>Pick</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.smallButtonOutline} onPress={() => takePhoto('vehicle')}>
+                    <Text style={styles.smallButtonOutlineText}>Camera</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* Driver License Upload */}
 
             <View style={styles.inputContainer}>
               <Ionicons name="lock-closed-outline" size={20} color="#6B7280" style={styles.inputIcon} />
@@ -556,5 +616,117 @@ const styles = StyleSheet.create({
   modalSubText: {
     fontSize: 14,
     color: '#6B7280',
+  },
+  // Added styles for vehicle type selector & new upload buttons
+  selectorContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  selectorLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  segmentButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+    marginHorizontal: 4,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  segmentButtonActive: {
+    backgroundColor: '#DBEAFE',
+  },
+  segmentButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  segmentButtonTextActive: {
+    color: '#1E3A8A',
+  },
+  segmentIcon: {
+    marginRight: 6,
+  },
+  inlineButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  smallButton: {
+    backgroundColor: '#1E40AF',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  smallButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  smallButtonOutline: {
+    borderColor: '#1E40AF',
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  smallButtonOutlineText: {
+    color: '#1E40AF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  removeBtn: {
+    backgroundColor: '#DC2626',
+    padding: 8,
+    borderRadius: 8,
+  },
+  dropdownSelected: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 8,
+  },
+  dropdownText: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '600',
+  },
+  dropdownPlaceholder: {
+    color: '#6B7280',
+    fontWeight: '400',
+  },
+  dropdownOptionsContainer: {
+    marginTop: 8,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+  },
+  dropdownOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  dropdownOptionText: {
+    fontSize: 14,
+    color: '#111827',
   },
 });

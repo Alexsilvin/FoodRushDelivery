@@ -16,19 +16,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { riderAPI } from '../../services/api';
+import { Delivery, RiderStatus } from '../../types/api';
+import { mapApiDeliveries } from '../../utils/mappers';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 
-interface Delivery {
-  id: string;
-  customerName: string;
-  address: string;
-  distance: string;
-  payment: string;
-  restaurant: string;
-  status: 'pending' | 'accepted' | 'picked_up' | 'delivered';
-  estimatedTime: string;
-}
+// Local UI fallback formatting helpers
+const formatCurrency = (amount?: number) => {
+  if (amount == null) return '$0.00';
+  try { return `$${amount.toFixed(2)}`; } catch { return `$${amount}`; }
+};
 
 export default function DashboardScreen({ navigation }: any) {
   const { user } = useAuth();
@@ -40,22 +38,55 @@ export default function DashboardScreen({ navigation }: any) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'accepted'>('all');
   const [stats, setStats] = useState({
-    todayEarnings: 125.50,
-    completedDeliveries: 8,
-    rating: 4.8,
-    activeDeliveries: 2,
+    todayEarnings: 0,
+    completedDeliveries: 0,
+    rating: 0,
+    activeDeliveries: 0,
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [statusRes, currentRes, earningsRes] = await Promise.all([
+        riderAPI.getStatus().catch(e => { console.warn('Status fetch failed', e?.response?.status); return { success: false }; }),
+        riderAPI.getCurrentDeliveries().catch(e => { console.warn('Current deliveries fetch failed', e?.response?.status); return { success: false, data: [] }; }),
+        riderAPI.getEarnings('day').catch(e => { console.warn('Earnings fetch failed', e?.response?.status); return { success: false }; })
+      ]);
+
+      if (currentRes?.data) {
+        setDeliveries(mapApiDeliveries(currentRes.data));
+      }
+
+      const statSource: Partial<RiderStatus> = (statusRes && (statusRes as any).data) || {};
+      setStats(prev => ({
+        ...prev,
+        todayEarnings: (earningsRes as any)?.data?.total ?? prev.todayEarnings,
+        completedDeliveries: statSource.completedToday ?? prev.completedDeliveries,
+        rating: statSource.rating ?? prev.rating,
+        activeDeliveries: statSource.activeDeliveries ?? (currentRes?.data?.length || 0)
+      }));
+    } catch (e: any) {
+      console.error('Dashboard fetch error', e);
+      setError(e?.response?.data?.message || e.message || 'Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
   useEffect(() => {
-    loadDeliveries();
+    fetchData();
     
     // Entrance animation
-    Animated.parallel([
+  Animated.parallel([ 
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 800,
@@ -73,7 +104,7 @@ export default function DashboardScreen({ navigation }: any) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [fadeAnim, slideAnim, scaleAnim]);
+  }, [fadeAnim, slideAnim, scaleAnim, fetchData]);
 
   const filterDeliveries = useCallback(() => {
     let filtered = deliveries;
@@ -85,11 +116,14 @@ export default function DashboardScreen({ navigation }: any) {
 
     // Filter by search query
     if (searchQuery.trim()) {
-      filtered = filtered.filter(delivery =>
-        delivery.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        delivery.restaurant.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        delivery.address.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      filtered = filtered.filter(delivery => {
+        const q = searchQuery.toLowerCase();
+        return (
+          (delivery.customerName?.toLowerCase().includes(q)) ||
+          (delivery.restaurant?.toLowerCase().includes(q)) ||
+          (delivery.address?.toLowerCase().includes(q))
+        );
+      });
     }
 
     setFilteredDeliveries(filtered);
@@ -99,47 +133,10 @@ export default function DashboardScreen({ navigation }: any) {
     filterDeliveries();
   }, [filterDeliveries]);
 
-  const loadDeliveries = () => {
-    // Mock delivery data
-    const mockDeliveries: Delivery[] = [
-      {
-        id: '1',
-        customerName: 'Sarah Johnson',
-        address: '123 Oak Street, Downtown',
-        distance: '2.5 km',
-        payment: '$12.50',
-        restaurant: 'Pizza Palace',
-        status: 'pending',
-        estimatedTime: '25 min',
-      },
-      {
-        id: '2',
-        customerName: 'Mike Chen',
-        address: '456 Elm Avenue, Midtown',
-        distance: '1.8 km',
-        payment: '$18.75',
-        restaurant: 'Burger Barn',
-        status: 'pending',
-        estimatedTime: '20 min',
-      },
-      {
-        id: '3',
-        customerName: 'Emma Davis',
-        address: '789 Pine Road, Uptown',
-        distance: '3.2 km',
-        payment: '$15.25',
-        restaurant: 'Sushi Spot',
-        status: 'accepted',
-        estimatedTime: '30 min',
-      },
-    ];
-    setDeliveries(mockDeliveries);
-  };
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadDeliveries();
-    setTimeout(() => setRefreshing(false), 1000);
+    fetchData().finally(() => setRefreshing(false));
   };
 
   const handleAcceptDelivery = (deliveryId: string) => {
@@ -151,14 +148,15 @@ export default function DashboardScreen({ navigation }: any) {
         {
           text: t('accept'),
           onPress: () => {
-            setDeliveries(prev =>
-              prev.map(delivery =>
-                delivery.id === deliveryId
-                  ? { ...delivery, status: 'accepted' }
-                  : delivery
-              )
-            );
-            Alert.alert(t('success'), t('deliveryAccepted'));
+            riderAPI.acceptDelivery(deliveryId)
+              .then(res => {
+                setDeliveries(prev => prev.map(d => d.id === deliveryId ? { ...d, status: res.data?.status || 'accepted' } : d));
+                Alert.alert(t('success'), t('deliveryAccepted'));
+              })
+              .catch(err => {
+                console.error('Accept failed', err);
+                Alert.alert(t('error'), err?.response?.data?.message || 'Failed to accept delivery');
+              });
           },
         },
       ]
@@ -166,6 +164,7 @@ export default function DashboardScreen({ navigation }: any) {
   };
 
   const handleDeclineDelivery = (deliveryId: string) => {
+    // If backend supports decline endpoint integrate here; for now just remove locally
     setDeliveries(prev => prev.filter(delivery => delivery.id !== deliveryId));
   };
 
@@ -181,7 +180,7 @@ export default function DashboardScreen({ navigation }: any) {
     >
       <View style={styles.deliveryHeader}>
         <Text style={[styles.customerName, { color: theme.colors.text }]}>{delivery.customerName}</Text>
-        <Text style={[styles.payment, { color: theme.colors.success }]}>{delivery.payment}</Text>
+  <Text style={[styles.payment, { color: theme.colors.success }]}>{delivery.payment}</Text>
       </View>
       
       <View style={styles.deliveryInfo}>
@@ -216,7 +215,7 @@ export default function DashboardScreen({ navigation }: any) {
         </View>
       )}
 
-      {delivery.status === 'accepted' && (
+  {delivery.status === 'accepted' && (
         <View style={styles.statusContainer}>
           <View style={[styles.statusBadge, { backgroundColor: theme.colors.success + '20' }]}>
             <Text style={[styles.statusText, { color: theme.colors.success }]}>{t('acceptedReady')}</Text>
@@ -338,7 +337,23 @@ export default function DashboardScreen({ navigation }: any) {
           </View>
         </View>
 
-        {filteredDeliveries.length > 0 ? (
+        {loading && (
+          <View style={styles.emptyState}>
+            <Ionicons name="refresh" size={48} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{t('loading') || 'Loading...'}</Text>
+          </View>
+        )}
+        {!!error && !loading && (
+          <View style={styles.emptyState}>
+            <Ionicons name="warning-outline" size={48} color={theme.colors.error} />
+            <Text style={[styles.emptyTitle, { color: theme.colors.error }]}>{t('error')}</Text>
+            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{error}</Text>
+            <TouchableOpacity onPress={fetchData} style={{ marginTop: 12 }}>
+              <Text style={{ color: theme.colors.primary }}>{t('retry') || 'Retry'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!loading && !error && (filteredDeliveries.length > 0 ? (
           filteredDeliveries.map(renderDeliveryCard)
         ) : (
           <View style={styles.emptyState}>
@@ -346,7 +361,7 @@ export default function DashboardScreen({ navigation }: any) {
             <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>{t('noDeliveries')}</Text>
             <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{t('checkBackLater')}</Text>
           </View>
-        )}
+        ))}
       </View>
     </ScrollView>
     </View>

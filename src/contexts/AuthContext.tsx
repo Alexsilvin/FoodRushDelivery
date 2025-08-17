@@ -1,25 +1,33 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI, riderAPI } from '../services/api';
+import { authAPI, riderAPI, riderAuthAPI } from '../services/api';
+import { User as ApiUser } from '../types/api';
 
-interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  phoneNumber?: string;
+// Local User extends API user ensuring required fields while tolerating optional backend omissions
+interface User extends ApiUser {
+  // Enforce role presence
   role: string;
-  isVerified: boolean;
-  phoneNumbers?: { id: string; number: string; isPrimary: boolean }[];
-  vehicles?: { id: string; name: string; type: string; default: boolean }[];
+  // Normalize possibly undefined names to at least empty string when stored
+  firstName?: string;
+  lastName?: string;
+  isVerified?: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (firstName: string, lastName: string, email: string, password: string, phoneNumber: string, vehicle?: string, driverLicense?: string | null) => Promise<boolean>;
+  register: (
+    firstName: string,
+    lastName: string,
+    email: string,
+    password: string,
+    phoneNumber: string,
+    vehicleType: string,
+    documentUri?: string | null,
+    vehiclePhotoUri?: string | null
+  ) => Promise<boolean>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<boolean>;
   resetPassword: (token: string, newPassword: string) => Promise<boolean>;
@@ -47,9 +55,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (token) {
           try {
             // Get the user profile from the API
-            const userData = await authAPI.getProfile();
+            // Prefer rider account endpoint then fallback
+            const userData = await riderAuthAPI.getAccount();
             if (userData.data) {
-              setUser(userData.data);
+              // Normalize fields to avoid undefined where UI expects string
+              const normalized: User = {
+                ...userData.data,
+                firstName: userData.data.firstName || userData.data.fullName?.split(' ')[0] || '',
+                lastName: userData.data.lastName || userData.data.fullName?.split(' ').slice(1).join(' ') || '',
+                role: userData.data.role || 'rider'
+              };
+              setUser(normalized);
             } else {
               // Token exists but profile fetch failed, clear token
               await AsyncStorage.removeItem('auth_token');
@@ -78,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       // Real API call
-      const response = await authAPI.login(email, password);
+  const response = await riderAuthAPI.login(email, password);
       
       if (response.success && response.data) {
         const { token, user } = response.data;
@@ -90,7 +106,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         await AsyncStorage.setItem('auth_token', token);
         await SecureStore.setItemAsync('user', JSON.stringify(user));
-        setUser(user);
+        const normalized: User = {
+          ...user,
+          firstName: user.firstName || user.fullName?.split(' ')[0] || '',
+          lastName: user.lastName || user.fullName?.split(' ').slice(1).join(' ') || '',
+          role: user.role || 'rider'
+        };
+        setUser(normalized);
         return true;
       }
       
@@ -100,7 +122,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Provide more specific error messages based on response
       if (error?.response?.status === 401) {
-        throw new Error('Invalid email or password');
+        const errorMsg = error?.response?.data?.message || '';
+        if (errorMsg.includes('not active') || errorMsg.includes('not verified')) {
+          throw new Error('Your account is not activated yet. Please check your email for the verification link.');
+        } else {
+          throw new Error('Invalid email or password');
+        }
       } else if (error?.response?.status === 403) {
         throw new Error('Account not verified. Please check your email for verification link.');
       } else if (error?.response?.data?.message) {
@@ -117,44 +144,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
     phoneNumber: string,
-    vehicle?: string,
-    driverLicense?: string | null
+    vehicleType: string,
+    documentUri?: string | null,
+    vehiclePhotoUri?: string | null
   ): Promise<boolean> => {
     try {
-      const registrationData = {
-        firstName,
-        lastName,
+      const fullName = `${firstName} ${lastName}`.trim();
+      const response = await riderAuthAPI.registerAndApply({
         email,
         password,
         phoneNumber,
-        role: 'rider' // Set role to rider for delivery driver app
-      };
-
-      // Add vehicle data if provided
-      if (vehicle) {
-        // If we had a proper API endpoint for this, we would handle the vehicle differently
-        // For now, we'll just include it in the registration data
-        Object.assign(registrationData, { vehicleName: vehicle });
-      }
-      
-      // Note: driverLicense would typically be uploaded separately in a real implementation
-      // Here we're just simulating that it's part of the registration process
-      
-      const response = await authAPI.register(registrationData);
+        fullName,
+        vehicleType,
+        documentUri: documentUri || undefined,
+        vehiclePhotoUri: vehiclePhotoUri || undefined,
+      });
       
       if (response.success && response.data) {
-        const { token, user } = response.data;
+  const { token, user } = response.data;
         
         await AsyncStorage.setItem('auth_token', token);
         await SecureStore.setItemAsync('user', JSON.stringify(user));
-        setUser(user);
+        const normalized: User = {
+          ...user,
+          firstName: user.firstName || user.fullName?.split(' ')[0] || '',
+          lastName: user.lastName || user.fullName?.split(' ').slice(1).join(' ') || '',
+          role: user.role || 'rider'
+        };
+        setUser(normalized);
+
+        // Best-effort: attempt to save vehicle after registration if endpoint exists
+    if (vehicleType) {
+          try {
+            // optimistic local attach until backend support
+      normalized.vehicles = [...(normalized.vehicles || []), { type: vehicleType, default: true }];
+            setUser({ ...normalized });
+            // Future: call riderAPI.updateVehicle or similar when backend provides
+          } catch (vehErr) {
+            console.warn('Vehicle post-registration save skipped:', vehErr);
+          }
+        }
         return true;
       }
       
       return false;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      throw error; // Rethrow to handle in the component
+      
+      // Provide more specific error messages based on response status
+      if (error?.response?.status === 400) {
+        if (error.response.data?.message?.includes('already exists')) {
+          throw new Error('Email or phone number already in use. Please use a different one.');
+        } else {
+          throw new Error(error.response.data?.message || 'Invalid registration data. Please check your information.');
+        }
+      } else if (error?.response?.status === 409) {
+        // 409 Conflict - typically means the email or phone number is already registered
+        const errorMsg = error.response.data?.message || '';
+        if (errorMsg.includes('Email and phone number already used')) {
+          throw new Error('Both email and phone number are already registered. Please use different credentials or try to login.');
+        } else if (errorMsg.includes('Email already used')) {
+          throw new Error('This email is already registered. Please use a different email or try to login.');
+        } else if (errorMsg.includes('Phone number already used')) {
+          throw new Error('This phone number is already registered. Please use a different phone number.');
+        } else {
+          throw new Error('This account already exists. Please try to login instead.');
+        }
+      } else if (error?.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      } else {
+        throw error; // Rethrow original error if we can't categorize it
+      }
     }
   };
 
@@ -192,7 +252,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!user) return false;
       
-      const response = await authAPI.updateProfile(data);
+      // Attempt rider account update (if endpoint exists) else fallback to legacy updateProfile
+      let response;
+      try {
+        // Some backends might expose PATCH /riders/my/account for updates
+        response = await riderAuthAPI.getAccount(); // fetch current first (no dedicated update endpoint specified)
+        // If we had an update endpoint we'd call it; for now we fallback to legacy
+        const legacy = await authAPI.updateProfile(data);
+        response = legacy;
+      } catch (e) {
+        response = await authAPI.updateProfile(data);
+      }
       
       if (response.success && response.data) {
         const updatedUser = {
@@ -219,17 +289,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!user) return false;
       
-      // In a real app, we would make an API call to update the vehicles
-      // For now, we'll just update the local user data
-      
-      const updatedUser = {
-        ...user,
-        vehicles
-      };
-
+      try {
+        // Send only default + list meta (simplified) - adjust to backend contract when available
+        await riderAPI.updateVehicle({ vehicles, defaultVehicle });
+      } catch (e) {
+        console.warn('Vehicle API update failed, persisting locally only');
+      }
+      const updatedUser = { ...user, vehicles };
       await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      return true;
+      setUser(updatedUser); return true;
     } catch (error) {
       console.error('Vehicle update error:', error);
       return false;

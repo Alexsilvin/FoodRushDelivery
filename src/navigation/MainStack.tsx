@@ -15,6 +15,7 @@ import MapScreen from '../screens/main/MapScreen';
 import EditProfileScreen from '../screens/main/EditProfileScreen';
 import VehicleInfoScreen from '../screens/main/VehicleInfoScreen';
 import PhoneNumbersScreen from '../screens/main/PhoneNumbersScreen';
+import AvailabilityScheduleScreen from '../screens/main/AvailabilityScheduleScreen';
 import GlobalCallOverlay from '../components/GlobalCallOverlay';
 
 const Stack = createStackNavigator();
@@ -159,6 +160,11 @@ export default function MainStack() {
           options={{
             headerShown: false,
           }}
+        />
+        <Stack.Screen
+          name="AvailabilitySchedule"
+          component={AvailabilityScheduleScreen}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
       <GlobalCallOverlay />

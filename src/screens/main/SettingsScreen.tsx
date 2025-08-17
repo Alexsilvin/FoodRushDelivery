@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { riderAPI, riderAuthAPI } from '../../services/api';
 import LanguageSelector from '../../components/LanguageSelector';
 
 interface SettingItemProps {
@@ -70,6 +71,64 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
   const [dataUsageEnabled, setDataUsageEnabled] = useState(true);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [online, setOnline] = useState<boolean>(false);
+  const [updatingStatus, setUpdatingStatus] = useState<boolean>(false);
+  const [applying, setApplying] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    let mounted = true;
+    riderAPI.getStatus()
+      .then(res => {
+        if (!mounted) return;
+        const status = (res as any)?.data?.status;
+        if (status === 'online' || status === 'offline') setOnline(status === 'online');
+      })
+      .catch(() => {/* silent */});
+    return () => { mounted = false; };
+  }, []);
+
+  const toggleOnline = async () => {
+    if (updatingStatus) return;
+    const next = !online;
+    setOnline(next); // optimistic
+    setUpdatingStatus(true);
+    try {
+      const res = await riderAPI.updateStatus(next ? 'online' : 'offline');
+      const confirmed = (res as any)?.data?.status;
+      if (confirmed && confirmed !== (next ? 'online' : 'offline')) {
+        setOnline(confirmed === 'online');
+      }
+    } catch (e: any) {
+      setOnline(!next); // revert
+      Alert.alert(t('error'), e?.response?.data?.message || 'Failed to update status');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const showApplyDialog = () => {
+    Alert.alert(
+      t('applyToRider') || 'Apply to Become a Rider',
+      t('applyToRiderDescription') || 'Submit your application to become an approved rider.',
+      [
+        { text: t('cancel'), style: 'cancel' },
+        { text: applying ? (t('pleaseWait') || 'Please wait') : (t('apply') || 'Apply'), onPress: () => { if (!applying) handleApply(); } }
+      ]
+    );
+  };
+
+  const handleApply = async () => {
+    if (applying) return;
+    setApplying(true);
+    try {
+      const res = await riderAuthAPI.apply();
+      Alert.alert(t('success'), res?.message || t('applicationSubmitted') || 'Application submitted.');
+    } catch (e: any) {
+      Alert.alert(t('error'), e?.response?.data?.message || 'Failed to submit application');
+    } finally {
+      setApplying(false);
+    }
+  };
   
   // App information
   const appVersion = "1.0.0";
@@ -521,6 +580,23 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
         <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
           {t('delivery').toUpperCase()}
         </Text>
+
+        {/* Online status toggle */}
+        <SettingItem
+          title={(t('onlineStatus') || 'Online Status') + (updatingStatus ? '…' : '')}
+          subtitle={online ? (t('youAreOnline') || 'You are currently online') : (t('youAreOffline') || 'You are currently offline')}
+          icon={online ? 'radio-button-on-outline' : 'radio-button-off-outline'}
+          onPress={toggleOnline}
+          rightComponent={
+            <Switch
+              value={online}
+              onValueChange={toggleOnline}
+              disabled={updatingStatus}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primary + '40' }}
+              thumbColor={online ? theme.colors.primary : theme.colors.textSecondary}
+            />
+          }
+        />
         
         <SettingItem
           title={t('vehicleInformation')}
@@ -533,24 +609,7 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
           title={t('workingHours')}
           subtitle={t('setAvailability')}
           icon="time-outline"
-          onPress={() => {
-            Alert.alert(
-              t('setSchedule'),
-              t('scheduleDescription'),
-              [
-                {
-                  text: t('setWeeklyHours'),
-                  onPress: () => {
-                    Alert.alert(t('comingSoon'), t('featureAvailableSoon'));
-                  },
-                },
-                {
-                  text: t('cancel'),
-                  style: 'cancel',
-                }
-              ]
-            );
-          }}
+          onPress={() => navigation.navigate('AvailabilitySchedule')}
         />
         
         <SettingItem
@@ -582,6 +641,19 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
         <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
           {t('support').toUpperCase()}
         </Text>
+
+        {/* Rider application (shown if not verified / approved) */}
+        {!user?.isVerified && (
+          <SettingItem
+            title={t('applyToRider') || 'Apply to Become a Rider'}
+            subtitle={t('applyToRiderDescription') || 'Submit application for approval'}
+            icon="clipboard-outline"
+            onPress={showApplyDialog}
+            rightComponent={
+              applying ? <Ionicons name="hourglass" size={18} color={theme.colors.primary} /> : <Ionicons name="arrow-forward" size={18} color={theme.colors.textSecondary} />
+            }
+          />
+        )}
         
         <SettingItem
           title={t('helpSupport')}
