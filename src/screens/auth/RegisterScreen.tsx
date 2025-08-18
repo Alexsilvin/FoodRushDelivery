@@ -27,9 +27,9 @@ export default function RegisterScreen({ navigation }: any) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [vehicleType, setVehicleType] = useState(''); // BICYCLE | MOTORBIKE | CAR | VAN | TRUCK | WALKER
+  const [vehicleType, setVehicleType] = useState(''); // BICYCLE | MOTORCYCLE | CAR | VAN | TRUCK | WALKER
   const [vehicleTypeOpen, setVehicleTypeOpen] = useState(false);
-  const VEHICLE_TYPES = ['BICYCLE','MOTORBIKE','CAR','VAN','TRUCK','WALKER'];
+  const VEHICLE_TYPES = ['BICYCLE','MOTORCYCLE','CAR','VAN','TRUCK','WALKER'];
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -42,8 +42,15 @@ export default function RegisterScreen({ navigation }: any) {
   const { t } = useLanguage();
 
   const handleRegister = async () => {
-  if (!firstName || !lastName || !email || !password || !confirmPassword || !phoneNumber || !vehicleType) {
+    if (!firstName || !lastName || !email || !password || !confirmPassword || !phoneNumber || !vehicleType) {
       Alert.alert(t('error') || 'Error', t('fillAllFields') || 'Please fill in all fields');
+      return;
+    }
+
+    // If motorized vehicle selected require vehicle photo
+    const motorized = ['MOTORCYCLE','CAR','VAN','TRUCK'];
+    if (motorized.includes(vehicleType) && !vehiclePhotoUri) {
+      Alert.alert('Vehicle Photo Required','Please upload a vehicle photo with plate visible for selected vehicle type.');
       return;
     }
 
@@ -80,7 +87,7 @@ export default function RegisterScreen({ navigation }: any) {
     setLoading(true);
     
     try {
-      const success = await register(
+  const success = await register(
         firstName,
         lastName,
         email,
@@ -106,8 +113,8 @@ export default function RegisterScreen({ navigation }: any) {
         Alert.alert(t('error') || 'Error', t('registrationFailed') || 'Failed to create account. Please try again.');
       }
     } catch (error: any) {
-      // Display the specific error message from the AuthContext
-      const errorMsg = error.message || t('somethingWentWrong') || 'Something went wrong. Please try again.';
+      // Display specific backend message including normalized hints
+      const errorMsg = error?.response?.data?.message || error.message || t('somethingWentWrong') || 'Something went wrong. Please try again.';
       
       // If it's a duplicate account error (409 conflict), offer to go to login
       if (errorMsg.includes('already registered') || errorMsg.includes('already in use')) {

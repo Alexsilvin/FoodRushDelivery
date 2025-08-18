@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { riderAPI, riderAuthAPI } from '../../services/api';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useNavigation } from '@react-navigation/native';
@@ -23,8 +24,17 @@ export default function ProfileScreen() {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const navigation = useNavigation();
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState<boolean>(false);
   const [notifications, setNotifications] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [todayEarnings, setTodayEarnings] = useState<number | null>(null);
+  const [rating, setRating] = useState<number | null>(null);
+  const [completedDeliveries, setCompletedDeliveries] = useState<number | null>(null);
+  const [completionRate, setCompletionRate] = useState<string | null>(null);
+
+  // Derive vehicle type (backend may store on vehicle or root)
+  const vehicleType = user?.vehicleType || user?.vehicles?.find(v => v.default)?.type || user?.vehicles?.[0]?.type;
 
   // Animation values
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -74,11 +84,77 @@ export default function ProfileScreen() {
   };
 
   const profileStats = [
-    { label: t('totalDeliveries'), value: '247', icon: 'car-outline' },
-    { label: t('rating'), value: '4.8', icon: 'star' },
-    { label: t('thisMonth'), value: '$1,247', icon: 'wallet-outline' },
-    { label: t('completionRate'), value: '98%', icon: 'checkmark-circle-outline' },
+    { label: t('totalDeliveries'), value: completedDeliveries != null ? String(completedDeliveries) : '—', icon: 'car-outline' },
+    { label: t('rating'), value: rating != null ? rating.toFixed(1) : '—', icon: 'star' },
+    { label: t('todayEarnings') || 'Today', value: todayEarnings != null ? `$${todayEarnings}` : '—', icon: 'wallet-outline' },
+    { label: t('completionRate'), value: completionRate || '—', icon: 'checkmark-circle-outline' },
   ];
+
+  // Fetch dynamic profile info
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        setProfileLoading(true);
+        // Status
+        const statusRes = await riderAPI.getStatus().catch(() => null);
+        if (mounted && statusRes?.data) setIsOnline(statusRes.data.status === 'online');
+        // Account for additional stats if provided
+        if (user) {
+          setRating(user.rating ?? user['averageRating'] ?? null);
+          setCompletedDeliveries(user.completedDeliveries ?? user['totalDeliveries'] ?? null);
+          const comp = user['completionRate'] ?? user['deliveryCompletionRate'];
+          if (comp != null) setCompletionRate(typeof comp === 'number' ? `${comp}%` : String(comp));
+        }
+        // Earnings today
+        const earnRes = await riderAPI.getEarnings('today').catch(() => null);
+        if (mounted && earnRes?.data) setTodayEarnings(earnRes.data.total ?? null);
+      } finally {
+        mounted && setProfileLoading(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, [user]);
+
+  const toggleOnline = async (value: boolean) => {
+    const previous = isOnline;
+    setIsOnline(value);
+    setLoadingStatus(true);
+    try {
+      // Prefer availability endpoint (available boolean) for clearer semantics
+  const res = await riderAPI.updateAvailability(value);
+  if (!res?.success) throw new Error(res?.message || 'Availability not accepted');
+    } catch (e: any) {
+      // fallback to status endpoint
+      try {
+        await riderAPI.updateStatus(value ? 'online' : 'offline');
+      } catch (finalErr: any) {
+        console.warn('Availability toggle failed:', finalErr?.response?.data || finalErr?.message);
+        setIsOnline(previous); // revert
+        const message = finalErr?.response?.data?.message || 'Could not change availability';
+        Alert.alert('Status Update Failed', message);
+      }
+    } finally {
+      setLoadingStatus(false);
+    }
+  };
+
+  const refreshProfile = async () => {
+    setProfileLoading(true);
+    try {
+      const account = await riderAuthAPI.getAccount();
+      if (account?.data) {
+        // minimal fields already stored in context; stats extracted earlier via user dependency
+      }
+      const statusRes = await riderAPI.getStatus().catch(()=>null);
+      if (statusRes?.data) setIsOnline(statusRes.data.status === 'online');
+      const earnRes = await riderAPI.getEarnings('today').catch(()=>null);
+      if (earnRes?.data) setTodayEarnings(earnRes.data.total ?? null);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
@@ -125,17 +201,31 @@ export default function ProfileScreen() {
                   })
                 }}
               >
-                <Text style={styles.name}>{`${user?.firstName || ''} ${user?.lastName || ''}` || 'User'}</Text>
+                <Text style={styles.name}>{user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'User'}</Text>
                 <Text style={styles.email}>{user?.email || 'No email'}</Text>
+                <View style={styles.badgeRow}>
+                  {user?.isVerified && (
+                    <View style={styles.badgeVerified}>
+                      <Ionicons name="checkmark-circle" size={14} color="#fff" />
+                      <Text style={styles.badgeText}>Verified</Text>
+                    </View>
+                  )}
+                  {vehicleType && (
+                    <View style={styles.badgeNeutral}>
+                      <Ionicons name="car-outline" size={14} color="#1E40AF" />
+                      <Text style={styles.badgeNeutralText}>{vehicleType}</Text>
+                    </View>
+                  )}
+                </View>
               </Animated.View>
               
               <View style={styles.onlineStatus}>
                 <Text style={styles.statusLabel}>{t('availableForDeliveries')}</Text>
                 <Switch
                   value={isOnline}
-                  onValueChange={setIsOnline}
+                  onValueChange={toggleOnline}
                   trackColor={{ false: 'rgba(255,255,255,0.3)', true: 'rgba(255,255,255,0.5)' }}
-                  thumbColor={isOnline ? '#FFFFFF' : '#D1D5DB'}
+                  thumbColor={loadingStatus ? '#FBBF24' : (isOnline ? '#FFFFFF' : '#D1D5DB')}
                 />
               </View>
             </View>
@@ -183,6 +273,33 @@ export default function ProfileScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>{t('account')}</Text>
+
+          {/* Account detail rows */}
+          <View style={[styles.detailRow, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Full Name</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim()}</Text>
+          </View>
+          <View style={[styles.detailRow, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Email</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{user?.email}</Text>
+          </View>
+            <View style={[styles.detailRow, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Phone</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{user?.phoneNumber || user?.phoneNumbers?.find(p=>p.isPrimary)?.number || '—'}</Text>
+          </View>
+          <View style={[styles.detailRow, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Vehicle Type</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{vehicleType || '—'}</Text>
+          </View>
+          <View style={[styles.detailRowLast, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Verified</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{user?.isVerified ? 'Yes' : 'No'}</Text>
+          </View>
+
+          <TouchableOpacity style={[styles.refreshButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={refreshProfile} disabled={profileLoading}>
+            <Ionicons name="refresh" size={18} color={theme.colors.primary} />
+            <Text style={[styles.refreshText, { color: theme.colors.primary }]}>{profileLoading ? 'Refreshing...' : 'Refresh'}</Text>
+          </TouchableOpacity>
           
           <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]} onPress={handleEditProfile}>
             <View style={styles.menuItemLeft}>
@@ -385,6 +502,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
+  badgeRow: { flexDirection: 'row', marginTop: 8 },
+  badgeVerified: { flexDirection: 'row', backgroundColor: '#059669', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginRight: 8, alignItems: 'center' },
+  badgeText: { color: '#fff', fontSize: 12, marginLeft: 4, fontWeight: '600' },
+  badgeNeutral: { flexDirection: 'row', backgroundColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignItems: 'center' },
+  badgeNeutralText: { color: '#1E40AF', fontSize: 12, marginLeft: 4, fontWeight: '600' },
   section: {
     borderRadius: 12,
     marginBottom: 20,
@@ -394,6 +516,12 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
+  detailRowLast: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
+  detailLabel: { fontSize: 14, fontWeight: '500' },
+  detailValue: { fontSize: 14, fontWeight: '600' },
+  refreshButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', margin: 16, paddingVertical: 10, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
+  refreshText: { marginLeft: 6, fontSize: 14, fontWeight: '600' },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',

@@ -45,12 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // First, clear any existing auth data to ensure we start fresh
-        await AsyncStorage.removeItem('auth_token');
-        await SecureStore.deleteItemAsync('user');
-        setUser(null);
-        
-        // Now, let's initialize auth properly
+  // Initialize auth from persisted storage (do NOT wipe token here)
         const token = await AsyncStorage.getItem('auth_token');
         if (token) {
           try {

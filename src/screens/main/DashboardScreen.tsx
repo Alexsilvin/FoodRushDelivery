@@ -59,7 +59,7 @@ export default function DashboardScreen({ navigation }: any) {
       const [statusRes, currentRes, earningsRes] = await Promise.all([
         riderAPI.getStatus().catch(e => { console.warn('Status fetch failed', e?.response?.status); return { success: false }; }),
         riderAPI.getCurrentDeliveries().catch(e => { console.warn('Current deliveries fetch failed', e?.response?.status); return { success: false, data: [] }; }),
-        riderAPI.getEarnings('day').catch(e => { console.warn('Earnings fetch failed', e?.response?.status); return { success: false }; })
+  riderAPI.getEarnings('today').catch(e => { console.warn('Earnings fetch failed', e?.response?.status); return { success: false }; })
       ]);
 
       if (currentRes?.data) {

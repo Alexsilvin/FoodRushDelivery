@@ -62,6 +62,11 @@ api.interceptors.request.use(
     const token = await AsyncStorage.getItem('auth_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      // Lightweight debug (avoid spamming)
+      if (!config.url?.includes('login')) {
+        console.debug('Auth token missing for request', config.url);
+      }
     }
     return config;
   },
@@ -84,13 +89,8 @@ api.interceptors.response.use(
     // Handle 401 errors (unauthorized - token expired)
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      
-      // You could implement token refresh here if needed
-      
-      // For now, we'll just clear the token and force re-login
-      await AsyncStorage.removeItem('auth_token');
-      // Force logout or redirect to login screen
-      // This part will be handled by AuthContext
+      console.warn('401 received for', originalRequest.url);
+      // (Optional) place for refresh token logic; currently just pass error up
     }
     
     // Handle 409 conflicts (duplicate resources)
@@ -300,14 +300,56 @@ export const riderAuthAPI = {
     if (payload.vehiclePhotoUri) {
       form.append('vehiclePhoto', { uri: payload.vehiclePhotoUri, name: 'vehicle.jpg', type: 'image/jpeg' } as any);
     }
-    const response = await api.post<ApiResponse<{ token: string; user: User }>>(ENDPOINTS.riderAuth.registerAndApply, form, { headers: { 'Content-Type': 'multipart/form-data' } });
-    return response.data;
+    try {
+      const response = await api.post<ApiResponse<{ token: string; user: User }>>(ENDPOINTS.riderAuth.registerAndApply, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return response.data;
+    } catch (e: any) {
+      if (e?.response) {
+        console.warn('registerAndApply error status:', e.response.status);
+        console.warn('registerAndApply error data:', JSON.stringify(e.response.data, null, 2));
+        // Normalize message if backend returns array in errors
+        const data = e.response.data || {};
+        if (Array.isArray(data.errors)) {
+            e.response.data.message = data.errors.join(' | ');
+        }
+        // Provide hints
+        if (e.response.status === 400) {
+          const hints: string[] = [];
+          if (!/^[+]?\d[\d\s-]{6,}$/.test(payload.phoneNumber)) hints.push('Use international phone format e.g. +15551234567');
+          if (!payload.vehicleType) hints.push('vehicleType required');
+          if (payload.vehicleType === 'MOTORCYCLE' || payload.vehicleType === 'CAR' || payload.vehicleType === 'VAN' || payload.vehicleType === 'TRUCK') {
+            if (!payload.vehiclePhotoUri) hints.push('vehiclePhoto required for motorized vehicles');
+          }
+          if (hints.length) {
+            e.response.data.message = (e.response.data.message ? e.response.data.message + ' - ' : '') + hints.join('; ');
+          }
+        }
+      }
+      throw e;
+    }
   },
   // Rider login
   login: async (email: string, password: string) => {
     try {
-      const response = await api.post<ApiResponse<{ token: string; user: User }>>(ENDPOINTS.riderAuth.login, { email, password });
-      return response.data;
+      const response = await api.post(ENDPOINTS.riderAuth.login, { email, password });
+      const raw = response.data; // backend native shape
+      // Normalize various possible shapes into ApiResponse<{ token; user }>
+      let token: string | undefined;
+      let user: User | undefined;
+      if (raw?.data) {
+        token = raw.data.accessToken || raw.data.token || raw.data.jwt || raw.data.access_token;
+        user = raw.data.user || raw.data.rider || raw.data.account || raw.data.profile;
+      } else if (raw?.token) {
+        token = raw.token; user = raw.user;
+      }
+      if (!token) {
+        console.warn('riderAuthAPI.login: token missing in response, raw:', JSON.stringify(raw).slice(0,500));
+      }
+      return {
+        success: true,
+        message: raw?.message || 'OK',
+        data: token && user ? { token, user } : undefined,
+      } as ApiResponse<{ token: string; user: User }>;
     } catch (e: any) {
       if (e?.response?.status === 404) {
         console.warn('riderAuth.login 404, falling back to legacy /auth/login');
@@ -356,8 +398,25 @@ export const riderAPI = {
 
   // Update rider's status (online/offline)
   updateStatus: async (status: 'online' | 'offline') => {
-    const response = await api.patch<ApiResponse<RiderStatus>>(ENDPOINTS.rider.updateStatus, { status });
-    return response.data;
+    try {
+      const response = await api.patch<ApiResponse<RiderStatus>>(ENDPOINTS.rider.updateStatus, { isOnline: status === 'online' });
+      return response.data;
+    } catch (e: any) {
+      const code = e?.response?.status;
+      if (code === 400) {
+        console.warn('updateStatus 400 payload error:', JSON.stringify(e?.response?.data, null, 2));
+      }
+      if (code === 404 || code === 400) {
+        // Fallback: some backends only expose /riders/my/availability { available: boolean }
+        try {
+          const alt = await api.patch<ApiResponse>(ENDPOINTS.rider.availability, { isAvailable: status === 'online' });
+          return { ...(alt.data as any), data: { status, ...(alt.data?.data || {}) } } as ApiResponse<RiderStatus>;
+        } catch (altErr) {
+          throw altErr;
+        }
+      }
+      throw e;
+    }
   },
 
   // Get rider's current deliveries
@@ -391,9 +450,31 @@ export const riderAPI = {
   },
 
   // Get rider's earnings
-  getEarnings: async (period: 'day' | 'week' | 'month' | 'all' = 'all') => {
-    const response = await api.get<ApiResponse<EarningsSummary>>(`${ENDPOINTS.rider.earnings}?period=${period}`);
-    return response.data;
+  getEarnings: async (period: 'today' | 'week' | 'month' | 'day' | 'all' = 'today') => {
+    try {
+      // Map legacy/placeholder periods to backend-supported values
+      const mapped = (period === 'day' || period === 'all') ? 'today' : period;
+      const response = await api.get<ApiResponse<EarningsSummary>>(`${ENDPOINTS.rider.earnings}?period=${mapped}`);
+      return response.data;
+    } catch (e: any) {
+      if (e?.response?.status === 400) {
+        console.warn('Earnings 400 response:', JSON.stringify(e.response.data, null, 2));
+        // Try alternative param name 'range' using mapped value
+        try {
+          const mapped = (period === 'day' || period === 'all') ? 'today' : period;
+          const alt = await api.get<ApiResponse<EarningsSummary>>(`${ENDPOINTS.rider.earnings}?range=${mapped}`);
+          return alt.data;
+        } catch {}
+        // Try no query at all
+        try {
+          const bare = await api.get<ApiResponse<EarningsSummary>>(ENDPOINTS.rider.earnings);
+          return bare.data;
+        } catch {}
+        // Return normalized empty summary
+        return { success: false, message: 'Earnings validation failed', data: { period: (period as any), total: 0 } };
+      }
+      throw e;
+    }
   },
 
   // Update rider's location
@@ -418,8 +499,8 @@ export const riderAPI = {
     return response.data;
   },
   // Availability update (alias to riderAuth)
-  updateAvailability: async (available: boolean, schedule?: any) => {
-    const body: any = { available };
+  updateAvailability: async (isAvailable: boolean, schedule?: any) => {
+    const body: any = { isAvailable };
     if (schedule) body.schedule = schedule; // optimistic, backend may ignore
     const response = await api.patch<ApiResponse>(ENDPOINTS.rider.availability, body);
     return response.data;
