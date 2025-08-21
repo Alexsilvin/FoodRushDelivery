@@ -18,6 +18,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useNavigation } from '@react-navigation/native';
 import LanguageSelector from '../../components/LanguageSelector';
+import { useStaggeredFadeIn } from '../../hooks/useStaggeredFadeIn';
+import { useCountUp } from '../../hooks/useCountUp';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
@@ -39,6 +41,7 @@ export default function ProfileScreen() {
   // Animation values
   const scrollY = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -46,7 +49,13 @@ export default function ProfileScreen() {
       duration: 800,
       useNativeDriver: true,
     }).start();
-  }, [fadeAnim]);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1400, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0, duration: 0, useNativeDriver: true })
+      ])
+    ).start();
+  }, [fadeAnim, pulseAnim]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -84,11 +93,28 @@ export default function ProfileScreen() {
   };
 
   const profileStats = [
-    { label: t('totalDeliveries'), value: completedDeliveries != null ? String(completedDeliveries) : '—', icon: 'car-outline' },
-    { label: t('rating'), value: rating != null ? rating.toFixed(1) : '—', icon: 'star' },
-    { label: t('todayEarnings') || 'Today', value: todayEarnings != null ? `$${todayEarnings}` : '—', icon: 'wallet-outline' },
-    { label: t('completionRate'), value: completionRate || '—', icon: 'checkmark-circle-outline' },
+    { label: t('totalDeliveries'), value: completedDeliveries, icon: 'car-outline', type: 'int' as const },
+    { label: t('rating'), value: rating, icon: 'star', type: 'rating' as const },
+    { label: t('todayEarnings') || 'Today', value: todayEarnings, icon: 'wallet-outline', type: 'currency' as const },
+    { label: t('completionRate'), value: completionRate ? parseFloat(String(completionRate).replace(/%/, '')) : null, icon: 'checkmark-circle-outline', type: 'percent' as const },
   ];
+  const statAnimations = useStaggeredFadeIn(profileStats.length, { delay: 90, duration: 450 });
+  // Prepare count up raw values with hooks (order stable)
+  const rawCounts = [
+    useCountUp(Number(profileStats[0].value) || 0, 900),
+    useCountUp(Number(profileStats[1].value) || 0, 900),
+    useCountUp(Number(profileStats[2].value) || 0, 900),
+    useCountUp(Number(profileStats[3].value) || 0, 900),
+  ];
+  const countUps = rawCounts.map((val, idx) => {
+    const stat = profileStats[idx];
+    if (stat.value == null) return '—';
+    switch (stat.type) {
+      case 'currency': return `$${val}`;
+      case 'percent': return `${val}%`;
+      default: return val;
+    }
+  });
 
   // Fetch dynamic profile info
   useEffect(() => {
@@ -219,14 +245,17 @@ export default function ProfileScreen() {
                 </View>
               </Animated.View>
               
-              <View style={styles.onlineStatus}>
-                <Text style={styles.statusLabel}>{t('availableForDeliveries')}</Text>
-                <Switch
-                  value={isOnline}
-                  onValueChange={toggleOnline}
-                  trackColor={{ false: 'rgba(255,255,255,0.3)', true: 'rgba(255,255,255,0.5)' }}
-                  thumbColor={loadingStatus ? '#FBBF24' : (isOnline ? '#FFFFFF' : '#D1D5DB')}
-                />
+              <View>
+                <Animated.View style={[styles.pulseWrapper, { opacity: pulseAnim.interpolate({ inputRange: [0,1], outputRange: [0.4, 0] }), transform: [{ scale: pulseAnim.interpolate({ inputRange: [0,1], outputRange: [1,1.6] }) }] }]} />
+                <View style={styles.onlineStatus}>
+                  <Text style={styles.statusLabel}>{t('availableForDeliveries')}</Text>
+                  <Switch
+                    value={isOnline}
+                    onValueChange={toggleOnline}
+                    trackColor={{ false: 'rgba(255,255,255,0.3)', true: 'rgba(255,255,255,0.5)' }}
+                    thumbColor={loadingStatus ? '#FBBF24' : (isOnline ? '#FFFFFF' : '#D1D5DB')}
+                  />
+                </View>
               </View>
             </View>
           </BlurView>
@@ -248,24 +277,22 @@ export default function ProfileScreen() {
             ]}
           >
             {profileStats.map((stat, index) => (
-              <Animated.View 
-                key={index} 
+              <Animated.View
+                key={index}
                 style={[
-                  styles.statCard, 
-                  { 
+                  styles.statCard,
+                  {
                     backgroundColor: theme.isDark ? 'rgba(55, 65, 81, 0.8)' : 'rgba(255, 255, 255, 0.9)',
-                    transform: [{
-                      scale: scrollY.interpolate({
-                        inputRange: [0, 100],
-                        outputRange: [1, 0.95],
-                        extrapolate: 'clamp',
-                      })
-                    }]
+                    opacity: statAnimations[index],
+                    transform: [
+                      { translateY: statAnimations[index].interpolate({ inputRange: [0,1], outputRange: [20,0] }) },
+                      { scale: scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0.95], extrapolate: 'clamp' }) }
+                    ]
                   }
                 ]}
               >
                 <Ionicons name={stat.icon as any} size={24} color={theme.colors.primary} />
-                <Text style={[styles.statValue, { color: theme.colors.text }]}>{stat.value}</Text>
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{countUps[index]}</Text>
                 <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{stat.label}</Text>
               </Animated.View>
             ))}
@@ -584,5 +611,14 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
+  },
+  pulseWrapper: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 72,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
 });

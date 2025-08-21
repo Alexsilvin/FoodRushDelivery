@@ -16,7 +16,7 @@ const translations = {
     // Navigation
     dashboard: 'Dashboard',
     deliveries: 'My Deliveries',
-    messages: 'Messages',
+  // messages removed (chat feature deprecated)
     map: 'Map',
     profile: 'Profile',
     settings: 'Settings',
@@ -51,21 +51,7 @@ const translations = {
     videoCall: 'Video Call',
     phoneCall: 'Phone Call',
     
-    // Messages
-    searchConversations: 'Search conversations...',
-    noConversationsFound: 'No conversations found',
-    tryDifferentTerm: 'Try searching with a different term',
-    noMessagesYet: 'No messages yet',
-    messagesSubtext: 'Customer messages will appear here when you have active deliveries',
-    typeMessage: 'Type a message...',
-    online: 'Online',
-    contactInfo: 'Contact Info',
-    mute: 'Mute',
-    searchInChat: 'Search in chat',
-    camera: 'Camera',
-    gallery: 'Gallery',
-    files: 'Files',
-    audio: 'Audio',
+  // Chat-specific strings removed
     
     // Profile
     availableForDeliveries: 'Available for deliveries',
@@ -76,23 +62,24 @@ const translations = {
     selectLanguage: 'Select Language',
     
     // Common
-    refresh: 'Refresh',
-    markAllRead: 'Mark all read',
-    clearSearch: 'Clear search',
-    archive: 'Archive',
-    delete: 'Delete',
-    cancel: 'Cancel',
-    save: 'Save',
-    success: 'Success',
-    error: 'Error',
-    loading: 'Loading...',
-    accept: 'Accept',
-    decline: 'Decline',
-    
-    // Loading Screen
-    deliveryDriver: 'Delivery Driver',
-    loadingText: 'Loading...',
-    
+    // Chat enhancements removed
+    // Removed chat enhancement translation keys
+    // typing: 'typing...',
+    // quickReplies: 'Quick Replies',
+    // allFilter: 'All',
+    // unreadFilter: 'Unread',
+    // recentFilter: 'Recent',
+    // starredFilter: 'Starred',
+    // messageCopied: 'Message copied',
+    // deleteMessage: 'Delete Message',
+    // confirmDeleteMessage: 'Are you sure you want to delete this message?',
+    // messageDeleted: 'Message deleted',
+    // starChat: 'Star Chat',
+    // unstarChat: 'Unstar Chat',
+    // pinChat: 'Pin Chat',
+    // unpinChat: 'Unpin Chat',
+    // markResolved: 'Mark Resolved',
+    // resolved: 'Resolved',
     // Delivery Details
     deliveryDetails: 'Delivery Details',
     loadingDeliveryDetails: 'Loading delivery details...',
@@ -141,9 +128,7 @@ const translations = {
     openMaps: 'Open Maps',
     
     // Additional Messages/Chat
-    lastSeen: 'Last seen',
-    delivered: 'Delivered',
-    read: 'Read',
+  // Chat status strings removed
     
     // Settings Screen
     appearance: 'Appearance',
@@ -264,29 +249,13 @@ const translations = {
     // Coming Soon Overlay
     comingSoon: 'Coming Soon',
     mapComingSoonMessage: 'The map experience is being improved. Check back soon!',
-    // Chat enhancements
-    typing: 'typing...',
-    quickReplies: 'Quick Replies',
-    allFilter: 'All',
-    unreadFilter: 'Unread',
-    recentFilter: 'Recent',
-    starredFilter: 'Starred',
-    messageCopied: 'Message copied',
-    deleteMessage: 'Delete Message',
-    confirmDeleteMessage: 'Are you sure you want to delete this message?',
-    messageDeleted: 'Message deleted',
-    starChat: 'Star Chat',
-    unstarChat: 'Unstar Chat',
-    pinChat: 'Pin Chat',
-    unpinChat: 'Unpin Chat',
-    markResolved: 'Mark Resolved',
-    resolved: 'Resolved',
+  // Chat enhancements removed
   },
   fr: {
     // Navigation
     dashboard: 'Tableau de Bord',
     deliveries: 'Mes Livraisons',
-    messages: 'Messages',
+  // messages removed (chat feature deprecated)
     map: 'Carte',
     profile: 'Profil',
     settings: 'Paramètres',
@@ -321,21 +290,7 @@ const translations = {
     videoCall: 'Appel Vidéo',
     phoneCall: 'Appel Téléphonique',
     
-    // Messages
-    searchConversations: 'Rechercher des conversations...',
-    noConversationsFound: 'Aucune conversation trouvée',
-    tryDifferentTerm: 'Essayez de chercher avec un terme différent',
-    noMessagesYet: 'Pas encore de messages',
-    messagesSubtext: 'Les messages des clients apparaîtront ici lorsque vous aurez des livraisons actives',
-    typeMessage: 'Tapez un message...',
-    online: 'En ligne',
-    contactInfo: 'Infos Contact',
-    mute: 'Muet',
-    searchInChat: 'Rechercher dans le chat',
-    camera: 'Caméra',
-    gallery: 'Galerie',
-    files: 'Fichiers',
-    audio: 'Audio',
+  // Chat-specific strings removed
     
     // Profile
     availableForDeliveries: 'Disponible pour les livraisons',
@@ -514,23 +469,7 @@ const translations = {
     // Coming Soon Overlay
     comingSoon: 'Bientôt Disponible',
     mapComingSoonMessage: "L'expérience de la carte est en amélioration. Revenez bientôt !",
-    // Chat enhancements
-    typing: 'écrit...',
-    quickReplies: 'Réponses Rapides',
-    allFilter: 'Tout',
-    unreadFilter: 'Non lus',
-    recentFilter: 'Récents',
-    starredFilter: 'Favoris',
-    messageCopied: 'Message copié',
-    deleteMessage: 'Supprimer le message',
-    confirmDeleteMessage: 'Êtes-vous sûr de vouloir supprimer ce message ?',
-    messageDeleted: 'Message supprimé',
-    starChat: 'Mettre en favori',
-    unstarChat: 'Retirer des favoris',
-    pinChat: 'Épingler',
-    unpinChat: 'Désépingler',
-    markResolved: 'Marquer résolu',
-    resolved: 'Résolu',
+  // Chat enhancements removed
   },
 };
 

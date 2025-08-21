@@ -57,22 +57,50 @@ const api = axios.create({
 });
 
 // Request interceptor for adding auth token to requests
+const isExpired = (jwt?: string | null) => {
+  if (!jwt) return true;
+  const parts = jwt.split('.');
+  if (parts.length !== 3) return false; // not a standard JWT => assume not expired
+  try {
+    const b64 = parts[1].replace(/-/g,'+').replace(/_/g,'/');
+    // Provide fallback if atob is not defined (React Native)
+    const decode = (data: string) => {
+      if (typeof atob === 'function') return atob(data);
+      // Minimal polyfill using Buffer if available
+      const Buf: any = (global as any).Buffer;
+      if (Buf) return Buf.from(data, 'base64').toString('binary');
+      // As a last resort, return empty string to avoid throwing
+      return '';
+    };
+    const json = decode(b64);
+    if (!json) return false;
+    const payload = JSON.parse(json);
+    if (!payload.exp) return false;
+    const now = Math.floor(Date.now()/1000) - 30; // 30s skew
+    return payload.exp < now;
+  } catch {
+    return false;
+  }
+};
+
 api.interceptors.request.use(
   async (config) => {
     const token = await AsyncStorage.getItem('auth_token');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      // Lightweight debug (avoid spamming)
-      if (!config.url?.includes('login')) {
-        console.debug('Auth token missing for request', config.url);
+      if (isExpired(token)) {
+        console.warn('Stored token appears expired; removing.');
+        await AsyncStorage.removeItem('auth_token');
+      } else {
+        config.headers.Authorization = `Bearer ${token}`;
+        // Some backends accept x-access-token
+        (config.headers as any)['x-access-token'] = token;
       }
+    } else if (!config.url?.includes('login')) {
+      console.debug('Auth token missing for request', config.url);
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Response interceptor for handling common errors
@@ -90,7 +118,8 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       console.warn('401 received for', originalRequest.url);
-      // (Optional) place for refresh token logic; currently just pass error up
+      // Clear invalid token so UI can force re-login
+      await AsyncStorage.removeItem('auth_token');
     }
     
     // Handle 409 conflicts (duplicate resources)

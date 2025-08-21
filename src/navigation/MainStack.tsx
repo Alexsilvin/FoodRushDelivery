@@ -6,7 +6,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import DeliveriesScreen from '../screens/main/DeliveriesScreen';
-import ChatScreen from '../screens/main/ChatScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import DeliveryDetailsScreen from '../screens/main/DeliveryDetailsScreen';
@@ -35,8 +34,6 @@ function TabNavigator() {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Deliveries') {
             iconName = focused ? 'car' : 'car-outline';
-          } else if (route.name === 'Chat') {
-            iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           } else if (route.name === 'Map') {
@@ -74,11 +71,6 @@ function TabNavigator() {
         name="Deliveries" 
         component={DeliveriesScreen}
         options={{ title: t('myDeliveries'), headerShown: false }}
-      />
-      <Tab.Screen 
-        name="Chat" 
-        component={ChatScreen}
-        options={{ title: t('messages'), headerShown: false }}
       />
       <Tab.Screen 
         name="Map" 
