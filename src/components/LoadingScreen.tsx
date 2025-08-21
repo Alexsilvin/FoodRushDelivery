@@ -1,17 +1,24 @@
 import React from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../contexts/ThemeContext';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function LoadingScreen() {
+  const { theme } = useTheme();
+  const { t } = useLanguage();
+  
   return (
     <LinearGradient
-      colors={['#1E40AF', '#3B82F6']}
+      colors={theme.isDark 
+        ? [theme.colors.background, theme.colors.surface] 
+        : [theme.colors.primary, theme.colors.secondary]}
       style={styles.container}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Delivery Driver</Text>
+        <Text style={styles.title}>{t('deliveryDriver')}</Text>
         <ActivityIndicator size="large" color="#FFFFFF" style={styles.loader} />
-        <Text style={styles.subtitle}>Loading...</Text>
+        <Text style={styles.subtitle}>{t('loadingText')}</Text>
       </View>
     </LinearGradient>
   );

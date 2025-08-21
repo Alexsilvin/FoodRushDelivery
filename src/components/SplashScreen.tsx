@@ -9,6 +9,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../contexts/ThemeContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -18,6 +19,8 @@ interface SplashScreenProps {
 }
 
 export default function SplashScreen({ onAnimationComplete, onTransitionStart }: SplashScreenProps) {
+  const { theme } = useTheme();
+  
   // Animated values for each letter in "Food"
   const foodLetterAnimations = useRef([
     new Animated.Value(0), // F
@@ -106,10 +109,12 @@ export default function SplashScreen({ onAnimationComplete, onTransitionStart }:
 
   return (
     <LinearGradient
-      colors={['#0f1419', '#1a2332', '#2a3441']} // Dark gradient similar to your design
+      colors={theme.isDark 
+        ? [theme.colors.background, theme.colors.surface, theme.colors.primary + '40'] 
+        : ['#0f1419', '#1a2332', '#2a3441']} // Keep original design for light mode
       style={styles.container}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#0f1419" />
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.statusBar} />
       
       <Animated.View style={[
         styles.content, 

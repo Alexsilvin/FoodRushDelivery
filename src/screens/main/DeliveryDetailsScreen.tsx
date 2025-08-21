@@ -9,6 +9,8 @@ import {
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useCall } from '../../contexts/CallContext';
 
 interface DeliveryDetails {
   id: string;
@@ -43,6 +45,8 @@ interface OrderItem {
 }
 
 export default function DeliveryDetailsScreen({ route, navigation }: any) {
+  const { theme } = useTheme();
+  const { startCall } = useCall();
   const { deliveryId } = route.params;
   const [delivery, setDelivery] = useState<DeliveryDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,15 +110,58 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
   const handleCall = (phoneNumber: string, name: string) => {
     Alert.alert(
       `Call ${name}`,
-      `Do you want to call ${phoneNumber}?`,
+      `How would you like to call ${name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Call',
+          text: 'Voice Call',
+          onPress: () => startCall(name, 'voice'),
+        },
+        {
+          text: 'Video Call',
+          onPress: () => startCall(name, 'video'),
+        },
+        {
+          text: 'Phone Call',
           onPress: () => Linking.openURL(`tel:${phoneNumber}`),
         },
       ]
     );
+  };
+
+  const handleCustomerNamePress = () => {
+    if (delivery) {
+      navigation.navigate('CustomerProfile', {
+        customer: {
+          id: delivery.id,
+          name: delivery.customerName,
+          phone: delivery.customerPhone,
+          email: 'customer@example.com',
+          address: delivery.address,
+          deliveryInstructions: delivery.deliveryInstructions,
+          rating: 4.8,
+          totalDeliveries: 23,
+          preferredPayment: 'Credit Card',
+          location: {
+            latitude: delivery.coordinates.lat,
+            longitude: delivery.coordinates.lng,
+          },
+        },
+      });
+    }
+  };
+
+  const handleAddressPress = () => {
+    if (delivery) {
+      navigation.navigate('Map', {
+        targetLocation: {
+          latitude: delivery.coordinates.lat,
+          longitude: delivery.coordinates.lng,
+        },
+        customerName: delivery.customerName,
+        address: delivery.address,
+      });
+    }
   };
 
   const handleAcceptDelivery = () => {
@@ -168,18 +215,18 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <Ionicons name="bicycle" size={48} color="#1E40AF" />
-        <Text style={styles.loadingText}>Loading delivery details...</Text>
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
+        <Ionicons name="bicycle" size={48} color={theme.colors.primary} />
+        <Text style={[styles.loadingText, { color: theme.colors.text }]}>Loading delivery details...</Text>
       </View>
     );
   }
 
   if (!delivery) {
     return (
-      <View style={[styles.container, styles.centered]}>
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
         <Ionicons name="alert-circle" size={48} color="#EF4444" />
-        <Text style={styles.errorText}>Delivery not found</Text>
+        <Text style={[styles.errorText, { color: theme.colors.text }]}>Delivery not found</Text>
       </View>
     );
   }
@@ -205,44 +252,45 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1E40AF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Delivery Details</Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(delivery.status) }]}>
-          <Text style={styles.statusText}>{getStatusText(delivery.status)}</Text>
-        </View>
-      </View>
-
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView style={styles.content}>
+        {/* Back Button and Status at top of content */}
+        <View style={styles.topSection}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(delivery.status) }]}>
+            <Text style={styles.statusText}>{getStatusText(delivery.status)}</Text>
+          </View>
+        </View>
         {/* Customer Info */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Customer Information</Text>
-          <View style={styles.customerCard}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Customer Information</Text>
+          <View style={[styles.customerCard, { backgroundColor: theme.colors.card }]}>
             <View style={styles.customerHeader}>
-              <Text style={styles.customerName}>{delivery.customerName}</Text>
+              <TouchableOpacity onPress={handleCustomerNamePress}>
+                <Text style={[styles.customerName, { color: theme.colors.text }]}>{delivery.customerName}</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.callButton}
                 onPress={() => handleCall(delivery.customerPhone, delivery.customerName)}
               >
-                <Ionicons name="call" size={20} color="#1E40AF" />
+                <Ionicons name="call" size={20} color={theme.colors.primary} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.customerPhone}>{delivery.customerPhone}</Text>
-            <View style={styles.addressContainer}>
-              <Ionicons name="location" size={16} color="#6B7280" />
-              <Text style={styles.address}>{delivery.address}</Text>
-            </View>
+            <Text style={[styles.customerPhone, { color: theme.colors.textSecondary }]}>{delivery.customerPhone}</Text>
+            <TouchableOpacity style={styles.addressContainer} onPress={handleAddressPress}>
+              <Ionicons name="location" size={16} color={theme.colors.textSecondary} />
+              <Text style={[styles.address, { color: theme.colors.textSecondary }]}>{delivery.address}</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
             {delivery.deliveryInstructions && (
               <View style={styles.instructionsContainer}>
                 <Ionicons name="information-circle" size={16} color="#F59E0B" />
-                <Text style={styles.instructions}>{delivery.deliveryInstructions}</Text>
+                <Text style={[styles.instructions, { color: theme.colors.text }]}>{delivery.deliveryInstructions}</Text>
               </View>
             )}
           </View>
@@ -267,43 +315,43 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 
         {/* Order Details */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Order Details</Text>
-          <View style={styles.orderCard}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Order Details</Text>
+          <View style={[styles.orderCard, { backgroundColor: theme.colors.card }]}>
             {delivery.orderItems.map((item) => (
               <View key={item.id} style={styles.orderItem}>
                 <View style={styles.itemInfo}>
-                  <Text style={styles.itemName}>{item.quantity}x {item.name}</Text>
+                  <Text style={[styles.itemName, { color: theme.colors.text }]}>{item.quantity}x {item.name}</Text>
                   {item.notes && (
-                    <Text style={styles.itemNotes}>{item.notes}</Text>
+                    <Text style={[styles.itemNotes, { color: theme.colors.textSecondary }]}>{item.notes}</Text>
                   )}
                 </View>
-                <Text style={styles.itemPrice}>{item.price}</Text>
+                <Text style={[styles.itemPrice, { color: theme.colors.text }]}>{item.price}</Text>
               </View>
             ))}
             
             {delivery.specialInstructions && (
               <View style={styles.specialInstructions}>
-                <Text style={styles.specialInstructionsTitle}>Special Instructions:</Text>
-                <Text style={styles.specialInstructionsText}>{delivery.specialInstructions}</Text>
+                <Text style={[styles.specialInstructionsTitle, { color: theme.colors.text }]}>Special Instructions:</Text>
+                <Text style={[styles.specialInstructionsText, { color: theme.colors.textSecondary }]}>{delivery.specialInstructions}</Text>
               </View>
             )}
 
             <View style={styles.orderSummary}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subtotal</Text>
-                <Text style={styles.summaryValue}>{delivery.orderTotal}</Text>
+                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Subtotal</Text>
+                <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{delivery.orderTotal}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Delivery Fee</Text>
-                <Text style={styles.summaryValue}>{delivery.deliveryFee}</Text>
+                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Delivery Fee</Text>
+                <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{delivery.deliveryFee}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Tip</Text>
-                <Text style={styles.summaryValue}>{delivery.tip}</Text>
+                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Tip</Text>
+                <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{delivery.tip}</Text>
               </View>
               <View style={[styles.summaryRow, styles.totalRow]}>
-                <Text style={styles.totalLabel}>Your Earnings</Text>
-                <Text style={styles.totalValue}>{delivery.payment}</Text>
+                <Text style={[styles.totalLabel, { color: theme.colors.text }]}>Your Earnings</Text>
+                <Text style={[styles.totalValue, { color: theme.colors.primary }]}>{delivery.payment}</Text>
               </View>
             </View>
           </View>
@@ -311,32 +359,32 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 
         {/* Delivery Stats */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Delivery Information</Text>
-          <View style={styles.statsContainer}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Delivery Information</Text>
+          <View style={[styles.statsContainer, { backgroundColor: theme.colors.card }]}>
             <View style={styles.statItem}>
-              <Ionicons name="car" size={24} color="#1E40AF" />
-              <Text style={styles.statValue}>{delivery.distance}</Text>
-              <Text style={styles.statLabel}>Distance</Text>
+              <Ionicons name="car" size={24} color={theme.colors.primary} />
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>{delivery.distance}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Distance</Text>
             </View>
             <View style={styles.statItem}>
-              <Ionicons name="time" size={24} color="#1E40AF" />
-              <Text style={styles.statValue}>{delivery.estimatedTime}</Text>
-              <Text style={styles.statLabel}>Est. Time</Text>
+              <Ionicons name="time" size={24} color={theme.colors.primary} />
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>{delivery.estimatedTime}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Est. Time</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="cash" size={24} color="#059669" />
-              <Text style={styles.statValue}>{delivery.payment}</Text>
-              <Text style={styles.statLabel}>Earnings</Text>
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>{delivery.payment}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Earnings</Text>
             </View>
           </View>
         </View>
       </ScrollView>
 
       {/* Action Buttons */}
-      <View style={styles.actionButtons}>
+      <View style={[styles.actionButtons, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
         {delivery.status === 'pending' && (
           <TouchableOpacity
-            style={styles.acceptButton}
+            style={[styles.acceptButton, { backgroundColor: theme.colors.primary }]}
             onPress={handleAcceptDelivery}
           >
             <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
@@ -347,7 +395,7 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
         {delivery.status === 'accepted' && (
           <>
             <TouchableOpacity
-              style={styles.navigationButton}
+              style={[styles.navigationButton, { backgroundColor: theme.colors.primary }]}
               onPress={handleStartNavigation}
             >
               <Ionicons name="navigate" size={24} color="#FFFFFF" />
@@ -380,11 +428,17 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
   },
   centered: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  topSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginBottom: 8,
   },
   header: {
     flexDirection: 'row',
@@ -392,9 +446,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   backButton: {
     padding: 4,
@@ -402,7 +454,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
   },
   statusBadge: {
     paddingHorizontal: 12,
@@ -424,11 +475,9 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
     marginBottom: 12,
   },
   customerCard: {
-    backgroundColor: '#FFFFFF',
     padding: 20,
     borderRadius: 16,
     shadowColor: '#000',
@@ -446,11 +495,9 @@ const styles = StyleSheet.create({
   customerName: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
   },
   customerPhone: {
     fontSize: 16,
-    color: '#6B7280',
     marginBottom: 12,
   },
   callButton: {
@@ -465,7 +512,6 @@ const styles = StyleSheet.create({
   },
   address: {
     fontSize: 16,
-    color: '#111827',
     marginLeft: 8,
     flex: 1,
   },
@@ -478,7 +524,6 @@ const styles = StyleSheet.create({
   },
   instructions: {
     fontSize: 14,
-    color: '#92400E',
     marginLeft: 8,
     flex: 1,
   },
@@ -508,7 +553,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   orderCard: {
-    backgroundColor: '#FFFFFF',
     padding: 20,
     borderRadius: 16,
     shadowColor: '#000',
@@ -531,18 +575,15 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
     marginBottom: 4,
   },
   itemNotes: {
     fontSize: 14,
-    color: '#6B7280',
     fontStyle: 'italic',
   },
   itemPrice: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#111827',
   },
   specialInstructions: {
     backgroundColor: '#F0F9FF',
@@ -553,12 +594,10 @@ const styles = StyleSheet.create({
   specialInstructionsTitle: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#1E40AF',
     marginBottom: 4,
   },
   specialInstructionsText: {
     fontSize: 14,
-    color: '#1E40AF',
   },
   orderSummary: {
     marginTop: 16,
@@ -573,11 +612,9 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 16,
-    color: '#6B7280',
   },
   summaryValue: {
     fontSize: 16,
-    color: '#111827',
   },
   totalRow: {
     paddingTop: 8,
@@ -587,17 +624,14 @@ const styles = StyleSheet.create({
   totalLabel: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
   },
   totalValue: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#059669',
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
     padding: 20,
     borderRadius: 16,
     shadowColor: '#000',
@@ -619,20 +653,16 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: '#6B7280',
     textAlign: 'center',
   },
   actionButtons: {
     padding: 20,
-    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
   },
   acceptButton: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#059669',
     paddingVertical: 16,
     borderRadius: 12,
     marginBottom: 12,
@@ -647,7 +677,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1E40AF',
     paddingVertical: 16,
     borderRadius: 12,
     marginBottom: 12,
@@ -688,12 +717,10 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 18,
-    color: '#6B7280',
     marginTop: 16,
   },
   errorText: {
     fontSize: 18,
-    color: '#EF4444',
     marginTop: 16,
   },
 });

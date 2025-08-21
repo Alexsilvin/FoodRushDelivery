@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,39 +9,102 @@ import {
   Alert,
   Image,
   TextInput,
+  StatusBar,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { riderAPI } from '../../services/api';
+import { Delivery, RiderStatus } from '../../types/api';
+import { mapApiDeliveries } from '../../utils/mappers';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 
-interface Delivery {
-  id: string;
-  customerName: string;
-  address: string;
-  distance: string;
-  payment: string;
-  restaurant: string;
-  status: 'pending' | 'accepted' | 'picked_up' | 'delivered';
-  estimatedTime: string;
-}
+// Local UI fallback formatting helpers
+const formatCurrency = (amount?: number) => {
+  if (amount == null) return '$0.00';
+  try { return `$${amount.toFixed(2)}`; } catch { return `$${amount}`; }
+};
 
 export default function DashboardScreen({ navigation }: any) {
   const { user } = useAuth();
+  const { theme } = useTheme();
+  const { t } = useLanguage();
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [filteredDeliveries, setFilteredDeliveries] = useState<Delivery[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'accepted'>('all');
   const [stats, setStats] = useState({
-    todayEarnings: 125.50,
-    completedDeliveries: 8,
-    rating: 4.8,
-    activeDeliveries: 2,
+    todayEarnings: 0,
+    completedDeliveries: 0,
+    rating: 0,
+    activeDeliveries: 0,
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [statusRes, currentRes, earningsRes] = await Promise.all([
+        riderAPI.getStatus().catch(e => { console.warn('Status fetch failed', e?.response?.status); return { success: false }; }),
+        riderAPI.getCurrentDeliveries().catch(e => { console.warn('Current deliveries fetch failed', e?.response?.status); return { success: false, data: [] }; }),
+  riderAPI.getEarnings('today').catch(e => { console.warn('Earnings fetch failed', e?.response?.status); return { success: false }; })
+      ]);
+
+      if (currentRes?.data) {
+        setDeliveries(mapApiDeliveries(currentRes.data));
+      }
+
+      const statSource: Partial<RiderStatus> = (statusRes && (statusRes as any).data) || {};
+      setStats(prev => ({
+        ...prev,
+        todayEarnings: (earningsRes as any)?.data?.total ?? prev.todayEarnings,
+        completedDeliveries: statSource.completedToday ?? prev.completedDeliveries,
+        rating: statSource.rating ?? prev.rating,
+        activeDeliveries: statSource.activeDeliveries ?? (currentRes?.data?.length || 0)
+      }));
+    } catch (e: any) {
+      console.error('Dashboard fetch error', e);
+      setError(e?.response?.data?.message || e.message || 'Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
-    loadDeliveries();
-  }, []);
+    fetchData();
+    
+    // Entrance animation
+  Animated.parallel([ 
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, slideAnim, scaleAnim, fetchData]);
 
   const filterDeliveries = useCallback(() => {
     let filtered = deliveries;
@@ -53,11 +116,14 @@ export default function DashboardScreen({ navigation }: any) {
 
     // Filter by search query
     if (searchQuery.trim()) {
-      filtered = filtered.filter(delivery =>
-        delivery.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        delivery.restaurant.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        delivery.address.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      filtered = filtered.filter(delivery => {
+        const q = searchQuery.toLowerCase();
+        return (
+          (delivery.customerName?.toLowerCase().includes(q)) ||
+          (delivery.restaurant?.toLowerCase().includes(q)) ||
+          (delivery.address?.toLowerCase().includes(q))
+        );
+      });
     }
 
     setFilteredDeliveries(filtered);
@@ -65,68 +131,32 @@ export default function DashboardScreen({ navigation }: any) {
 
   useEffect(() => {
     filterDeliveries();
-  }, [deliveries, searchQuery, filterStatus]);
+  }, [filterDeliveries]);
 
-  const loadDeliveries = () => {
-    // Mock delivery data
-    const mockDeliveries: Delivery[] = [
-      {
-        id: '1',
-        customerName: 'Sarah Johnson',
-        address: '123 Oak Street, Downtown',
-        distance: '2.5 km',
-        payment: '$12.50',
-        restaurant: 'Pizza Palace',
-        status: 'pending',
-        estimatedTime: '25 min',
-      },
-      {
-        id: '2',
-        customerName: 'Mike Chen',
-        address: '456 Elm Avenue, Midtown',
-        distance: '1.8 km',
-        payment: '$18.75',
-        restaurant: 'Burger Barn',
-        status: 'pending',
-        estimatedTime: '20 min',
-      },
-      {
-        id: '3',
-        customerName: 'Emma Davis',
-        address: '789 Pine Road, Uptown',
-        distance: '3.2 km',
-        payment: '$15.25',
-        restaurant: 'Sushi Spot',
-        status: 'accepted',
-        estimatedTime: '30 min',
-      },
-    ];
-    setDeliveries(mockDeliveries);
-  };
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadDeliveries();
-    setTimeout(() => setRefreshing(false), 1000);
+    fetchData().finally(() => setRefreshing(false));
   };
 
   const handleAcceptDelivery = (deliveryId: string) => {
     Alert.alert(
-      'Accept Delivery',
-      'Are you sure you want to accept this delivery?',
+      t('acceptDelivery'),
+      t('acceptDeliveryConfirmation'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Accept',
+          text: t('accept'),
           onPress: () => {
-            setDeliveries(prev =>
-              prev.map(delivery =>
-                delivery.id === deliveryId
-                  ? { ...delivery, status: 'accepted' }
-                  : delivery
-              )
-            );
-            Alert.alert('Success', 'Delivery accepted! Navigate to pickup location.');
+            riderAPI.acceptDelivery(deliveryId)
+              .then(res => {
+                setDeliveries(prev => prev.map(d => d.id === deliveryId ? { ...d, status: res.data?.status || 'accepted' } : d));
+                Alert.alert(t('success'), t('deliveryAccepted'));
+              })
+              .catch(err => {
+                console.error('Accept failed', err);
+                Alert.alert(t('error'), err?.response?.data?.message || 'Failed to accept delivery');
+              });
           },
         },
       ]
@@ -134,6 +164,7 @@ export default function DashboardScreen({ navigation }: any) {
   };
 
   const handleDeclineDelivery = (deliveryId: string) => {
+    // If backend supports decline endpoint integrate here; for now just remove locally
     setDeliveries(prev => prev.filter(delivery => delivery.id !== deliveryId));
   };
 
@@ -144,50 +175,50 @@ export default function DashboardScreen({ navigation }: any) {
   const renderDeliveryCard = (delivery: Delivery) => (
     <TouchableOpacity 
       key={delivery.id} 
-      style={styles.deliveryCard}
+      style={[styles.deliveryCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
       onPress={() => handleViewDeliveryDetails(delivery.id)}
     >
       <View style={styles.deliveryHeader}>
-        <Text style={styles.customerName}>{delivery.customerName}</Text>
-        <Text style={styles.payment}>{delivery.payment}</Text>
+        <Text style={[styles.customerName, { color: theme.colors.text }]}>{delivery.customerName}</Text>
+  <Text style={[styles.payment, { color: theme.colors.success }]}>{delivery.payment}</Text>
       </View>
       
       <View style={styles.deliveryInfo}>
         <View style={styles.infoRow}>
-          <Ionicons name="restaurant-outline" size={16} color="#6B7280" />
-          <Text style={styles.infoText}>{delivery.restaurant}</Text>
+          <Ionicons name="restaurant-outline" size={16} color={theme.colors.textSecondary} />
+          <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>{delivery.restaurant}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Ionicons name="location-outline" size={16} color="#6B7280" />
-          <Text style={styles.infoText}>{delivery.address}</Text>
+          <Ionicons name="location-outline" size={16} color={theme.colors.textSecondary} />
+          <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>{delivery.address}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Ionicons name="car-outline" size={16} color="#6B7280" />
-          <Text style={styles.infoText}>{delivery.distance} • {delivery.estimatedTime}</Text>
+          <Ionicons name="car-outline" size={16} color={theme.colors.textSecondary} />
+          <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>{delivery.distance} • {delivery.estimatedTime}</Text>
         </View>
       </View>
 
       {delivery.status === 'pending' && (
         <View style={styles.deliveryActions}>
           <TouchableOpacity
-            style={styles.declineButton}
+            style={[styles.declineButton, { borderColor: theme.colors.error }]}
             onPress={() => handleDeclineDelivery(delivery.id)}
           >
-            <Text style={styles.declineButtonText}>Decline</Text>
+            <Text style={[styles.declineButtonText, { color: theme.colors.error }]}>{t('decline')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.acceptButton}
+            style={[styles.acceptButton, { backgroundColor: theme.colors.primary }]}
             onPress={() => handleAcceptDelivery(delivery.id)}
           >
-            <Text style={styles.acceptButtonText}>Accept</Text>
+            <Text style={styles.acceptButtonText}>{t('accept')}</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {delivery.status === 'accepted' && (
+  {delivery.status === 'accepted' && (
         <View style={styles.statusContainer}>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>Accepted - Ready for Pickup</Text>
+          <View style={[styles.statusBadge, { backgroundColor: theme.colors.success + '20' }]}>
+            <Text style={[styles.statusText, { color: theme.colors.success }]}>{t('acceptedReady')}</Text>
           </View>
         </View>
       )}
@@ -195,53 +226,69 @@ export default function DashboardScreen({ navigation }: any) {
   );
 
   return (
-    <View style={styles.wrapper}>
-      {/* Background image */}
-      <Image 
-        source={require('../../../assets/dashbackground.png')} 
-        style={styles.backgroundImage}
-        resizeMode="cover"
+    <View style={[styles.wrapper, { backgroundColor: theme.colors.background }]}>
+      <StatusBar 
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent={true}
       />
+      {/* Conditional background - image for light mode, dark color for dark mode */}
+      {!theme.isDark ? (
+        <Image 
+          source={require('../../../assets/dashbackground.png')} 
+          style={styles.backgroundImage}
+          resizeMode="cover"
+          alt=""
+        />
+      ) : (
+        <View style={[styles.darkBackground, { backgroundColor: theme.colors.background }]} />
+      )}
       
       <ScrollView
-        style={styles.container}
+        style={[styles.container, { backgroundColor: 'transparent' }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.header}>
-        <Text style={styles.greeting}>Welcome back, {user?.name?.split(' ')[0]}!</Text>
-        <Text style={styles.subGreeting}>Ready to deliver today?</Text>
+        <LinearGradient 
+          colors={theme.isDark 
+            ? [theme.colors.primary, theme.colors.secondary] 
+            : ['#1E40AF', '#3B82F6']} 
+          style={[styles.header, { paddingTop: 60 }]}
+        >
+        <Text style={styles.greeting}>{t('welcomeBack') || 'Welcome back'}, {user?.firstName || 'User'}!</Text>
+        <Text style={styles.subGreeting}>{t('readyToDeliver')}</Text>
 
         <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>${stats.todayEarnings}</Text>
-            <Text style={styles.statLabel}>Today&apos;s Earnings</Text>
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.statValue, { color: theme.colors.text }]}>${stats.todayEarnings}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('todayEarnings')}</Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.completedDeliveries}</Text>
-            <Text style={styles.statLabel}>Completed</Text>
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.completedDeliveries}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('completed')}</Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.rating}</Text>
-            <Text style={styles.statLabel}>Rating</Text>
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.rating}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('rating')}</Text>
           </View>
         </View>
       </LinearGradient>
 
-      <View style={styles.content}>
+      <View style={[styles.content, { backgroundColor: 'transparent' }]}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Available Deliveries</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{t('availableDeliveries')}</Text>
           <TouchableOpacity onPress={onRefresh}>
-            <Ionicons name="refresh-outline" size={24} color="#1E40AF" />
+            <Ionicons name="refresh-outline" size={24} color={theme.colors.primary} />
           </TouchableOpacity>
         </View>
 
         {/* Search and Filter Section */}
         <View style={styles.searchFilterContainer}>
-          <View style={styles.searchContainer}>
-            <Ionicons name="search-outline" size={20} color="#6B7280" style={styles.searchIcon} />
+          <View style={[styles.searchContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} style={styles.searchIcon} />
             <TextInput
-              style={styles.searchInput}
-              placeholder="Search deliveries..."
+              style={[styles.searchInput, { color: theme.colors.text }]}
+              placeholder={t('searchDeliveries')}
+              placeholderTextColor={theme.colors.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -249,35 +296,72 @@ export default function DashboardScreen({ navigation }: any) {
           
           <View style={styles.filterContainer}>
             <TouchableOpacity
-              style={[styles.filterButton, filterStatus === 'all' && styles.filterButtonActive]}
+              style={[
+                styles.filterButton, 
+                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                filterStatus === 'all' && { backgroundColor: theme.colors.primary }
+              ]}
               onPress={() => setFilterStatus('all')}
             >
-              <Text style={[styles.filterButtonText, filterStatus === 'all' && styles.filterButtonTextActive]}>All</Text>
+              <Text style={[
+                styles.filterButtonText, 
+                { color: filterStatus === 'all' ? '#FFFFFF' : theme.colors.text }
+              ]}>{t('all')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.filterButton, filterStatus === 'pending' && styles.filterButtonActive]}
+              style={[
+                styles.filterButton, 
+                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                filterStatus === 'pending' && { backgroundColor: theme.colors.primary }
+              ]}
               onPress={() => setFilterStatus('pending')}
             >
-              <Text style={[styles.filterButtonText, filterStatus === 'pending' && styles.filterButtonTextActive]}>Pending</Text>
+              <Text style={[
+                styles.filterButtonText, 
+                { color: filterStatus === 'pending' ? '#FFFFFF' : theme.colors.text }
+              ]}>{t('pending')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.filterButton, filterStatus === 'accepted' && styles.filterButtonActive]}
+              style={[
+                styles.filterButton, 
+                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                filterStatus === 'accepted' && { backgroundColor: theme.colors.primary }
+              ]}
               onPress={() => setFilterStatus('accepted')}
             >
-              <Text style={[styles.filterButtonText, filterStatus === 'accepted' && styles.filterButtonTextActive]}>Accepted</Text>
+              <Text style={[
+                styles.filterButtonText, 
+                { color: filterStatus === 'accepted' ? '#FFFFFF' : theme.colors.text }
+              ]}>{t('accepted')}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {filteredDeliveries.length > 0 ? (
+        {loading && (
+          <View style={styles.emptyState}>
+            <Ionicons name="refresh" size={48} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{t('loading') || 'Loading...'}</Text>
+          </View>
+        )}
+        {!!error && !loading && (
+          <View style={styles.emptyState}>
+            <Ionicons name="warning-outline" size={48} color={theme.colors.error} />
+            <Text style={[styles.emptyTitle, { color: theme.colors.error }]}>{t('error')}</Text>
+            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{error}</Text>
+            <TouchableOpacity onPress={fetchData} style={{ marginTop: 12 }}>
+              <Text style={{ color: theme.colors.primary }}>{t('retry') || 'Retry'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {!loading && !error && (filteredDeliveries.length > 0 ? (
           filteredDeliveries.map(renderDeliveryCard)
         ) : (
           <View style={styles.emptyState}>
-            <Ionicons name="car-outline" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyTitle}>No deliveries available</Text>
-            <Text style={styles.emptySubtitle}>Check back in a few minutes for new orders</Text>
+            <Ionicons name="car-outline" size={64} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>{t('noDeliveries')}</Text>
+            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{t('checkBackLater')}</Text>
           </View>
-        )}
+        ))}
       </View>
     </ScrollView>
     </View>
@@ -290,6 +374,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   backgroundImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    zIndex: 0,
+  },
+  darkBackground: {
     position: 'absolute',
     top: 0,
     left: 0,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,24 +7,64 @@ import {
   StyleSheet,
   Alert,
   Switch,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { riderAPI, riderAuthAPI } from '../../services/api';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useNavigation } from '@react-navigation/native';
+import LanguageSelector from '../../components/LanguageSelector';
+import { useStaggeredFadeIn } from '../../hooks/useStaggeredFadeIn';
+import { useCountUp } from '../../hooks/useCountUp';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
-  const [isOnline, setIsOnline] = useState(true);
+  const { theme } = useTheme();
+  const { t } = useLanguage();
+  const navigation = useNavigation();
+  const [isOnline, setIsOnline] = useState<boolean>(false);
   const [notifications, setNotifications] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [todayEarnings, setTodayEarnings] = useState<number | null>(null);
+  const [rating, setRating] = useState<number | null>(null);
+  const [completedDeliveries, setCompletedDeliveries] = useState<number | null>(null);
+  const [completionRate, setCompletionRate] = useState<string | null>(null);
+
+  // Derive vehicle type (backend may store on vehicle or root)
+  const vehicleType = user?.vehicleType || user?.vehicles?.find(v => v.default)?.type || user?.vehicles?.[0]?.type;
+
+  // Animation values
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1400, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 0, duration: 0, useNativeDriver: true })
+      ])
+    ).start();
+  }, [fadeAnim, pulseAnim]);
 
   const handleLogout = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
+      t('logout'),
+      t('logoutConfirmation'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Logout',
+          text: t('logout'),
           style: 'destructive',
           onPress: logout,
         },
@@ -33,160 +73,389 @@ export default function ProfileScreen() {
   };
 
   const handleEditProfile = () => {
-    Alert.alert('Edit Profile', 'Profile editing feature coming soon!');
+    navigation.navigate('EditProfile' as never);
   };
 
   const handleSupport = () => {
-    Alert.alert('Support', 'Contact support at support@deliveryapp.com or call 1-800-DELIVERY');
+    Alert.alert(t('support'), t('supportMessage'));
   };
 
   const handlePrivacy = () => {
-    Alert.alert('Privacy Policy', 'Privacy policy details would be shown here.');
+    Alert.alert(t('privacyPolicy'), t('privacyPolicyDetails'));
   };
 
   const handleTerms = () => {
-    Alert.alert('Terms of Service', 'Terms of service details would be shown here.');
+    Alert.alert(t('termsService'), t('termsServiceDetails'));
+  };
+
+  const handleSettings = () => {
+    navigation.navigate('Settings' as never);
   };
 
   const profileStats = [
-    { label: 'Total Deliveries', value: '247', icon: 'car-outline' },
-    { label: 'Rating', value: '4.8', icon: 'star' },
-    { label: 'This Month', value: '$1,247', icon: 'wallet-outline' },
-    { label: 'Completion Rate', value: '98%', icon: 'checkmark-circle-outline' },
+    { label: t('totalDeliveries'), value: completedDeliveries, icon: 'car-outline', type: 'int' as const },
+    { label: t('rating'), value: rating, icon: 'star', type: 'rating' as const },
+    { label: t('todayEarnings') || 'Today', value: todayEarnings, icon: 'wallet-outline', type: 'currency' as const },
+    { label: t('completionRate'), value: completionRate ? parseFloat(String(completionRate).replace(/%/, '')) : null, icon: 'checkmark-circle-outline', type: 'percent' as const },
   ];
+  const statAnimations = useStaggeredFadeIn(profileStats.length, { delay: 90, duration: 450 });
+  // Prepare count up raw values with hooks (order stable)
+  const rawCounts = [
+    useCountUp(Number(profileStats[0].value) || 0, 900),
+    useCountUp(Number(profileStats[1].value) || 0, 900),
+    useCountUp(Number(profileStats[2].value) || 0, 900),
+    useCountUp(Number(profileStats[3].value) || 0, 900),
+  ];
+  const countUps = rawCounts.map((val, idx) => {
+    const stat = profileStats[idx];
+    if (stat.value == null) return '—';
+    switch (stat.type) {
+      case 'currency': return `$${val}`;
+      case 'percent': return `${val}%`;
+      default: return val;
+    }
+  });
+
+  // Fetch dynamic profile info
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        setProfileLoading(true);
+        // Status
+        const statusRes = await riderAPI.getStatus().catch(() => null);
+        if (mounted && statusRes?.data) setIsOnline(statusRes.data.status === 'online');
+        // Account for additional stats if provided
+        if (user) {
+          setRating(user.rating ?? user['averageRating'] ?? null);
+          setCompletedDeliveries(user.completedDeliveries ?? user['totalDeliveries'] ?? null);
+          const comp = user['completionRate'] ?? user['deliveryCompletionRate'];
+          if (comp != null) setCompletionRate(typeof comp === 'number' ? `${comp}%` : String(comp));
+        }
+        // Earnings today
+        const earnRes = await riderAPI.getEarnings('today').catch(() => null);
+        if (mounted && earnRes?.data) setTodayEarnings(earnRes.data.total ?? null);
+      } finally {
+        mounted && setProfileLoading(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, [user]);
+
+  const toggleOnline = async (value: boolean) => {
+    const previous = isOnline;
+    setIsOnline(value);
+    setLoadingStatus(true);
+    try {
+      // Prefer availability endpoint (available boolean) for clearer semantics
+  const res = await riderAPI.updateAvailability(value);
+  if (!res?.success) throw new Error(res?.message || 'Availability not accepted');
+    } catch (e: any) {
+      // fallback to status endpoint
+      try {
+        await riderAPI.updateStatus(value ? 'online' : 'offline');
+      } catch (finalErr: any) {
+        console.warn('Availability toggle failed:', finalErr?.response?.data || finalErr?.message);
+        setIsOnline(previous); // revert
+        const message = finalErr?.response?.data?.message || 'Could not change availability';
+        Alert.alert('Status Update Failed', message);
+      }
+    } finally {
+      setLoadingStatus(false);
+    }
+  };
+
+  const refreshProfile = async () => {
+    setProfileLoading(true);
+    try {
+      const account = await riderAuthAPI.getAccount();
+      if (account?.data) {
+        // minimal fields already stored in context; stats extracted earlier via user dependency
+      }
+      const statusRes = await riderAPI.getStatus().catch(()=>null);
+      if (statusRes?.data) setIsOnline(statusRes.data.status === 'online');
+      const earnRes = await riderAPI.getEarnings('today').catch(()=>null);
+      if (earnRes?.data) setTodayEarnings(earnRes.data.total ?? null);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   return (
-    <ScrollView style={styles.container}>
-      <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.header}>
-        <View style={styles.profileInfo}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {user?.name?.split(' ').map(n => n[0]).join('') || 'U'}
-            </Text>
-          </View>
-          <Text style={styles.name}>{user?.name || 'User'}</Text>
-          <Text style={styles.email}>{user?.email || 'No email'}</Text>
-          
-          <View style={styles.onlineStatus}>
-            <Text style={styles.statusLabel}>Available for deliveries</Text>
-            <Switch
-              value={isOnline}
-              onValueChange={setIsOnline}
-              trackColor={{ false: 'rgba(255,255,255,0.3)', true: 'rgba(255,255,255,0.5)' }}
-              thumbColor={isOnline ? '#FFFFFF' : '#D1D5DB'}
-            />
-          </View>
-        </View>
-      </LinearGradient>
-
-      <View style={styles.content}>
-        <View style={styles.statsContainer}>
-          {profileStats.map((stat, index) => (
-            <View key={index} style={styles.statCard}>
-              <Ionicons name={stat.icon as any} size={24} color="#1E40AF" />
-              <Text style={styles.statValue}>{stat.value}</Text>
-              <Text style={styles.statLabel}>{stat.label}</Text>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      <ScrollView 
+        style={[styles.scrollView, { backgroundColor: theme.colors.background }]}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+      >
+        <LinearGradient 
+          colors={theme.isDark ? [theme.colors.surface, theme.colors.primary] : ['#1E40AF', '#3B82F6']} 
+          style={[styles.header, { paddingTop: 60 }]}
+        >
+          <BlurView intensity={20} tint={theme.isDark ? "dark" : "light"} style={styles.profileOverlay}>
+            <View style={styles.profileInfo}>
+              <Animated.View 
+                style={[
+                  styles.avatar,
+                  {
+                    transform: [{
+                      scale: scrollY.interpolate({
+                        inputRange: [0, 100],
+                        outputRange: [1, 0.8],
+                        extrapolate: 'clamp',
+                      })
+                    }]
+                  }
+                ]}
+              >
+                <Text style={styles.avatarText}>
+                  {/* Get initials from first and last name */}
+                  {(user?.firstName?.[0] || '') + (user?.lastName?.[0] || '') || 'U'}
+                </Text>
+              </Animated.View>
+              
+              <Animated.View
+                style={{
+                  opacity: scrollY.interpolate({
+                    inputRange: [0, 50],
+                    outputRange: [1, 0.7],
+                    extrapolate: 'clamp',
+                  })
+                }}
+              >
+                <Text style={styles.name}>{user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'User'}</Text>
+                <Text style={styles.email}>{user?.email || 'No email'}</Text>
+                <View style={styles.badgeRow}>
+                  {user?.isVerified && (
+                    <View style={styles.badgeVerified}>
+                      <Ionicons name="checkmark-circle" size={14} color="#fff" />
+                      <Text style={styles.badgeText}>Verified</Text>
+                    </View>
+                  )}
+                  {vehicleType && (
+                    <View style={styles.badgeNeutral}>
+                      <Ionicons name="car-outline" size={14} color="#1E40AF" />
+                      <Text style={styles.badgeNeutralText}>{vehicleType}</Text>
+                    </View>
+                  )}
+                </View>
+              </Animated.View>
+              
+              <View>
+                <Animated.View style={[styles.pulseWrapper, { opacity: pulseAnim.interpolate({ inputRange: [0,1], outputRange: [0.4, 0] }), transform: [{ scale: pulseAnim.interpolate({ inputRange: [0,1], outputRange: [1,1.6] }) }] }]} />
+                <View style={styles.onlineStatus}>
+                  <Text style={styles.statusLabel}>{t('availableForDeliveries')}</Text>
+                  <Switch
+                    value={isOnline}
+                    onValueChange={toggleOnline}
+                    trackColor={{ false: 'rgba(255,255,255,0.3)', true: 'rgba(255,255,255,0.5)' }}
+                    thumbColor={loadingStatus ? '#FBBF24' : (isOnline ? '#FFFFFF' : '#D1D5DB')}
+                  />
+                </View>
+              </View>
             </View>
-          ))}
-        </View>
+          </BlurView>
+        </LinearGradient>
+
+        <View style={[styles.content, { backgroundColor: 'transparent' }]}>
+          <Animated.View 
+            style={[
+              styles.statsContainer,
+              {
+                transform: [{
+                  translateY: scrollY.interpolate({
+                    inputRange: [0, 100],
+                    outputRange: [0, -20],
+                    extrapolate: 'clamp',
+                  })
+                }]
+              }
+            ]}
+          >
+            {profileStats.map((stat, index) => (
+              <Animated.View
+                key={index}
+                style={[
+                  styles.statCard,
+                  {
+                    backgroundColor: theme.isDark ? 'rgba(55, 65, 81, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+                    opacity: statAnimations[index],
+                    transform: [
+                      { translateY: statAnimations[index].interpolate({ inputRange: [0,1], outputRange: [20,0] }) },
+                      { scale: scrollY.interpolate({ inputRange: [0, 100], outputRange: [1, 0.95], extrapolate: 'clamp' }) }
+                    ]
+                  }
+                ]}
+              >
+                <Ionicons name={stat.icon as any} size={24} color={theme.colors.primary} />
+                <Text style={[styles.statValue, { color: theme.colors.text }]}>{countUps[index]}</Text>
+                <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{stat.label}</Text>
+              </Animated.View>
+            ))}
+          </Animated.View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>{t('account')}</Text>
+
+          {/* Account detail rows */}
+          <View style={[styles.detailRow, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Full Name</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim()}</Text>
+          </View>
+          <View style={[styles.detailRow, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Email</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{user?.email}</Text>
+          </View>
+            <View style={[styles.detailRow, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Phone</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{user?.phoneNumber || user?.phoneNumbers?.find(p=>p.isPrimary)?.number || '—'}</Text>
+          </View>
+          <View style={[styles.detailRow, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Vehicle Type</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{vehicleType || '—'}</Text>
+          </View>
+          <View style={[styles.detailRowLast, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}> 
+            <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>Verified</Text>
+            <Text style={[styles.detailValue, { color: theme.colors.text }]}>{user?.isVerified ? 'Yes' : 'No'}</Text>
+          </View>
+
+          <TouchableOpacity style={[styles.refreshButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={refreshProfile} disabled={profileLoading}>
+            <Ionicons name="refresh" size={18} color={theme.colors.primary} />
+            <Text style={[styles.refreshText, { color: theme.colors.primary }]}>{profileLoading ? 'Refreshing...' : 'Refresh'}</Text>
+          </TouchableOpacity>
           
-          <TouchableOpacity style={styles.menuItem} onPress={handleEditProfile}>
+          <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]} onPress={handleEditProfile}>
             <View style={styles.menuItemLeft}>
-              <Ionicons name="person-outline" size={24} color="#6B7280" />
-              <Text style={styles.menuItemText}>Edit Profile</Text>
+              <Ionicons name="person-outline" size={24} color={theme.colors.textSecondary} />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('editProfile')}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
 
-          <View style={styles.menuItem}>
+          <View style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
             <View style={styles.menuItemLeft}>
-              <Ionicons name="notifications-outline" size={24} color="#6B7280" />
-              <Text style={styles.menuItemText}>Push Notifications</Text>
+              <Ionicons name="notifications-outline" size={24} color={theme.colors.textSecondary} />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('pushNotifications')}</Text>
             </View>
             <Switch
               value={notifications}
               onValueChange={setNotifications}
-              trackColor={{ false: '#E5E7EB', true: '#DBEAFE' }}
-              thumbColor={notifications ? '#1E40AF' : '#9CA3AF'}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primary + '40' }}
+              thumbColor={notifications ? theme.colors.primary : theme.colors.textSecondary}
             />
           </View>
 
-          <TouchableOpacity style={styles.menuItem}>
+          <LanguageSelector />
+
+          <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]} onPress={handleSettings}>
             <View style={styles.menuItemLeft}>
-              <Ionicons name="car-outline" size={24} color="#6B7280" />
-              <Text style={styles.menuItemText}>Vehicle Information</Text>
+              <Ionicons name="settings-outline" size={24} color={theme.colors.textSecondary} />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('settings')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}
+            onPress={() => navigation.navigate('VehicleInfo' as never)}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons name="car-outline" size={24} color={theme.colors.textSecondary} />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('vehicleInformation')}</Text>
             </View>
             <View style={styles.vehicleInfo}>
-              <Text style={styles.vehicleText}>{user?.vehicle || 'Not set'}</Text>
-              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+              <Text style={[styles.vehicleText, { color: theme.colors.textSecondary }]}>
+                {user?.vehicles && user.vehicles.length > 0 
+                  ? user.vehicles.find(v => v.default)?.name || user.vehicles[0].name 
+                  : t('notSet') || 'Not set'}
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity 
+            style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}
+            onPress={() => navigation.navigate('PhoneNumbers' as never)}
+          >
             <View style={styles.menuItemLeft}>
-              <Ionicons name="call-outline" size={24} color="#6B7280" />
-              <Text style={styles.menuItemText}>Phone Number</Text>
+              <Ionicons name="call-outline" size={24} color={theme.colors.textSecondary} />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('phoneNumber')}</Text>
             </View>
             <View style={styles.phoneInfo}>
-              <Text style={styles.phoneText}>{user?.phone || 'Not set'}</Text>
-              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+              <Text style={[styles.phoneText, { color: theme.colors.textSecondary }]}>
+                {user?.phoneNumber || 
+                 (user?.phoneNumbers && user.phoneNumbers.length > 0 
+                  ? user.phoneNumbers.find(p => p.isPrimary)?.number || user.phoneNumbers[0].number 
+                  : t('notSet') || 'Not set')}
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
             </View>
           </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Support</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>{t('support')}</Text>
           
-          <TouchableOpacity style={styles.menuItem} onPress={handleSupport}>
+          <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]} onPress={handleSupport}>
             <View style={styles.menuItemLeft}>
-              <Ionicons name="help-circle-outline" size={24} color="#6B7280" />
-              <Text style={styles.menuItemText}>Help & Support</Text>
+              <Ionicons name="help-circle-outline" size={24} color={theme.colors.textSecondary} />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('helpSupport')}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handlePrivacy}>
+          <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]} onPress={handlePrivacy}>
             <View style={styles.menuItemLeft}>
-              <Ionicons name="shield-outline" size={24} color="#6B7280" />
-              <Text style={styles.menuItemText}>Privacy Policy</Text>
+              <Ionicons name="shield-outline" size={24} color={theme.colors.textSecondary} />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('privacyPolicy')}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handleTerms}>
+          <TouchableOpacity style={[styles.menuItem, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]} onPress={handleTerms}>
             <View style={styles.menuItemLeft}>
-              <Ionicons name="document-text-outline" size={24} color="#6B7280" />
-              <Text style={styles.menuItemText}>Terms of Service</Text>
+              <Ionicons name="document-text-outline" size={24} color={theme.colors.textSecondary} />
+              <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('termsService')}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <TouchableOpacity style={[styles.logoutButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={24} color="#DC2626" />
-          <Text style={styles.logoutText}>Logout</Text>
+          <Text style={styles.logoutText}>{t('logout')}</Text>
         </TouchableOpacity>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Delivery Driver App v1.0.0</Text>
+          <Text style={[styles.footerText, { color: theme.colors.textSecondary }]}>Delivery Driver App v1.0.0</Text>
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+  },
+  scrollView: {
+    flex: 1,
   },
   header: {
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 30,
+  },
+  profileOverlay: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 20,
+    padding: 20,
+    margin: 10,
   },
   profileInfo: {
     alignItems: 'center',
@@ -239,7 +508,6 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   statCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -254,17 +522,19 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
     marginTop: 8,
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    color: '#6B7280',
     textAlign: 'center',
   },
+  badgeRow: { flexDirection: 'row', marginTop: 8 },
+  badgeVerified: { flexDirection: 'row', backgroundColor: '#059669', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginRight: 8, alignItems: 'center' },
+  badgeText: { color: '#fff', fontSize: 12, marginLeft: 4, fontWeight: '600' },
+  badgeNeutral: { flexDirection: 'row', backgroundColor: '#DBEAFE', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignItems: 'center' },
+  badgeNeutralText: { color: '#1E40AF', fontSize: 12, marginLeft: 4, fontWeight: '600' },
   section: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginBottom: 20,
     shadowColor: '#000',
@@ -273,15 +543,19 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
+  detailRowLast: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
+  detailLabel: { fontSize: 14, fontWeight: '500' },
+  detailValue: { fontSize: 14, fontWeight: '600' },
+  refreshButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', margin: 16, paddingVertical: 10, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
+  refreshText: { marginLeft: 6, fontSize: 14, fontWeight: '600' },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#111827',
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   menuItem: {
     flexDirection: 'row',
@@ -290,7 +564,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
   },
   menuItemLeft: {
     flexDirection: 'row',
@@ -299,7 +572,6 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     fontSize: 16,
-    color: '#111827',
     marginLeft: 16,
   },
   vehicleInfo: {
@@ -308,7 +580,6 @@ const styles = StyleSheet.create({
   },
   vehicleText: {
     fontSize: 14,
-    color: '#6B7280',
     marginRight: 8,
   },
   phoneInfo: {
@@ -317,17 +588,16 @@ const styles = StyleSheet.create({
   },
   phoneText: {
     fontSize: 14,
-    color: '#6B7280',
     marginRight: 8,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FEF2F2',
     borderRadius: 12,
     paddingVertical: 16,
     marginBottom: 30,
+    borderWidth: 1,
   },
   logoutText: {
     fontSize: 16,
@@ -341,6 +611,14 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
-    color: '#9CA3AF',
+  },
+  pulseWrapper: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 72,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
 });
