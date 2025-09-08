@@ -55,7 +55,7 @@ function TabNavigator() {
           // paddingBottom: 5,
           paddingTop: -1,
           // height: 70,
-           height: (Platform.OS === 'ios' ? 80 : 60) + insets.bottom,
+           height: (Platform.OS === 'ios' ? 50 : 60) + insets.bottom,
       paddingBottom: (Platform.OS === 'ios' ? 25 : 10) + insets.bottom,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
