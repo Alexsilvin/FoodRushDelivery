@@ -180,7 +180,7 @@ export default function LoginScreen({ navigation }: any) {
             />
             <View style={styles.logoTextContainer}>
               <Text style={styles.logoText}>Food Rush</Text>
-              <Text style={styles.logoSubText}>Delivery Partner</Text>
+              <Text style={styles.logoSubText}>Driver App</Text>
             </View>
           </Animated.View>
 

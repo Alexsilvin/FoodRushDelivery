@@ -1123,7 +1123,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingTop: 50,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#ffffffff',
   },
   headerTitle: {
     fontSize: 20,

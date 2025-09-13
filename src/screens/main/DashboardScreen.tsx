@@ -21,6 +21,7 @@ import { Delivery, RiderStatus } from '../../types/api';
 import { mapApiDeliveries } from '../../utils/mappers';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+const driverImg = require('../../../assets/driver.png');
 
 // Local UI fallback formatting helpers
 const formatCurrency = (amount?: number) => {
@@ -248,30 +249,36 @@ export default function DashboardScreen({ navigation }: any) {
         style={[styles.container, { backgroundColor: 'transparent' }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+
         <LinearGradient 
           colors={theme.isDark 
             ? [theme.colors.primary, theme.colors.secondary] 
             : ['#1E40AF', '#3B82F6']} 
           style={[styles.header, { paddingTop: 60 }]}
         >
-        <Text style={styles.greeting}>{t('welcomeBack') || 'Welcome back'}, {user?.firstName || 'User'}!</Text>
-        <Text style={styles.subGreeting}>{t('readyToDeliver')}</Text>
+          <Text style={styles.greeting}>{t('welcomeBack') || 'Welcome back'}, {user?.firstName || 'User'}!</Text>
+          <Text style={styles.subGreeting}>{t('readyToDeliver')}</Text>
 
-        <View style={styles.statsContainer}>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.statValue, { color: theme.colors.text }]}>${stats.todayEarnings}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('todayEarnings')}</Text>
+          {/* Driver image with reduced opacity */}
+          <View style={styles.driverImageContainer}>
+            <Image source={driverImg} style={styles.driverImage} resizeMode="contain" alt="" />
           </View>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.completedDeliveries}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('completed')}</Text>
+
+          <View style={styles.statsContainer}>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>${stats.todayEarnings}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('todayEarnings')}</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.completedDeliveries}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('completed')}</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.rating}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('rating')}</Text>
+            </View>
           </View>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.rating}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('rating')}</Text>
-          </View>
-        </View>
-      </LinearGradient>
+        </LinearGradient>
 
       <View style={[styles.content, { backgroundColor: 'transparent' }]}>
         <View style={styles.sectionHeader}>
@@ -397,6 +404,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
     zIndex: 1,
+  },
+  driverImageContainer: {
+    alignItems: 'center',
+    marginBottom: 5,
+    marginTop: 1,
+  },
+  driverImage: {
+    width: 450,
+    height: 450,
+    opacity: 0.3,
+    margin: -200,
   },
   header: {
     paddingHorizontal: 20,

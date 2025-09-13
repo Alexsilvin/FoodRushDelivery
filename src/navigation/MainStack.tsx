@@ -82,7 +82,7 @@ function TabNavigator() {
       <Tab.Screen 
         name="Deliveries" 
         component={DeliveriesScreen}
-        options={{ title: t('myDeliveries'), headerShown: false }}
+        options={{ title: t('deliveries'), headerShown: false }}
       />
       <Tab.Screen 
         name="Map" 
