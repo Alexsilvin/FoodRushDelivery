@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { use } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,8 @@ import VehicleInfoScreen from '../screens/main/VehicleInfoScreen';
 import PhoneNumbersScreen from '../screens/main/PhoneNumbersScreen';
 import AvailabilityScheduleScreen from '../screens/main/AvailabilityScheduleScreen';
 import GlobalCallOverlay from '../components/GlobalCallOverlay';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform } from 'react-native';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -23,6 +25,7 @@ const Tab = createBottomTabNavigator();
 function TabNavigator() {
   const { theme } = useTheme();
   const { t } = useLanguage();
+  const insets = useSafeAreaInsets();
   
   return (
     <Tab.Navigator
@@ -48,10 +51,19 @@ function TabNavigator() {
         tabBarInactiveTintColor: theme.colors.textSecondary,
         tabBarStyle: {
           backgroundColor: theme.colors.card,
-          borderTopColor: theme.colors.border,
-          paddingBottom: 5,
-          paddingTop: 1,
-          height: 60,
+          borderTopColor: theme.colors.card,
+          // paddingBottom: 5,
+          paddingTop: -1,
+          // height: 70,
+           height: (Platform.OS === 'ios' ? 50 : 60) + insets.bottom,
+      paddingBottom: (Platform.OS === 'ios' ? 25 : 10) + insets.bottom,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+          elevation: 10,
+          overflow: 'hidden',
+          marginTop: -20,
         },
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -70,7 +82,7 @@ function TabNavigator() {
       <Tab.Screen 
         name="Deliveries" 
         component={DeliveriesScreen}
-        options={{ title: t('myDeliveries'), headerShown: false }}
+        options={{ title: t('deliveries'), headerShown: false }}
       />
       <Tab.Screen 
         name="Map" 

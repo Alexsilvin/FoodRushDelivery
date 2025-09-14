@@ -61,26 +61,7 @@ const translations = {
     language: 'Language',
     selectLanguage: 'Select Language',
     
-    // Common
-    // Chat enhancements removed
-    // Removed chat enhancement translation keys
-    // typing: 'typing...',
-    // quickReplies: 'Quick Replies',
-    // allFilter: 'All',
-    // unreadFilter: 'Unread',
-    // recentFilter: 'Recent',
-    // starredFilter: 'Starred',
-    // messageCopied: 'Message copied',
-    // deleteMessage: 'Delete Message',
-    // confirmDeleteMessage: 'Are you sure you want to delete this message?',
-    // messageDeleted: 'Message deleted',
-    // starChat: 'Star Chat',
-    // unstarChat: 'Unstar Chat',
-    // pinChat: 'Pin Chat',
-    // unpinChat: 'Unpin Chat',
-    // markResolved: 'Mark Resolved',
-    // resolved: 'Resolved',
-    // Delivery Details
+    
     deliveryDetails: 'Delivery Details',
     loadingDeliveryDetails: 'Loading delivery details...',
     deliveryNotFound: 'Delivery not found',
@@ -446,6 +427,7 @@ const translations = {
     cannotRemoveLastVehicle: 'Impossible de supprimer votre dernier véhicule',
     vehicleNameRequired: 'Le nom du véhicule est requis',
     noVehiclesAdded: 'Aucun véhicule ajouté',
+  
     
     // Phone Numbers
     phoneNumbers: 'Numéros de Téléphone',

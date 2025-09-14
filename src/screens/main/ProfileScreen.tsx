@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
   detailRowLast: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
   detailLabel: { fontSize: 14, fontWeight: '500' },
   detailValue: { fontSize: 14, fontWeight: '600' },
-  refreshButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', margin: 16, paddingVertical: 10, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
+  refreshButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', margin: 6, paddingVertical: 10, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth },
   refreshText: { marginLeft: 6, fontSize: 14, fontWeight: '600' },
   sectionTitle: {
     fontSize: 18,
