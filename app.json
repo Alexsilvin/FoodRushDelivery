@@ -39,7 +39,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location for navigation and delivery tracking."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "googleMapsApiKey": "CHANGE_ME_ADD_REAL_KEY"
