@@ -48,115 +48,109 @@ export default function LoginScreen({ navigation }: any) {
   }, [logoOpacity]);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert(t('error'), t('fillAllFields'));
+  if (!email || !password) {
+    Alert.alert(t('error'), t('fillAllFields'));
+    return;
+  }
+
+  if (!email.includes('@')) {
+    Alert.alert(t('error'), t('invalidEmail'));
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const response = await login(email, password); // now returns { success, user, token, state }
+
+    if (!response.success || !response.user) {
+      Alert.alert(t('loginFailed'), t('invalidCredentials'), [
+        { text: t('ok'), style: 'cancel' },
+      ]);
       return;
     }
 
-    if (!email.includes('@')) {
-      Alert.alert(t('error'), t('invalidEmail'));
-      return;
+    const riderState = response.state?.toLowerCase();
+
+    if (riderState === 'active') {
+      navigation.replace('Home');
+    } else {
+      navigation.replace('Waiting', {
+        reason: `Your account is currently "${riderState}". Please wait for activation.`,
+      });
     }
 
-    setLoading(true);
-    try {
-      const success = await login(email, password);
-      
-      if (!success) {
-        Alert.alert(
-          t('loginFailed'), 
-          t('invalidCredentials'), 
-          [
-            {
-              text: t('ok'),
-              style: 'cancel',
-            }
-          ]
-        );
-      }
-    } catch (error: any) {
-      // Display the specific error message from the AuthContext
-      const errorMsg = error.message || t('somethingWentWrong');
-      
-      if (errorMsg.includes('not activated') || errorMsg.includes('not verified')) {
-        // Special handling for account verification issues
-        Alert.alert(
-          t('accountNotVerified') || 'Account Not Verified',
-          'Your account needs to be verified before you can log in. Please check your email for a verification link.',
-          [
-            {
-              text: t('ok') || 'OK',
-              style: 'cancel',
-            },
-            {
-              text: t('resendVerification') || 'Resend Verification',
-              onPress: async () => {
-                try {
-                  setLoading(true);
-                  const result = await authAPI.resendVerificationEmail(email);
-                  if (result.success) {
-                    Alert.alert(
-                      t('verificationSent') || 'Verification Sent',
-                      t('verificationEmailResent') || 'A new verification email has been sent. Please check your inbox and click the verification link.'
-                    );
-                  } else {
-                    Alert.alert(
-                      t('error') || 'Error',
-                      result.message || t('somethingWentWrong')
-                    );
-                  }
-                } catch (resendError: any) {
+  } catch (error: any) {
+    const errorMsg = error.message || t('somethingWentWrong');
+
+    if (errorMsg.includes('not activated') || errorMsg.includes('not verified')) {
+      Alert.alert(
+        t('accountNotVerified') || 'Account Not Verified',
+        'Your account needs to be verified before you can log in. Please check your email for a verification link.',
+        [
+          {
+            text: t('ok') || 'OK',
+            style: 'cancel',
+          },
+          {
+            text: t('resendVerification') || 'Resend Verification',
+            onPress: async () => {
+              try {
+                setLoading(true);
+                const result = await authAPI.resendVerificationEmail(email);
+                if (result.success) {
                   Alert.alert(
-                    t('error') || 'Error',
-                    resendError.message || t('somethingWentWrong')
+                    t('verificationSent') || 'Verification Sent',
+                    t('verificationEmailResent') || 'A new verification email has been sent. Please check your inbox and click the verification link.'
                   );
-                } finally {
-                  setLoading(false);
+                } else {
+                  Alert.alert(t('error') || 'Error', result.message || t('somethingWentWrong'));
                 }
+              } catch (resendError: any) {
+                Alert.alert(t('error') || 'Error', resendError.message || t('somethingWentWrong'));
+              } finally {
+                setLoading(false);
               }
             },
-            {
-              text: t('activateNow') || 'Activate Now',
-              onPress: async () => {
-                try {
-                  setLoading(true);
-                  const result = await authAPI.activateAccount(email);
-                  if (result.success) {
-                    Alert.alert(
-                      t('accountActivated') || 'Account Activated',
-                      t('accountActivationSuccess') || 'Your account has been activated! You can now log in.',
-                      [
-                        {
-                          text: t('login') || 'Log In',
-                          onPress: () => handleLogin()
-                        }
-                      ]
-                    );
-                  } else {
-                    Alert.alert(
-                      t('activationFailed') || 'Activation Failed',
-                      result.message || t('activationNotSupported') || 'Account activation through the app is not supported. Please check your email for a verification link.'
-                    );
-                  }
-                } catch (activateError: any) {
+          },
+          {
+            text: t('activateNow') || 'Activate Now',
+            onPress: async () => {
+              try {
+                setLoading(true);
+                const result = await authAPI.activateAccount(email);
+                if (result.success) {
                   Alert.alert(
-                    t('error') || 'Error',
-                    activateError.message || t('somethingWentWrong')
+                    t('accountActivated') || 'Account Activated',
+                    t('accountActivationSuccess') || 'Your account has been activated! You can now log in.',
+                    [
+                      {
+                        text: t('login') || 'Log In',
+                        onPress: () => handleLogin(),
+                      },
+                    ]
                   );
-                } finally {
-                  setLoading(false);
+                } else {
+                  Alert.alert(
+                    t('activationFailed') || 'Activation Failed',
+                    result.message || t('activationNotSupported') || 'Account activation through the app is not supported. Please check your email for a verification link.'
+                  );
                 }
+              } catch (activateError: any) {
+                Alert.alert(t('error') || 'Error', activateError.message || t('somethingWentWrong'));
+              } finally {
+                setLoading(false);
               }
-            }
-          ]
-        );
-      } else {
-        Alert.alert(t('error') || 'Error', errorMsg);
-      }
-    } finally {
-      setLoading(false);
+            },
+          },
+        ]
+      );
+    } else {
+      Alert.alert(t('error') || 'Error', errorMsg);
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <LinearGradient 

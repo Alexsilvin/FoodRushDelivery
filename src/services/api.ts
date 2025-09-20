@@ -150,16 +150,15 @@ export const authAPI = {
     vehicleName?: string;
   }) => {
     try {
-      // Format the payload to match what the API expects
       const payload = {
         email: userData.email,
         password: userData.password,
         fullName: `${userData.firstName} ${userData.lastName}`,
         phoneNumber: userData.phoneNumber,
-        role: 'rider' // Always set to rider for the delivery app
+        role: 'rider',
       };
-      
-  const response = await api.post<ApiResponse<{ token: string; user: User }>>(ENDPOINTS.auth.register, payload);
+
+      const response = await api.post<ApiResponse<{ token: string; user: User }>>(ENDPOINTS.auth.register, payload);
       return response.data;
     } catch (error: any) {
       console.error(`Registration failed with status: ${error?.response?.status}`);
@@ -175,6 +174,17 @@ export const authAPI = {
       password,
     });
     return response.data;
+  },
+
+  // ✅ Get rider state by email
+  getRiderState: async (email: string) => {
+    try {
+      const response = await api.get<ApiResponse<{ state: string }>>(`/Api/V1/Riders?email=${encodeURIComponent(email)}`);
+      return response.data;
+    } catch (error: any) {
+      console.error(`Failed to fetch rider state: ${error?.response?.status}`);
+      throw error;
+    }
   },
 
   // Forgot password request
@@ -209,15 +219,13 @@ export const authAPI = {
     const response = await api.post<ApiResponse>(ENDPOINTS.auth.verifyEmail, { token });
     return response.data;
   },
-  
+
   // Resend verification email
   resendVerificationEmail: async (email: string) => {
     try {
       const response = await api.post<ApiResponse>(ENDPOINTS.auth.resendVerification, { email });
       return response.data;
     } catch (error: any) {
-      // If the endpoint doesn't exist, simulate a success response
-      // This allows the UI to still provide feedback while the backend catches up
       if (error?.response?.status === 404) {
         console.warn('Resend verification endpoint not found. Simulating success.');
         return { success: true, message: 'Verification email sent' };
@@ -225,19 +233,18 @@ export const authAPI = {
       throw error;
     }
   },
-  
+
   // Activate account directly (if the API supports this)
   activateAccount: async (email: string) => {
     try {
       const response = await api.post<ApiResponse>(ENDPOINTS.auth.activateAccount, { email });
       return response.data;
     } catch (error: any) {
-      // If the endpoint doesn't exist, simulate a success response
       if (error?.response?.status === 404) {
         console.warn('Activate account endpoint not found. Simulating failure.');
-        return { 
-          success: false, 
-          message: 'Account activation through the app is not supported. Please check your email for a verification link.' 
+        return {
+          success: false,
+          message: 'Account activation through the app is not supported. Please check your email for a verification link.',
         };
       }
       throw error;
@@ -358,35 +365,49 @@ export const riderAuthAPI = {
     }
   },
   // Rider login
-  login: async (email: string, password: string) => {
-    try {
-      const response = await api.post(ENDPOINTS.riderAuth.login, { email, password });
-      const raw = response.data; // backend native shape
-      // Normalize various possible shapes into ApiResponse<{ token; user }>
-      let token: string | undefined;
-      let user: User | undefined;
-      if (raw?.data) {
-        token = raw.data.accessToken || raw.data.token || raw.data.jwt || raw.data.access_token;
-        user = raw.data.user || raw.data.rider || raw.data.account || raw.data.profile;
-      } else if (raw?.token) {
-        token = raw.token; user = raw.user;
-      }
-      if (!token) {
-        console.warn('riderAuthAPI.login: token missing in response, raw:', JSON.stringify(raw).slice(0,500));
-      }
-      return {
-        success: true,
-        message: raw?.message || 'OK',
-        data: token && user ? { token, user } : undefined,
-      } as ApiResponse<{ token: string; user: User }>;
-    } catch (e: any) {
-      if (e?.response?.status === 404) {
-        console.warn('riderAuth.login 404, falling back to legacy /auth/login');
-        return authAPI.login(email, password);
-      }
-      throw e;
+  login: async (
+  email: string,
+  password: string
+): Promise<{ success: boolean; user?: User; token?: string; state?: string }> => {
+  try {
+    const response = await api.post(ENDPOINTS.riderAuth.login, { email, password });
+    const raw = response.data;
+
+    let token: string | undefined;
+    let user: User | undefined;
+
+    if (raw?.data) {
+      token = raw.data.accessToken || raw.data.token || raw.data.jwt || raw.data.access_token;
+      user = raw.data.user || raw.data.rider || raw.data.account || raw.data.profile;
+    } else if (raw?.token) {
+      token = raw.token;
+      user = raw.user;
     }
-  },
+
+    if (!token) {
+      console.warn('riderAuthAPI.login: token missing in response, raw:', JSON.stringify(raw).slice(0, 500));
+    }
+
+    return {
+      success: true,
+      token,
+      user,
+      state: user?.state || 'pending',
+    };
+  } catch (e: any) {
+    if (e?.response?.status === 404) {
+      console.warn('riderAuth.login 404, falling back to legacy /auth/login');
+      const fallback = await authAPI.login(email, password);
+      return {
+        success: fallback.success,
+        token: fallback.data?.token,
+        user: fallback.data?.user,
+        state: fallback.data?.user?.state || 'pending',
+      };
+    }
+    throw e;
+  }
+},
   // Apply to become a rider (for existing user)
   apply: async (extraData?: any) => {
     const response = await api.post<ApiResponse>(ENDPOINTS.riderAuth.apply, extraData || {});

@@ -84,61 +84,63 @@ export default function RegisterScreen({ navigation }: any) {
   };
   
   const proceedWithRegistration = async () => {
-    setLoading(true);
-    
-    try {
-  const success = await register(
-        firstName,
-        lastName,
-        email,
-        password,
-        phoneNumber,
-        vehicleType,
-        documentUri,
-        vehiclePhotoUri
+  setLoading(true);
+
+  try {
+    const response = await register(
+      firstName,
+      lastName,
+      email,
+      password,
+      phoneNumber,
+      vehicleType,
+      documentUri,
+      vehiclePhotoUri
+    );
+
+    const userState = response?.user?.state?.toLowerCase();
+
+    if (response?.success || userState === 'pending') {
+      Alert.alert(
+        t('success') || 'Success',
+        userState === 'pending'
+          ? t('accountPending') || 'Your account has been created and is pending approval. Please check your email for verification.'
+          : t('accountCreated') || 'Account created successfully! Please check your email for a verification link.',
+        [
+          {
+            text: t('goToLogin') || 'Go to Login',
+            onPress: () => navigation.navigate('Login'),
+          },
+        ]
       );
-      
-      if (success) {
-        Alert.alert(
-          t('success') || 'Success', 
-          t('accountCreated') || 'Account created successfully! Please check your email for a verification link. You can now log in.',
-          [
-            {
-              text: t('goToLogin') || 'Go to Login',
-              onPress: () => navigation.navigate('Login')
-            }
-          ]
-        );
-      } else {
-        Alert.alert(t('error') || 'Error', t('registrationFailed') || 'Failed to create account. Please try again.');
-      }
-    } catch (error: any) {
-      // Display specific backend message including normalized hints
-      const errorMsg = error?.response?.data?.message || error.message || t('somethingWentWrong') || 'Something went wrong. Please try again.';
-      
-      // If it's a duplicate account error (409 conflict), offer to go to login
-      if (errorMsg.includes('already registered') || errorMsg.includes('already in use')) {
-        Alert.alert(
-          t('error') || 'Error', 
-          errorMsg,
-          [
-            {
-              text: t('goToLogin') || 'Go to Login',
-              onPress: () => navigation.navigate('Login')
-            },
-            {
-              text: t('tryAgain') || 'Try Again',
-              style: 'cancel'
-            }
-          ]
-        );
-      } else {
-        Alert.alert(t('error') || 'Error', errorMsg);
-      }
-    } finally {
-      setLoading(false);
+    } else {
+      Alert.alert(t('error') || 'Error', t('registrationFailed') || 'Failed to create account. Please try again.');
     }
-  };
+  } catch (error: any) {
+    const errorMsg =
+      error?.response?.data?.message ||
+      error.message ||
+      t('somethingWentWrong') ||
+      'Something went wrong. Please try again.';
+
+    if (errorMsg.includes('already registered') || errorMsg.includes('already in use')) {
+      Alert.alert(t('error') || 'Error', errorMsg, [
+        {
+          text: t('goToLogin') || 'Go to Login',
+          onPress: () => navigation.navigate('Login'),
+        },
+        {
+          text: t('tryAgain') || 'Try Again',
+          style: 'cancel',
+        },
+      ]);
+    } else {
+      Alert.alert(t('error') || 'Error', errorMsg);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const pickImage = async (target: 'document' | 'vehicle') => {
     try {

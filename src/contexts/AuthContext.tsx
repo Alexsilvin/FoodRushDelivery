@@ -17,7 +17,7 @@ interface User extends ApiUser {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{success: boolean; user?: User; token?:string; state?: string}>;
   register: (
     firstName: string,
     lastName: string,
@@ -27,7 +27,7 @@ interface AuthContextType {
     vehicleType: string,
     documentUri?: string | null,
     vehiclePhotoUri?: string | null
-  ) => Promise<boolean>;
+  ) => Promise<{ success: boolean; user?: User; state?: string }>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<boolean>;
   resetPassword: (token: string, newPassword: string) => Promise<boolean>;
@@ -86,132 +86,125 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    try {
-      // Real API call
-  const response = await riderAuthAPI.login(email, password);
-      
-      if (response.success && response.data) {
-        const { token, user } = response.data;
-        
-        // Ensure the user is a rider
-        if (user.role !== 'rider') {
-          throw new Error('This app is for delivery drivers only');
-        }
-        
-        await AsyncStorage.setItem('auth_token', token);
-        await SecureStore.setItemAsync('user', JSON.stringify(user));
-        const normalized: User = {
-          ...user,
-          firstName: user.firstName || user.fullName?.split(' ')[0] || '',
-          lastName: user.lastName || user.fullName?.split(' ').slice(1).join(' ') || '',
-          role: user.role || 'rider'
-        };
-        setUser(normalized);
-        return true;
-      }
-      
-      return false;
-    } catch (error: any) {
-      console.error('Login error:', error);
-      
-      // Provide more specific error messages based on response
-      if (error?.response?.status === 401) {
-        const errorMsg = error?.response?.data?.message || '';
-        if (errorMsg.includes('not active') || errorMsg.includes('not verified')) {
-          throw new Error('Your account is not activated yet. Please check your email for the verification link.');
-        } else {
-          throw new Error('Invalid email or password');
-        }
-      } else if (error?.response?.status === 403) {
-        throw new Error('Account not verified. Please check your email for verification link.');
-      } else if (error?.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      } else {
-        throw error; // Rethrow original error if we can't categorize it
-      }
+  const login = async (
+  email: string,
+  password: string
+): Promise<{ success: boolean; user?: User; token?: string; state?: string }> => {
+  try {
+    const response = await riderAuthAPI.login(email, password);
+
+    const { token, user, state } = response;
+
+    if (!token || !user) {
+      return { success: false };
     }
-  };
+
+    await AsyncStorage.setItem('auth_token', token);
+    await SecureStore.setItemAsync('user', JSON.stringify(user));
+
+    const normalized: User = {
+      ...user,
+      firstName: user.firstName || user.fullName?.split(' ')[0] || '',
+      lastName: user.lastName || user.fullName?.split(' ').slice(1).join(' ') || '',
+      role: user.role || 'rider',
+    };
+
+    setUser(normalized);
+
+    return {
+      success: true,
+      user: normalized,
+      token,
+      state: normalized.state || state || 'pending',
+    };
+  } catch (error: any) {
+    console.error('Login error:', error);
+    throw new Error(error?.response?.data?.message || 'Login failed. Please try again.');
+  }
+};
 
   const register = async (
-    firstName: string,
-    lastName: string,
-    email: string,
-    password: string,
-    phoneNumber: string,
-    vehicleType: string,
-    documentUri?: string | null,
-    vehiclePhotoUri?: string | null
-  ): Promise<boolean> => {
-    try {
-      const fullName = `${firstName} ${lastName}`.trim();
-      const response = await riderAuthAPI.registerAndApply({
-        email,
-        password,
-        phoneNumber,
-        fullName,
-        vehicleType,
-        documentUri: documentUri || undefined,
-        vehiclePhotoUri: vehiclePhotoUri || undefined,
-      });
-      
-      if (response.success && response.data) {
-  const { token, user } = response.data;
-        
-        await AsyncStorage.setItem('auth_token', token);
-        await SecureStore.setItemAsync('user', JSON.stringify(user));
-        const normalized: User = {
-          ...user,
-          firstName: user.firstName || user.fullName?.split(' ')[0] || '',
-          lastName: user.lastName || user.fullName?.split(' ').slice(1).join(' ') || '',
-          role: user.role || 'rider'
-        };
-        setUser(normalized);
+  firstName: string,
+  lastName: string,
+  email: string,
+  password: string,
+  phoneNumber: string,
+  vehicleType: string,
+  documentUri?: string | null,
+  vehiclePhotoUri?: string | null
+): Promise<{ success: boolean; user?: User; state?: string }> => {
+  try {
+    const fullName = `${firstName} ${lastName}`.trim();
+    const response = await riderAuthAPI.registerAndApply({
+      email,
+      password,
+      phoneNumber,
+      fullName,
+      vehicleType,
+      documentUri: documentUri || undefined,
+      vehiclePhotoUri: vehiclePhotoUri || undefined,
+    });
 
-        // Best-effort: attempt to save vehicle after registration if endpoint exists
-    if (vehicleType) {
-          try {
-            // optimistic local attach until backend support
-      normalized.vehicles = [...(normalized.vehicles || []), { type: vehicleType, default: true }];
-            setUser({ ...normalized });
-            // Future: call riderAPI.updateVehicle or similar when backend provides
-          } catch (vehErr) {
-            console.warn('Vehicle post-registration save skipped:', vehErr);
-          }
+    if (response.success && response.data) {
+      const { token, user } = response.data;
+
+      await AsyncStorage.setItem('auth_token', token);
+      await SecureStore.setItemAsync('user', JSON.stringify(user));
+
+      const normalized: User = {
+        ...user,
+        firstName: user.firstName || user.fullName?.split(' ')[0] || '',
+        lastName: user.lastName || user.fullName?.split(' ').slice(1).join(' ') || '',
+        role: user.role || 'rider',
+      };
+
+      setUser(normalized);
+
+      // Best-effort: attach vehicle locally
+      if (vehicleType) {
+        try {
+          normalized.vehicles = [...(normalized.vehicles || []), { type: vehicleType, default: true }];
+          setUser({ ...normalized });
+        } catch (vehErr) {
+          console.warn('Vehicle post-registration save skipped:', vehErr);
         }
-        return true;
       }
-      
-      return false;
-    } catch (error: any) {
-      console.error('Registration error:', error);
-      
-      // Provide more specific error messages based on response status
-      if (error?.response?.status === 400) {
-        if (error.response.data?.message?.includes('already exists')) {
-          throw new Error('Email or phone number already in use. Please use a different one.');
-        } else {
-          throw new Error(error.response.data?.message || 'Invalid registration data. Please check your information.');
-        }
-      } else if (error?.response?.status === 409) {
-        // 409 Conflict - typically means the email or phone number is already registered
-        const errorMsg = error.response.data?.message || '';
-        if (errorMsg.includes('Email and phone number already used')) {
-          throw new Error('Both email and phone number are already registered. Please use different credentials or try to login.');
-        } else if (errorMsg.includes('Email already used')) {
-          throw new Error('This email is already registered. Please use a different email or try to login.');
-        } else if (errorMsg.includes('Phone number already used')) {
-          throw new Error('This phone number is already registered. Please use a different phone number.');
-        } else {
-          throw new Error('This account already exists. Please try to login instead.');
-        }
-      } else if (error?.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      } else {
-        throw error; // Rethrow original error if we can't categorize it
-      }
+
+      return {
+        success: true,
+        user: normalized,
+        state: normalized.state || 'pending',
+      };
     }
-  };
+
+    return { success: false };
+  } catch (error: any) {
+    console.error('Registration error:', error);
+
+    if (error?.response?.status === 400) {
+      if (error.response.data?.message?.includes('already exists')) {
+        throw new Error('Email or phone number already in use. Please use a different one.');
+      } else {
+        throw new Error(error.response.data?.message || 'Invalid registration data. Please check your information.');
+      }
+    } else if (error?.response?.status === 409) {
+      const errorMsg = error.response.data?.message || '';
+      if (errorMsg.includes('Email and phone number already used')) {
+        throw new Error('Both email and phone number are already registered. Please use different credentials or try to login.');
+      } else if (errorMsg.includes('Email already used')) {
+        throw new Error('This email is already registered. Please use a different email or try to login.');
+      } else if (errorMsg.includes('Phone number already used')) {
+        throw new Error('This phone number is already registered. Please use a different phone number.');
+      } else {
+        throw new Error('This account already exists. Please try to login instead.');
+      }
+    } else if (error?.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    } else {
+      throw error;
+    }
+  }
+};
 
   const logout = async (): Promise<void> => {
     try {
