@@ -15,7 +15,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { useCall } from '../../contexts/CallContext';
+//import { useCall } from '../../contexts/CallContext';
 import { riderAPI } from '../../services/api';
 import { GOOGLE_MAPS_API_KEY } from '../../config/env';
 import { mapApiDeliveries } from '../../utils/mappers';
@@ -67,7 +67,7 @@ interface Route {
 export default function MapScreen({ navigation, route }: any) {
   const { theme } = useTheme();
   const { t } = useLanguage();
-  const { startCall } = useCall();
+  //const { startCall } = useCall();
   const routeParams = useRoute();
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
   const [fetchingDeliveries, setFetchingDeliveries] = useState(false);
@@ -276,10 +276,10 @@ export default function MapScreen({ navigation, route }: any) {
     );
   }, [t]);
 
-  const handleCall = useCallback((customerName: string, phoneNumber?: string) => {
+  //const handleCall = useCallback((customerName: string, phoneNumber?: string) => {
     // Directly start the call and navigate to call screen
-    startCall(customerName, 'voice');
-  }, [startCall]);
+    //startCall(customerName, 'voice');
+  //}, [startCall]);
 
   // Enhanced route calculation with better algorithm
   const calculateRouteToClient = useCallback(async (client: DeliveryLocation) => {
@@ -1098,7 +1098,7 @@ useEffect(() => {
               </TouchableOpacity>
             )}
             
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={[styles.actionButton, styles.callButton]}
               onPress={() => handleCall(
                 (selectedDelivery || activeDelivery)?.customerName || '', 
@@ -1107,7 +1107,7 @@ useEffect(() => {
             >
               <Ionicons name="call" size={20} color="#FFFFFF" />
               <Text style={styles.actionButtonText}>{t('call')}</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         </View>
       )}

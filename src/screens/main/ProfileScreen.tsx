@@ -20,6 +20,15 @@ import { useNavigation } from '@react-navigation/native';
 import LanguageSelector from '../../components/LanguageSelector';
 import { useStaggeredFadeIn } from '../../hooks/useStaggeredFadeIn';
 import { useCountUp } from '../../hooks/useCountUp';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import axios from 'axios'; // Ensure axios is imported if not already
+
+// Define the notification type
+interface Notification {
+  title: string;
+  body: string;
+}
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
@@ -34,6 +43,7 @@ export default function ProfileScreen() {
   const [rating, setRating] = useState<number | null>(null);
   const [completedDeliveries, setCompletedDeliveries] = useState<number | null>(null);
   const [completionRate, setCompletionRate] = useState<string | null>(null);
+  const [notificationList, setNotificationList] = useState<Notification[]>([]); // Explicitly define the type
 
   // Derive vehicle type (backend may store on vehicle or root)
   const vehicleType = user?.vehicleType || user?.vehicles?.find(v => v.default)?.type || user?.vehicles?.[0]?.type;
@@ -143,6 +153,46 @@ export default function ProfileScreen() {
     return () => { mounted = false; };
   }, [user]);
 
+  useEffect(() => {
+    const registerForPushNotifications = async () => {
+      if (Device.isDevice) {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== 'granted') {
+          Alert.alert('Failed to get push token for notifications!');
+          return;
+        }
+        const token = (await Notifications.getExpoPushTokenAsync()).data;
+        console.log('Push token:', token);
+
+        // Register the token with the backend
+        try {
+          await axios.post('/api/v1/notifications/device', { token }); // Use axios for the POST request
+        } catch (error) {
+          console.error('Failed to register push token:', error);
+        }
+      } else {
+        Alert.alert('Must use physical device for Push Notifications');
+      }
+    };
+
+    const fetchNotifications = async () => {
+      try {
+        const response = await axios.get('/api/v1/notifications/my'); // Use axios for the GET request
+        setNotificationList(response.data || []);
+      } catch (error) {
+        console.error('Failed to fetch notifications:', error);
+      }
+    };
+
+    registerForPushNotifications();
+    fetchNotifications();
+  }, []);
+
   const toggleOnline = async (value: boolean) => {
     const previous = isOnline;
     setIsOnline(value);
@@ -180,6 +230,15 @@ export default function ProfileScreen() {
     } finally {
       setProfileLoading(false);
     }
+  };
+
+  const renderNotifications = () => {
+    return notificationList.map((notification, index) => (
+      <View key={index} style={[styles.notificationItem, { backgroundColor: theme.colors.card }]}>
+        <Text style={[styles.notificationTitle, { color: theme.colors.text }]}>{notification.title}</Text>
+        <Text style={[styles.notificationBody, { color: theme.colors.textSecondary }]}>{notification.body}</Text>
+      </View>
+    ));
   };
 
   return (
@@ -395,6 +454,12 @@ export default function ProfileScreen() {
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
             </View>
           </TouchableOpacity>
+        </View>
+
+        {/* Notifications Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>Notifications</Text>
+          {renderNotifications()}
         </View>
 
         <View style={styles.section}>
@@ -620,5 +685,23 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  notificationItem: {
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  notificationBody: {
+    fontSize: 14,
+    marginTop: 4,
   },
 });
