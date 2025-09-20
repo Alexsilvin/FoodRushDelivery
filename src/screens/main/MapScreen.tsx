@@ -838,6 +838,35 @@ export default function MapScreen({ navigation, route }: any) {
     }
   };
 
+  // New useEffect to handle driver, restaurant, and customer locations from params
+useEffect(() => {
+  const { driverLocation, restaurantLocation, customerLocation } = route.params || {};
+
+  if (driverLocation && restaurantLocation && customerLocation) {
+    // Show markers for the driver, restaurant, and customer
+    setRouteCoordinates([driverLocation, restaurantLocation, customerLocation]);
+
+    // Calculate and display the shortest route
+    getDirections(driverLocation, customerLocation).then((directionsRoute) => {
+      if (directionsRoute) {
+        setActiveDirections(directionsRoute);
+        setRouteCoordinates(directionsRoute.coordinates);
+      }
+    });
+
+    // Fit the map to show all markers
+    if (mapRef.current) {
+      mapRef.current.fitToCoordinates(
+        [driverLocation, restaurantLocation, customerLocation],
+        {
+          edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+          animated: true,
+        }
+      );
+    }
+  }
+}, [route.params, getDirections]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -910,6 +939,33 @@ export default function MapScreen({ navigation, route }: any) {
           console.log('Map is ready');
         }}
       >
+        {/* Driver Marker */}
+        {route.params?.driverLocation && (
+          <Marker
+            coordinate={route.params.driverLocation}
+            title="Driver"
+            pinColor="blue"
+          />
+        )}
+
+        {/* Restaurant Marker */}
+        {route.params?.restaurantLocation && (
+          <Marker
+            coordinate={route.params.restaurantLocation}
+            title="Restaurant"
+            pinColor="orange"
+          />
+        )}
+
+        {/* Customer Marker */}
+        {route.params?.customerLocation && (
+          <Marker
+            coordinate={route.params.customerLocation}
+            title="Customer"
+            pinColor="green"
+          />
+        )}
+
         {/* Show destination marker only in driving mode */}
         {isDrivingMode && activeDelivery && (
           <Marker
@@ -951,14 +1007,12 @@ export default function MapScreen({ navigation, route }: any) {
           </Marker>
         ))}
 
-        {/* Show route polyline when directions are active */}
+        {/* Route Polyline */}
         {activeDirections && routeCoordinates.length > 0 && (
           <Polyline
             coordinates={routeCoordinates}
             strokeColor={theme.colors.primary}
             strokeWidth={5}
-            lineDashPattern={[1]}
-            geodesic={true}
           />
         )}
 
