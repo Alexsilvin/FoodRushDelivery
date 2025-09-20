@@ -96,7 +96,7 @@ export default function MapScreen({ navigation, route }: any) {
   const targetAddress = (routeParams.params as any)?.address;
 
   // Google Directions API integration
-  const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY'; // You'll need to add your API key
+  const GOOGLE_MAPS_API_KEY = 'AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18'; // You'll need to add your API key
 
   // Utility function to calculate distance between two points
   const calculateDistance = useCallback((
@@ -892,11 +892,23 @@ export default function MapScreen({ navigation, route }: any) {
           longitudeDelta: 0.01,
         }}
         showsUserLocation={true}
-        showsMyLocationButton={true}
+        showsMyLocationButton={false}
         showsTraffic={isDrivingMode}
         showsBuildings={true}
+        showsIndoors={true}
         mapType={theme.isDark ? 'standard' : 'standard'}
         userInterfaceStyle={theme.isDark ? 'dark' : 'light'}
+        minZoomLevel={4}
+        maxZoomLevel={20}
+        rotateEnabled={true}
+        pitchEnabled={true}
+        moveOnMarkerPress={true}
+        loadingEnabled={true}
+        loadingIndicatorColor={theme.colors.primary}
+        loadingBackgroundColor={theme.colors.surface}
+        onMapReady={() => {
+          console.log('Map is ready');
+        }}
       >
         {/* Show destination marker only in driving mode */}
         {isDrivingMode && activeDelivery && (

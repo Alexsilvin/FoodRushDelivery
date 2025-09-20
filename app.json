@@ -13,6 +13,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.foodrush.driverapp",
+      "config": {
+        "googleMapsApiKey": "AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18"
+      },
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show delivery routes and navigation.",
@@ -20,6 +24,12 @@
       }
     },
     "android": {
+      "package": "com.foodrush.driverapp",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18"
+        }
+      },
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
