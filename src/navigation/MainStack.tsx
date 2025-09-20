@@ -37,6 +37,8 @@ function TabNavigator() {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Deliveries') {
             iconName = focused ? 'car' : 'car-outline';
+          } else if (route.name === 'Map') {
+            iconName = focused ? 'map' : 'map-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           } else {
@@ -59,7 +61,7 @@ function TabNavigator() {
           shadowRadius: 8,
           elevation: 10,
           overflow: 'hidden',
-          marginTop: -20,
+          marginTop: -25,
         },
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -75,18 +77,15 @@ function TabNavigator() {
         component={DashboardScreen}
         options={{ title: t('dashboard'), headerShown: false }}
       />
-
-
-      <Tab.Screen 
-        name="Map" 
-        component={MapScreen}
-        options={{ title: t('map'), headerShown: false }}
-      />
-
       <Tab.Screen 
         name="Deliveries" 
         component={DeliveriesScreen}
         options={{ title: t('deliveries'), headerShown: false }}
+      />
+      <Tab.Screen 
+        name="Map" 
+        component={MapScreen}
+        options={{ title: t('map'), headerShown: false }}
       />
       <Tab.Screen 
         name="Profile" 
