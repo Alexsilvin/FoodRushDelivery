@@ -20,7 +20,10 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show delivery routes and navigation.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to provide accurate delivery navigation and tracking."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to provide accurate delivery navigation and tracking.",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -37,7 +40,9 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
       ]
     },
     "web": {
@@ -50,7 +55,14 @@
           "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location for navigation and delivery tracking."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ]
     ],
     "extra": {
       "googleMapsApiKey": "CHANGE_ME_ADD_REAL_KEY"
