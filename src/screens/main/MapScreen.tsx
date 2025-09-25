@@ -35,6 +35,7 @@ interface DeliveryLocation {
   estimatedTime: string;
   restaurant: string;
   payment: string;
+  restaurant_active?: boolean;
 }
 
 interface DirectionsStep {
@@ -69,6 +70,7 @@ export default function MapScreen({ navigation, route }: any) {
   const routeParams = useRoute();
   
   // State
+  const [showAcceptedRestaurantsOnly, setShowAcceptedRestaurantsOnly] = useState(false);
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
   const [fetchingDeliveries, setFetchingDeliveries] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryLocation | null>(null);
@@ -303,7 +305,7 @@ export default function MapScreen({ navigation, route }: any) {
   };
 
   // Google Directions API - Replace YOUR_API_KEY with your actual Google Maps API key
-  const GOOGLE_MAPS_API_KEY = 'AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18'; // Get this from Google Cloud Console
+  const GOOGLE_MAPS_API_KEY = 'AIzaSyAlILoX4PV-nTzRcwdkP6iTOcFbV0IURMA'; // Get this from Google Cloud Console
 
   const getDirections = useCallback(async (
     origin: { latitude: number; longitude: number },
@@ -311,7 +313,7 @@ export default function MapScreen({ navigation, route }: any) {
   ): Promise<DirectionsRoute | null> => {
     try {
       // If no API key is provided, fall back to demo route
-      if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18') {
+      if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'AIzaSyAlILoX4PV-nTzRcwdkP6iTOcFbV0IURMA') {
         console.log('Using demo route - add Google Maps API key for real routing');
         return createDemoRoute(origin, destination);
       }
@@ -480,8 +482,8 @@ export default function MapScreen({ navigation, route }: any) {
         customerName: 'Emma Davis',
         customerPhone: '+1 (555) 123-4567',
         address: '123 Broadway, New York, NY',
-        lat: 3.7589,
-        lng: 11.9851,
+        lat: 40.7589,
+        lng: -73.9851,
         status: 'accepted',
         distance: '1.2 km',
         estimatedTime: '15 min',
@@ -493,8 +495,8 @@ export default function MapScreen({ navigation, route }: any) {
         customerName: 'John Smith',
         customerPhone: '+1 (555) 234-5678',
         address: '456 5th Avenue, New York, NY',
-        lat: 3.7505,
-        lng: 11.9934,
+        lat: 40.7505,
+        lng: -73.9934,
         status: 'pending',
         distance: '2.1 km',
         estimatedTime: '12 min',
@@ -506,8 +508,8 @@ export default function MapScreen({ navigation, route }: any) {
         customerName: 'Sarah Johnson',
         customerPhone: '+1 (555) 345-6789',
         address: '789 Madison Avenue, New York, NY',
-        lat: 4.7614,
-        lng: 12.9776,
+        lat: 40.7614,
+        lng: -73.9776,
         status: 'picked_up',
         distance: '0.8 km',
         estimatedTime: '8 min',
@@ -519,8 +521,8 @@ export default function MapScreen({ navigation, route }: any) {
         customerName: 'Mike Chen',
         customerPhone: '+1 (555) 456-7890',
         address: '321 Park Avenue, New York, NY',
-        lat: 4.7549,
-        lng: 11.9707,
+        lat: 40.7549,
+        lng: -73.9707,
         status: 'pending',
         distance: '1.7 km',
         estimatedTime: '20 min',
@@ -958,7 +960,14 @@ export default function MapScreen({ navigation, route }: any) {
             </View>
 
             <ScrollView style={styles.deliveriesList} showsVerticalScrollIndicator={false}>
-              {deliveries.map((delivery) => (
+              {deliveries
+                .filter((delivery) => {
+                  // If filter is off, show all deliveries
+                  if (!showAcceptedRestaurantsOnly) return true;
+                  // If filter is on, only show deliveries with active/accepted restaurants
+                  return delivery.restaurant_active === true;
+                })
+                .map((delivery) => (
                 <TouchableOpacity
                   key={delivery.id}
                   style={[styles.deliveryItem, { backgroundColor: theme.colors.card }]}
