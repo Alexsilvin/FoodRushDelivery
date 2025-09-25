@@ -13,13 +13,26 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "bundleIdentifier": "com.foodrush.driverapp",
+      "config": {
+        "googleMapsApiKey": "AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18"
+      },
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to show delivery routes and navigation.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to provide accurate delivery navigation and tracking."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs access to your location to provide accurate delivery navigation and tracking.",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
+      "package": "com.foodrush.driverapp",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18"
+        }
+      },
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -27,7 +40,9 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
       ]
     },
     "web": {
@@ -38,6 +53,14 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location for navigation and delivery tracking."
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
         }
       ]
     ],

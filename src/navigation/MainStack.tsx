@@ -1,4 +1,4 @@
-import React, { use } from 'react';
+import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,10 +37,10 @@ function TabNavigator() {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Deliveries') {
             iconName = focused ? 'car' : 'car-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
           } else if (route.name === 'Map') {
             iconName = focused ? 'map' : 'map-outline';
+          } else if (route.name === 'Profile') {
+            iconName = focused ? 'person' : 'person-outline';
           } else {
             iconName = 'home-outline';
           }
@@ -52,18 +52,16 @@ function TabNavigator() {
         tabBarStyle: {
           backgroundColor: theme.colors.card,
           borderTopColor: theme.colors.card,
-          // paddingBottom: 5,
           paddingTop: -1,
-          // height: 70,
-           height: (Platform.OS === 'ios' ? 50 : 60) + insets.bottom,
-      paddingBottom: (Platform.OS === 'ios' ? 25 : 10) + insets.bottom,
+          height: (Platform.OS === 'ios' ? 50 : 60) + insets.bottom,
+          paddingBottom: (Platform.OS === 'ios' ? 25 : 10) + insets.bottom,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
           shadowOpacity: 0.08,
           shadowRadius: 8,
           elevation: 10,
           overflow: 'hidden',
-          marginTop: -20,
+          marginTop: -25,
         },
         headerStyle: {
           backgroundColor: theme.colors.primary,
@@ -126,10 +124,16 @@ export default function MainStack() {
         <Stack.Screen 
           name="CustomerProfile" 
           component={CustomerProfileScreen}
-          options={{
-            headerShown: false,
-          }}
+          options={{ headerShown: false }}
         />
+
+        {/* ✅ Map only in stack, not in tabs */}
+        <Stack.Screen 
+          name="Map" 
+          component={MapScreen} 
+          options={{ headerShown: false }}
+        />
+
         <Stack.Screen 
           name="Settings" 
           component={SettingsScreen}
@@ -147,23 +151,17 @@ export default function MainStack() {
         <Stack.Screen 
           name="EditProfile" 
           component={EditProfileScreen}
-          options={{
-            headerShown: false,
-          }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen 
           name="VehicleInfo" 
           component={VehicleInfoScreen}
-          options={{
-            headerShown: false,
-          }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen 
           name="PhoneNumbers" 
           component={PhoneNumbersScreen}
-          options={{
-            headerShown: false,
-          }}
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="AvailabilitySchedule"

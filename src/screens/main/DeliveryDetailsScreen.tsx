@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCall } from '../../contexts/CallContext';
+import * as Location from 'expo-location';
 
 interface DeliveryDetails {
   id: string;
@@ -183,10 +184,41 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
     }
   };
 
-  const handleStartNavigation = () => {
+  const handleStartNavigation = async () => {
     if (delivery) {
-      const url = `https://maps.google.com/maps?daddr=${delivery.coordinates.lat},${delivery.coordinates.lng}`;
-      Linking.openURL(url);
+      try {
+        // Request location permissions and get the current location
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Denied', 'Location permission is required to start navigation.');
+          return;
+        }
+
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+
+        const driverLocation = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        };
+
+        // Navigate to the MapScreen with the required parameters
+        navigation.navigate('Map', {
+          driverLocation,
+          restaurantLocation: {
+            latitude: delivery.coordinates.lat,
+            longitude: delivery.coordinates.lng,
+          },
+          customerLocation: {
+            latitude: delivery.coordinates.lat,
+            longitude: delivery.coordinates.lng,
+          },
+        });
+      } catch (error) {
+        console.error('Error fetching location:', error);
+        Alert.alert('Error', 'Unable to fetch your current location. Please try again.');
+      }
     }
   };
 

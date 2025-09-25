@@ -21,6 +21,7 @@ import { Delivery, RiderStatus } from '../../types/api';
 import { mapApiDeliveries } from '../../utils/mappers';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import axios from 'axios';
 const driverImg = require('../../../assets/driver.png');
 
 // Local UI fallback formatting helpers
@@ -43,6 +44,7 @@ export default function DashboardScreen({ navigation }: any) {
     completedDeliveries: 0,
     rating: 0,
     activeDeliveries: 0,
+    balance: 0,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,23 +59,25 @@ export default function DashboardScreen({ navigation }: any) {
     setLoading(true);
     setError(null);
     try {
-      const [statusRes, currentRes, earningsRes] = await Promise.all([
-        riderAPI.getStatus().catch(e => { console.warn('Status fetch failed', e?.response?.status); return { success: false }; }),
-        riderAPI.getCurrentDeliveries().catch(e => { console.warn('Current deliveries fetch failed', e?.response?.status); return { success: false, data: [] }; }),
-  riderAPI.getEarnings('today').catch(e => { console.warn('Earnings fetch failed', e?.response?.status); return { success: false }; })
+      // Fetch analytics summary and balance
+      const [summaryRes, balanceRes, currentRes] = await Promise.all([
+        axios.get('/api/v1/analytics/riders/my/summary').catch(e => { console.warn('Analytics summary fetch failed', e?.response?.status); return { data: {} }; }),
+        axios.get('/api/v1/analytics/riders/my/balance').catch(e => { console.warn('Analytics balance fetch failed', e?.response?.status); return { data: {} }; }),
+        riderAPI.getCurrentDeliveries().catch(e => { console.warn('Current deliveries fetch failed', e?.response?.status); return { success: false, data: [] }; })
       ]);
 
       if (currentRes?.data) {
         setDeliveries(mapApiDeliveries(currentRes.data));
       }
 
-      const statSource: Partial<RiderStatus> = (statusRes && (statusRes as any).data) || {};
+      // Use analytics summary and balance for stats
       setStats(prev => ({
         ...prev,
-        todayEarnings: (earningsRes as any)?.data?.total ?? prev.todayEarnings,
-        completedDeliveries: statSource.completedToday ?? prev.completedDeliveries,
-        rating: statSource.rating ?? prev.rating,
-        activeDeliveries: statSource.activeDeliveries ?? (currentRes?.data?.length || 0)
+        todayEarnings: summaryRes.data?.todayEarnings ?? prev.todayEarnings,
+        completedDeliveries: summaryRes.data?.completedDeliveries ?? prev.completedDeliveries,
+        rating: summaryRes.data?.rating ?? prev.rating,
+        activeDeliveries: currentRes?.data?.length || 0,
+        balance: balanceRes.data?.balance ?? 0
       }));
     } catch (e: any) {
       console.error('Dashboard fetch error', e);
@@ -276,6 +280,10 @@ export default function DashboardScreen({ navigation }: any) {
             <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
               <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.rating}</Text>
               <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('rating')}</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>XAF {stats.balance ?? 0}</Text>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('balance')}</Text>
             </View>
           </View>
         </LinearGradient>

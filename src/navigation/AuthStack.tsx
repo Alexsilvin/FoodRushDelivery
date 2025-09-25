@@ -3,6 +3,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import WaitingScreen from '../screens/auth/WaitingScreen';
 
 const Stack = createStackNavigator();
 
@@ -17,6 +18,10 @@ export default function AuthStack() {
       <Stack.Screen 
         name="Login" 
         component={LoginScreen} 
+      />
+      <Stack.Screen 
+        name="Waiting" 
+        component={WaitingScreen} 
       />
       <Stack.Screen 
         name="Register" 

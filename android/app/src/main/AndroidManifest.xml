@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Add this meta-data tag inside the application tag -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18"/>
+        <!-- Existing code for the application -->
+    </application>
+    <!-- Existing code for the manifest -->
+</manifest>
