@@ -9,15 +9,14 @@ import {
   Alert,
   Dimensions,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-//import { useCall } from '../../contexts/CallContext';
 import { riderAPI } from '../../services/api';
-import { GOOGLE_MAPS_API_KEY } from '../../config/env';
 import { mapApiDeliveries } from '../../utils/mappers';
 import { Delivery } from '../../types/api';
 import { useRoute } from '@react-navigation/native';
@@ -67,8 +66,9 @@ interface Route {
 export default function MapScreen({ navigation, route }: any) {
   const { theme } = useTheme();
   const { t } = useLanguage();
-  //const { startCall } = useCall();
   const routeParams = useRoute();
+  
+  // State
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
   const [fetchingDeliveries, setFetchingDeliveries] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryLocation | null>(null);
@@ -88,15 +88,14 @@ export default function MapScreen({ navigation, route }: any) {
   const [targetClient, setTargetClient] = useState<DeliveryLocation | null>(null);
   const [showDirections, setShowDirections] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  
+  // Refs
   const mapRef = useRef<MapView>(null);
 
-  // Check if we have a target location from navigation params
+  // Navigation params
   const targetLocation = (routeParams.params as any)?.targetLocation;
   const targetCustomerName = (routeParams.params as any)?.customerName;
   const targetAddress = (routeParams.params as any)?.address;
-
-  // Google Directions API integration
-  const GOOGLE_MAPS_API_KEY = 'AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18'; // You'll need to add your API key
 
   // Utility function to calculate distance between two points
   const calculateDistance = useCallback((
@@ -117,91 +116,130 @@ export default function MapScreen({ navigation, route }: any) {
     return R * c; // Distance in meters
   }, []);
 
+  // Create demo route function
   const createDemoRoute = useCallback((
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number }
   ): DirectionsRoute => {
-    // Enhanced route algorithm that simulates real road networks
     const coordinates = [];
-    
-    // Start from origin
     coordinates.push(origin);
     
-    // Calculate the difference in coordinates
     const latDiff = destination.latitude - origin.latitude;
     const lngDiff = destination.longitude - origin.longitude;
+    const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
     
-    // Create waypoints that simulate following roads (grid-like movement)
-    const numberOfSegments = 15;
+    // Create more realistic road-like path
+    const numberOfSegments = Math.max(10, Math.floor(distance * 1000)); // More segments for longer routes
     
-    for (let i = 1; i < numberOfSegments; i++) {
-      const progress = i / numberOfSegments;
-      
-      // Add some road-like variation - alternate between lat and lng movement
-      let lat, lng;
-      
-      if (i % 3 === 0) {
-        // Move more in latitude direction (simulating north-south roads)
-        lat = origin.latitude + (latDiff * progress);
-        lng = origin.longitude + (lngDiff * (progress * 0.7));
-      } else if (i % 3 === 1) {
-        // Move more in longitude direction (simulating east-west roads)
-        lat = origin.latitude + (latDiff * (progress * 0.7));
-        lng = origin.longitude + (lngDiff * progress);
-      } else {
-        // Diagonal movement
-        lat = origin.latitude + (latDiff * progress);
-        lng = origin.longitude + (lngDiff * progress);
-      }
-      
-      // Add slight randomness to simulate real road curves
-      const roadVariation = 0.0005;
-      lat += (Math.random() - 0.5) * roadVariation;
-      lng += (Math.random() - 0.5) * roadVariation;
-      
-      coordinates.push({ latitude: lat, longitude: lng });
+    // Define some waypoints that simulate turns and road patterns
+    const waypoints: Array<{ latitude: number; longitude: number }> = [];
+    
+    // Add intermediate waypoints to simulate realistic routing
+    if (Math.abs(latDiff) > Math.abs(lngDiff)) {
+      // Primarily north-south route
+      waypoints.push({
+        latitude: origin.latitude + latDiff * 0.3,
+        longitude: origin.longitude + lngDiff * 0.1
+      });
+      waypoints.push({
+        latitude: origin.latitude + latDiff * 0.7,
+        longitude: origin.longitude + lngDiff * 0.4
+      });
+      waypoints.push({
+        latitude: origin.latitude + latDiff * 0.9,
+        longitude: origin.longitude + lngDiff * 0.8
+      });
+    } else {
+      // Primarily east-west route
+      waypoints.push({
+        latitude: origin.latitude + latDiff * 0.1,
+        longitude: origin.longitude + lngDiff * 0.3
+      });
+      waypoints.push({
+        latitude: origin.latitude + latDiff * 0.4,
+        longitude: origin.longitude + lngDiff * 0.7
+      });
+      waypoints.push({
+        latitude: origin.latitude + latDiff * 0.8,
+        longitude: origin.longitude + lngDiff * 0.9
+      });
     }
     
-    // End at destination
+    const allPoints = [origin, ...waypoints, destination];
+    
+    // Generate smooth path between waypoints
+    for (let i = 0; i < allPoints.length - 1; i++) {
+      const start = allPoints[i];
+      const end = allPoints[i + 1];
+      const segmentSteps = Math.floor(numberOfSegments / (allPoints.length - 1));
+      
+      for (let j = 0; j < segmentSteps; j++) {
+        const progress = j / segmentSteps;
+        const smoothProgress = 0.5 * (1 - Math.cos(progress * Math.PI)); // Smooth transition
+        
+        let lat = start.latitude + (end.latitude - start.latitude) * smoothProgress;
+        let lng = start.longitude + (end.longitude - start.longitude) * smoothProgress;
+        
+        // Add realistic road variations (following street grid patterns)
+        const roadVariation = 0.0003; // Reduced for more realistic movement
+        const gridAlignment = 0.0001; // Slight grid alignment for city roads
+        
+        // Simulate following street grid
+        const latGrid = Math.floor(lat / gridAlignment) * gridAlignment;
+        const lngGrid = Math.floor(lng / gridAlignment) * gridAlignment;
+        
+        lat = latGrid + (Math.random() - 0.5) * roadVariation;
+        lng = lngGrid + (Math.random() - 0.5) * roadVariation;
+        
+        // Avoid duplicate coordinates
+        const lastCoord = coordinates[coordinates.length - 1];
+        if (Math.abs(lat - lastCoord.latitude) > 0.00001 || Math.abs(lng - lastCoord.longitude) > 0.00001) {
+          coordinates.push({ latitude: lat, longitude: lng });
+        }
+      }
+    }
+    
     coordinates.push(destination);
 
-    // Calculate more accurate distance and time
+    // Calculate realistic distance and time
     let totalDistance = 0;
     for (let i = 0; i < coordinates.length - 1; i++) {
       totalDistance += calculateDistance(coordinates[i], coordinates[i + 1]);
     }
-    
     const distanceKm = (totalDistance / 1000).toFixed(1);
-    // More realistic time calculation: city traffic average 20-30 km/h
-    const estimatedTimeMinutes = Math.ceil(totalDistance / 400); // 400m per minute = 24 km/h average
+    const estimatedTimeMinutes = Math.ceil(totalDistance / 300); // Assuming 18 km/h average in city
     
-    // Generate step-by-step directions
+    // Create realistic turn-by-turn directions
     const steps: DirectionsStep[] = [];
-    const segmentDistance = totalDistance / (coordinates.length - 1);
+    const totalSegments = coordinates.length - 1;
+    const segmentDistance = totalDistance / totalSegments;
     
-    // First step
     steps.push({
-      instruction: 'Head toward your destination',
+      instruction: `Head ${getDirection(origin, coordinates[Math.floor(coordinates.length * 0.1)])} on local roads`,
       distance: `${(segmentDistance * 3 / 1000).toFixed(1)} km`,
-      duration: `${Math.ceil(segmentDistance * 3 / 400)} min`,
-      maneuver: 'start'
+      duration: `${Math.ceil(segmentDistance * 3 / 300)} min`,
+      maneuver: 'depart'
     });
     
-    // Middle steps
-    if (coordinates.length > 4) {
-      steps.push({
-        instruction: 'Continue straight',
-        distance: `${(segmentDistance * (coordinates.length - 6) / 1000).toFixed(1)} km`,
-        duration: `${Math.ceil(segmentDistance * (coordinates.length - 6) / 400)} min`,
-        maneuver: 'continue'
+    if (waypoints.length > 0) {
+      waypoints.forEach((waypoint, index) => {
+        const direction = getDirection(
+          waypoints[index - 1] || origin, 
+          waypoint
+        );
+        steps.push({
+          instruction: `Continue ${direction}`,
+          distance: `${(segmentDistance * 2 / 1000).toFixed(1)} km`,
+          duration: `${Math.ceil(segmentDistance * 2 / 300)} min`,
+          maneuver: 'continue'
+        });
       });
     }
     
-    // Final step
     steps.push({
-      instruction: 'Arrive at destination',
-      distance: '0 km',
-      duration: '0 min',
+      instruction: 'Arrive at your destination on the right',
+      distance: '0.0 km',
+      duration: '1 min',
       maneuver: 'arrive'
     });
 
@@ -214,51 +252,154 @@ export default function MapScreen({ navigation, route }: any) {
     };
   }, [calculateDistance]);
 
-  const decodePolyline = (poly: string) => {
-    let index = 0, len = poly.length; let lat = 0, lng = 0; const coords: { latitude:number; longitude:number }[] = [];
-    while (index < len) {
-      let b, shift = 0, result = 0; do { b = poly.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-      const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1)); lat += dlat;
-      shift = 0; result = 0; do { b = poly.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-      const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1)); lng += dlng;
-      coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+  // Helper function to determine direction
+  const getDirection = (from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }) => {
+    const latDiff = to.latitude - from.latitude;
+    const lngDiff = to.longitude - from.longitude;
+    
+    if (Math.abs(latDiff) > Math.abs(lngDiff)) {
+      return latDiff > 0 ? 'north' : 'south';
+    } else {
+      return lngDiff > 0 ? 'east' : 'west';
     }
-    return coords;
   };
+
+  // Helper function to get maneuver icons
+  const getManeuverIcon = (maneuver: string) => {
+    switch (maneuver) {
+      case 'depart':
+      case 'start':
+        return 'play';
+      case 'turn-left':
+        return 'arrow-back';
+      case 'turn-right':
+        return 'arrow-forward';
+      case 'turn-slight-left':
+        return 'arrow-up-outline';
+      case 'turn-slight-right':
+        return 'arrow-up-outline';
+      case 'continue':
+      case 'straight':
+        return 'arrow-up';
+      case 'ramp-left':
+        return 'arrow-back';
+      case 'ramp-right':
+        return 'arrow-forward';
+      case 'merge':
+        return 'git-merge-outline';
+      case 'fork-left':
+        return 'git-branch-outline';
+      case 'fork-right':
+        return 'git-branch-outline';
+      case 'arrive':
+        return 'flag';
+      case 'roundabout-left':
+        return 'refresh-circle';
+      case 'roundabout-right':
+        return 'refresh-circle';
+      default:
+        return 'arrow-up';
+    }
+  };
+
+  // Google Directions API - Replace YOUR_API_KEY with your actual Google Maps API key
+  const GOOGLE_MAPS_API_KEY = 'AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18'; // Get this from Google Cloud Console
 
   const getDirections = useCallback(async (
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number }
   ): Promise<DirectionsRoute | null> => {
     try {
-  const key = String(GOOGLE_MAPS_API_KEY || '');
-  if (!key || ['DEMO_KEY','CHANGE_ME_ADD_REAL_KEY','YOUR_GOOGLE_MAPS_API_KEY'].includes(key)) {
+      // If no API key is provided, fall back to demo route
+      if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18') {
+        console.log('Using demo route - add Google Maps API key for real routing');
         return createDemoRoute(origin, destination);
       }
-  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${key}&mode=driving&alternatives=false`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.status !== 'OK' || !data.routes?.length) return createDemoRoute(origin, destination);
+
+      const originStr = `${origin.latitude},${origin.longitude}`;
+      const destinationStr = `${destination.latitude},${destination.longitude}`;
+      
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&mode=driving&key=${GOOGLE_MAPS_API_KEY}`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.status !== 'OK' || !data.routes || data.routes.length === 0) {
+        console.warn('Google Directions API error:', data.status);
+        return createDemoRoute(origin, destination);
+      }
+
       const route = data.routes[0];
       const leg = route.legs[0];
+      
+      // Decode the polyline points to get coordinates
       const coordinates = decodePolyline(route.overview_polyline.points);
-      const steps: DirectionsStep[] = leg.steps.map((s: any) => ({
-        instruction: s.html_instructions.replace(/<[^>]*>/g,'') ,
-        distance: s.distance.text,
-        duration: s.duration.text,
-        maneuver: s.maneuver || 'continue'
+      
+      // Extract turn-by-turn directions
+      const steps: DirectionsStep[] = leg.steps.map((step: any) => ({
+        instruction: step.html_instructions.replace(/<[^>]*>/g, ''), // Remove HTML tags
+        distance: step.distance.text,
+        duration: step.duration.text,
+        maneuver: step.maneuver || 'continue',
       }));
-      return { distance: leg.distance.text, duration: leg.duration.text, coordinates, steps, summary: route.summary };
-    } catch (e) {
-      console.warn('Directions fallback to demo route', e);
+
+      return {
+        distance: leg.distance.text,
+        duration: leg.duration.text,
+        coordinates,
+        steps,
+        summary: route.summary || 'Route via roads',
+      };
+    } catch (error) {
+      console.warn('Google Directions API failed, using demo route:', error);
       return createDemoRoute(origin, destination);
     }
   }, [createDemoRoute]);
 
+  // Polyline decoder for Google Directions API
+  const decodePolyline = (encoded: string): Array<{ latitude: number; longitude: number }> => {
+    const poly = [];
+    let index = 0;
+    const len = encoded.length;
+    let lat = 0;
+    let lng = 0;
+
+    while (index < len) {
+      let b;
+      let shift = 0;
+      let result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlat = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      const dlng = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+      lng += dlng;
+
+      poly.push({
+        latitude: lat / 1E5,
+        longitude: lng / 1E5,
+      });
+    }
+
+    return poly;
+  };
+
+  // Start navigation function
   const startNavigation = useCallback((client: DeliveryLocation) => {
-    // Open device's default navigation app
-    const url = `maps://app?daddr=${client.lat},${client.lng}`;
-    const androidUrl = `google.navigation:q=${client.lat},${client.lng}`;
+    const url = Platform.OS === 'ios' 
+      ? `maps://app?daddr=${client.lat},${client.lng}`
+      : `google.navigation:q=${client.lat},${client.lng}`;
     
     Alert.alert(
       t('startNavigation'),
@@ -268,20 +409,15 @@ export default function MapScreen({ navigation, route }: any) {
         { 
           text: t('openMaps'), 
           onPress: () => {
-            // In a real app, you'd use Linking.openURL() here
             console.log('Opening navigation to:', client.address);
+            // In real app, use Linking.openURL(url)
           }
         }
       ]
     );
   }, [t]);
 
-  //const handleCall = useCallback((customerName: string, phoneNumber?: string) => {
-    // Directly start the call and navigate to call screen
-    //startCall(customerName, 'voice');
-  //}, [startCall]);
-
-  // Enhanced route calculation with better algorithm
+  // Calculate route to client
   const calculateRouteToClient = useCallback(async (client: DeliveryLocation) => {
     if (!currentLocation) {
       Alert.alert(t('error'), 'Current location not available');
@@ -293,17 +429,15 @@ export default function MapScreen({ navigation, route }: any) {
     setSelectedDelivery(client);
     
     try {
-      // First, focus map on the selected delivery location
-      if (mapRef.current) {
-        mapRef.current.animateToRegion({
-          latitude: client.lat,
-          longitude: client.lng,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        }, 1000);
-      }
+      // Animate map to show the selected delivery
+      mapRef.current?.animateToRegion({
+        latitude: client.lat,
+        longitude: client.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
 
-      // Calculate route using enhanced algorithm
+      // Get directions
       const directionsRoute = await getDirections(
         currentLocation,
         { latitude: client.lat, longitude: client.lng }
@@ -313,23 +447,14 @@ export default function MapScreen({ navigation, route }: any) {
         setActiveDirections(directionsRoute);
         setRouteCoordinates(directionsRoute.coordinates);
         setShowDirections(true);
-        
-        // Center map on route with better fitting
-        if (mapRef.current) {
-          const allCoordinates = [
-            currentLocation,
-            ...directionsRoute.coordinates,
-            { latitude: client.lat, longitude: client.lng }
-          ];
-          
-          setTimeout(() => {
-            mapRef.current?.fitToCoordinates(allCoordinates, {
-              edgePadding: { top: 120, right: 50, bottom: 200, left: 50 },
-              animated: true,
-            });
-          }, 1500);
-        }
-        
+
+        // Fit map to show the entire route
+        const coordinates = [currentLocation, { latitude: client.lat, longitude: client.lng }];
+        mapRef.current?.fitToCoordinates(coordinates, {
+          edgePadding: { top: 50, right: 50, bottom: 200, left: 50 },
+          animated: true,
+        });
+
         Alert.alert(
           t('routeCalculated'),
           `${t('distance')}: ${directionsRoute.distance}\n${t('estTime')}: ${directionsRoute.duration}\n\n${t('startNavigationConfirm')}`,
@@ -347,234 +472,103 @@ export default function MapScreen({ navigation, route }: any) {
     }
   }, [currentLocation, getDirections, startNavigation, t]);
 
-  // Check if a specific client was passed from Dashboard for navigation
+  // Initialize location and fetch deliveries
   useEffect(() => {
-    if (route?.params?.clientId) {
-      const client = deliveries.find(d => d.id === route.params.clientId);
-      if (client && currentLocation) {
-        calculateRouteToClient(client);
-      }
-    }
-  }, [route?.params?.clientId, deliveries, currentLocation, calculateRouteToClient]);
+    const mockDeliveries: DeliveryLocation[] = [
+      {
+        id: '1',
+        customerName: 'Emma Davis',
+        customerPhone: '+1 (555) 123-4567',
+        address: '123 Broadway, New York, NY',
+        lat: 3.7589,
+        lng: 11.9851,
+        status: 'accepted',
+        distance: '1.2 km',
+        estimatedTime: '15 min',
+        restaurant: 'Sushi Spot',
+        payment: '$25.50',
+      },
+      {
+        id: '2',
+        customerName: 'John Smith',
+        customerPhone: '+1 (555) 234-5678',
+        address: '456 5th Avenue, New York, NY',
+        lat: 3.7505,
+        lng: 11.9934,
+        status: 'pending',
+        distance: '2.1 km',
+        estimatedTime: '12 min',
+        restaurant: 'Taco Bell',
+        payment: '$18.75',
+      },
+      {
+        id: '3',
+        customerName: 'Sarah Johnson',
+        customerPhone: '+1 (555) 345-6789',
+        address: '789 Madison Avenue, New York, NY',
+        lat: 4.7614,
+        lng: 12.9776,
+        status: 'picked_up',
+        distance: '0.8 km',
+        estimatedTime: '8 min',
+        restaurant: 'Pizza Palace',
+        payment: '$32.25',
+      },
+      {
+        id: '4',
+        customerName: 'Mike Chen',
+        customerPhone: '+1 (555) 456-7890',
+        address: '321 Park Avenue, New York, NY',
+        lat: 4.7549,
+        lng: 11.9707,
+        status: 'pending',
+        distance: '1.7 km',
+        estimatedTime: '20 min',
+        restaurant: 'Burger King',
+        payment: '$22.00',
+      },
+    ];
 
-  // Handle target location from navigation params
-  useEffect(() => {
-    if (targetLocation && mapRef.current) {
-      // Focus map on target location
-      mapRef.current.animateToRegion({
-        latitude: targetLocation.latitude,
-        longitude: targetLocation.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 1000);
+    setDeliveries(mockDeliveries);
 
-      // If we have current location, calculate route to target
-      if (currentLocation) {
-        getDirections(currentLocation, targetLocation);
-      }
-    }
-  }, [targetLocation, currentLocation, getDirections]);
-
-  useEffect(() => {
-    const generateRoutes = (deliveryList: DeliveryLocation[], userLocation?: { latitude: number; longitude: number } | null) => {
-      // Generate sample route coordinates (in real app, you'd use Google Directions API)
-      const generateRouteCoordinates = (stops: DeliveryLocation[]) => {
-        const coords = [];
-        if (userLocation) {
-          coords.push(userLocation);
-        }
-        stops.forEach(stop => {
-          coords.push({ latitude: stop.lat, longitude: stop.lng });
-        });
-        return coords;
-      };
-
-      const routes: Route[] = [
-        {
-          id: 'optimal',
-          name: 'Optimal Route',
-          distance: '7.2 km',
-          duration: '45 min',
-          stops: deliveryList.slice().sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance)),
-          coordinates: generateRouteCoordinates(deliveryList),
-          isOptimal: true,
-        },
-        {
-          id: 'shortest',
-          name: 'Shortest Distance',
-          distance: '6.8 km',
-          duration: '52 min',
-          stops: deliveryList.slice().sort((a, b) => a.customerName.localeCompare(b.customerName)),
-          coordinates: generateRouteCoordinates(deliveryList),
-          isOptimal: false,
-        },
-        {
-          id: 'fastest',
-          name: 'Fastest Time',
-          distance: '8.1 km',
-          duration: '38 min',
-          stops: deliveryList.slice().sort((a, b) => parseFloat(a.estimatedTime) - parseFloat(b.estimatedTime)),
-          coordinates: generateRouteCoordinates(deliveryList),
-          isOptimal: false,
-        },
-      ];
-
-      setAvailableRoutes(routes);
-      setSelectedRoute(routes[0]); // Select optimal route by default
-    };
-
-    const loadDeliveries = () => {
-      // Mock delivery locations with real coordinates around New York City
-      const mockDeliveries: DeliveryLocation[] = [
-        {
-          id: '1',
-          customerName: 'Emma Davis',
-          customerPhone: '+1 (555) 123-4567',
-          address: '123 Broadway, New York, NY',
-          lat: 40.7589,
-          lng: -73.9851,
-          status: 'accepted',
-          distance: '1.2 km',
-          estimatedTime: '15 min',
-          restaurant: 'Sushi Spot',
-          payment: '$25.50',
-        },
-        {
-          id: '2',
-          customerName: 'John Smith',
-          customerPhone: '+1 (555) 234-5678',
-          address: '456 5th Avenue, New York, NY',
-          lat: 40.7505,
-          lng: -73.9934,
-          status: 'pending',
-          distance: '2.1 km',
-          estimatedTime: '12 min',
-          restaurant: 'Taco Bell',
-          payment: '$18.75',
-        },
-        {
-          id: '3',
-          customerName: 'Sarah Johnson',
-          customerPhone: '+1 (555) 345-6789',
-          address: '789 Madison Avenue, New York, NY',
-          lat: 40.7614,
-          lng: -73.9776,
-          status: 'picked_up',
-          distance: '0.8 km',
-          estimatedTime: '8 min',
-          restaurant: 'Pizza Palace',
-          payment: '$32.25',
-        },
-        {
-          id: '4',
-          customerName: 'Mike Chen',
-          customerPhone: '+1 (555) 456-7890',
-          address: '321 Park Avenue, New York, NY',
-          lat: 40.7549,
-          lng: -73.9707,
-          status: 'pending',
-          distance: '1.7 km',
-          estimatedTime: '20 min',
-          restaurant: 'Burger King',
-          payment: '$22.00',
-        },
-      ];
-
-      setDeliveries(mockDeliveries);
-      return mockDeliveries;
-    };
-
-    const init = async () => {
+    const initializeLocation = async () => {
       try {
         setLocationError(null);
-        
-        // First check if location services are enabled
-        const isLocationEnabled = await Location.hasServicesEnabledAsync();
-        if (!isLocationEnabled) {
-          throw new Error('Location services are disabled. Please enable location services in your device settings.');
-        }
-
-        // Request permissions with more specific handling
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          throw new Error('Location permission denied. Please grant location permission to use the map.');
+          throw new Error('Location permission denied');
         }
 
-        // Try multiple location methods with fallbacks
-        let location = null;
-        
-        try {
-          // First try with high accuracy
-          location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          });
-        } catch (highAccuracyError) {
-          console.log('High accuracy failed, trying balanced accuracy:', highAccuracyError);
-          
-          try {
-            // Try with balanced accuracy
-            location = await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Balanced,
-            });
-          } catch (balancedError) {
-            console.log('Balanced accuracy failed, trying low accuracy:', balancedError);
-            
-            try {
-              // Last resort: try with low accuracy
-              location = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Low,
-              });
-            } catch (lowAccuracyError) {
-              console.log('All accuracy levels failed, trying last location:', lowAccuracyError);
-              
-              // Try to get the last known location
-              location = await Location.getLastKnownPositionAsync({
-                requiredAccuracy: 1000, // Accept location within 1km accuracy
-              });
-            }
-          }
-        }
-        
-        if (!location) {
-          throw new Error('Unable to obtain location after multiple attempts');
-        }
-        
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+
         const userLocation = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
         };
-        
-        console.log('Successfully obtained location:', userLocation);
+
         setCurrentLocation(userLocation);
         setLoading(false);
-        
-  // Fetch real deliveries after location resolves
-  fetchDeliveries();
-        
+
         // Center map on user location
-        if (mapRef.current && userLocation) {
-          mapRef.current.animateToRegion({
-            latitude: userLocation.latitude,
-            longitude: userLocation.longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }, 1000);
-        }
-        
+        mapRef.current?.animateToRegion({
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 1000);
+
       } catch (error) {
         console.error('Error getting location:', error);
         setLocationError(error instanceof Error ? error.message : 'Failed to get location');
-        
-        // Use default location (New York City) if location fails
         const defaultLocation = {
           latitude: 40.7128,
           longitude: -74.0060,
         };
         setCurrentLocation(defaultLocation);
         setLoading(false);
-  fetchDeliveries();
         
-        // Show user-friendly error message
         Alert.alert(
           t('locationError'), 
           t('locationErrorMessage'),
@@ -583,126 +577,10 @@ export default function MapScreen({ navigation, route }: any) {
       }
     };
 
-    init();
-  // Intentionally excluding fetchDeliveries to avoid early call before set; fetchDeliveries triggers after location set
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    initializeLocation();
   }, [t]);
 
-  // Compute haversine distance in meters
-  const haversineMeters = useCallback((a: {latitude:number; longitude:number}, b: {latitude:number; longitude:number}) => {
-    const R = 6371e3;
-    const dLat = (b.latitude - a.latitude) * Math.PI / 180;
-    const dLon = (b.longitude - a.longitude) * Math.PI / 180;
-    const lat1 = a.latitude * Math.PI/180;
-    const lat2 = b.latitude * Math.PI/180;
-    const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
-    return 2*R*Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
-  }, []);
-
-  const synthesizeCoordinate = useCallback((index: number): { latitude: number; longitude: number } => {
-      const base = currentLocation || { latitude: 40.7128, longitude: -74.0060 };
-      const radius = 0.01;
-      const angle = (index * 137.508) % 360;
-      const rad = angle * Math.PI/180;
-      return {
-        latitude: base.latitude + Math.cos(rad) * radius * 0.5,
-        longitude: base.longitude + Math.sin(rad) * radius * 0.5,
-      };
-    }, [currentLocation]);
-
-  const generateRoutes = useCallback((deliveryList: DeliveryLocation[]) => {
-      const generateRouteCoordinates = (stops: DeliveryLocation[]) => {
-        const coords = [] as { latitude: number; longitude: number }[];
-        if (currentLocation) coords.push(currentLocation);
-        stops.forEach(s => coords.push({ latitude: s.lat, longitude: s.lng }));
-        return coords;
-      };
-      const remaining = [...deliveryList];
-      const ordered: DeliveryLocation[] = [];
-      let cursor = currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : null;
-      while (remaining.length) {
-        let bestIdx = 0; let bestDist = Number.MAX_VALUE;
-        for (let i=0;i<remaining.length;i++) {
-          const d = remaining[i];
-          const dist = cursor ? haversineMeters(cursor, { latitude: d.lat, longitude: d.lng }) : 0;
-          if (dist < bestDist) { bestDist = dist; bestIdx = i; }
-        }
-        const next = remaining.splice(bestIdx,1)[0];
-        ordered.push(next);
-        cursor = { latitude: next.lat, longitude: next.lng };
-      }
-      const coordinates = generateRouteCoordinates(ordered);
-      const totalMeters = coordinates.reduce((acc, cur, idx, arr)=> idx? acc + haversineMeters(arr[idx-1], cur): acc, 0);
-      const totalKm = (totalMeters/1000).toFixed(1);
-      const totalMinutes = Math.round((totalMeters/1000)/0.4);
-      const route: Route = { id:'shortest_path', name:'Shortest Path', distance:`${totalKm} km`, duration:`${totalMinutes} min`, stops: ordered, coordinates, isOptimal:true };
-      setAvailableRoutes([route]); setSelectedRoute(route);
-    }, [currentLocation, haversineMeters]);
-
-  const fetchDeliveries = useCallback(async () => {
-    if (!currentLocation) return; // wait for location
-    setFetchingDeliveries(true);
-    try {
-      const currentRes = await riderAPI.getCurrentDeliveries().catch(()=>({ success:false, data: [] }));
-      const raw: Delivery[] = (currentRes.data || []) as any;
-      const mapped = mapApiDeliveries(raw);
-      // Decorate deliveries with location + computed distance/time
-      const enriched: DeliveryLocation[] = mapped.map((d, idx) => {
-  // Prefer dropoff coordinates, fallback to pickup, else synthesized
-  const hasDrop = typeof d.dropoffLat === 'number' && typeof d.dropoffLng === 'number';
-  const hasPickup = typeof d.pickupLat === 'number' && typeof d.pickupLng === 'number';
-  const baseCoord = hasDrop ? { latitude: d.dropoffLat as number, longitude: d.dropoffLng as number }
-           : hasPickup ? { latitude: d.pickupLat as number, longitude: d.pickupLng as number }
-           : (synthesizeCoordinate(idx+1));
-  const coord = baseCoord;
-        const distanceM = haversineMeters(currentLocation, coord);
-        const distanceKm = distanceM/1000;
-        const estMinutes = Math.max(2, Math.round((distanceKm / 0.4))); // assume 24km/h ~0.4km/min
-        return {
-          id: d.id,
-          customerName: d.customerName || 'Customer',
-          customerPhone: d.customerPhone,
-          address: d.address || d.customerAddress || 'Unknown address',
-          lat: coord.latitude,
-          lng: coord.longitude,
-          status: (d.status as any) || 'pending',
-          distance: `${distanceKm.toFixed(1)} km`,
-          estimatedTime: `${estMinutes} min`,
-          restaurant: d.restaurant || d.restaurantName || 'Restaurant',
-          payment: d.payment || d.paymentAmount != null ? `$${d.paymentAmount}` : '$0.00',
-        } as DeliveryLocation;
-      });
-      setDeliveries(enriched);
-      generateRoutes(enriched);
-    } catch (e) {
-      console.warn('Fetch deliveries (map) failed', e);
-    } finally {
-      setFetchingDeliveries(false);
-    }
-  }, [currentLocation, haversineMeters, synthesizeCoordinate, generateRoutes]);
-
-  // Refresh deliveries whenever screen gains focus
-  useEffect(() => {
-    if (currentLocation) fetchDeliveries();
-  }, [currentLocation, fetchDeliveries]);
-
-  // Live polling for location & deliveries (every 30s) - lightweight
-  useEffect(() => {
-    let locInterval: any; let delInterval: any;
-    if (currentLocation) {
-      locInterval = setInterval(async () => {
-        try {
-          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          setCurrentLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-        } catch {}
-      }, 30000);
-      delInterval = setInterval(fetchDeliveries, 30000);
-    }
-    return () => { locInterval && clearInterval(locInterval); delInterval && clearInterval(delInterval); };
-  }, [currentLocation, fetchDeliveries]);
-
-  // removed old generateRoutes (replaced by useCallback version above)
-
+  // Get marker color based on status
   const getMarkerColor = (status: string) => {
     switch (status) {
       case 'pending': return '#FCD34D';
@@ -713,89 +591,58 @@ export default function MapScreen({ navigation, route }: any) {
     }
   };
 
-  // Driving Mode Functions
+  // Accept delivery and enter driving mode
   const acceptDelivery = (delivery: DeliveryLocation) => {
     setActiveDelivery(delivery);
     setIsDrivingMode(true);
-    // Keep selectedDelivery set so the info panel shows the right delivery
     setSelectedDelivery(delivery);
-    
-    // Generate route to this delivery
+
     if (currentLocation) {
-      const routeCoords = generateSimpleRoute(currentLocation, {
-        latitude: delivery.lat,
-        longitude: delivery.lng
-      });
-      setRouteCoordinates(routeCoords);
-      
-      // Focus map on route
-      if (mapRef.current) {
-        mapRef.current.fitToCoordinates([
-          { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
-          { latitude: delivery.lat, longitude: delivery.lng }
-        ], {
-          edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-          animated: true,
+      getDirections(currentLocation, { latitude: delivery.lat, longitude: delivery.lng })
+        .then((route) => {
+          if (route) {
+            setRouteCoordinates(route.coordinates);
+            setActiveDirections(route);
+            
+            // Fit map to show route
+            mapRef.current?.fitToCoordinates(route.coordinates, {
+              edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+              animated: true,
+            });
+          }
         });
-      }
     }
   };
 
-  const generateSimpleRoute = (
-    origin: { latitude: number; longitude: number },
-    destination: { latitude: number; longitude: number }
-  ): Array<{ latitude: number; longitude: number }> => {
-    // Simple route generation - in production, use Google Directions API
-    const latStep = (destination.latitude - origin.latitude) / 20;
-    const lngStep = (destination.longitude - origin.longitude) / 20;
-    
-    const coordinates = [];
-    for (let i = 0; i <= 20; i++) {
-      // Add some randomness to simulate real roads
-      const randomLat = (Math.random() - 0.5) * 0.001;
-      const randomLng = (Math.random() - 0.5) * 0.001;
-      coordinates.push({
-        latitude: origin.latitude + (latStep * i) + randomLat,
-        longitude: origin.longitude + (lngStep * i) + randomLng,
-      });
-    }
-    
-    return coordinates;
-  };
-
+  // Exit driving mode
   const exitDrivingMode = () => {
     setIsDrivingMode(false);
     setActiveDelivery(null);
     setRouteCoordinates([]);
-    // Don't clear selectedDelivery - keep it selected for reference
+    setActiveDirections(null);
     
-    // Reset map to user location
-    if (mapRef.current && currentLocation) {
-      mapRef.current.animateToRegion({
+    // Return to user location
+    if (currentLocation) {
+      mapRef.current?.animateToRegion({
         latitude: currentLocation.latitude,
         longitude: currentLocation.longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
-      }, 1000);
+      }, 800);
     }
   };
 
+  // Handle delivery press
   const handleDeliveryPress = (delivery: DeliveryLocation) => {
-    // Always set the selected delivery to show the pin and info
     setSelectedDelivery(delivery);
-    
-    // Focus map on the selected delivery
-    if (mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: delivery.lat,
-        longitude: delivery.lng,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 1000);
-    }
-    
+    mapRef.current?.animateToRegion({
+      latitude: delivery.lat,
+      longitude: delivery.lng,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }, 800);
+
     if (!isDrivingMode) {
-      // Show delivery options with calculate route option
       Alert.alert(
         `${delivery.customerName}`,
         `${t('address')}: ${delivery.address}\n${delivery.restaurant} • ${delivery.payment}\n${t('distance')}: ${delivery.distance} • ${t('estTime')}: ${delivery.estimatedTime}`,
@@ -814,63 +661,22 @@ export default function MapScreen({ navigation, route }: any) {
     }
   };
 
-  const selectRoute = (route: Route) => {
-    setSelectedRoute(route);
-    setShowRouteModal(false);
-    
-    // Fit map to show all markers in the route
-    if (mapRef.current && route.coordinates.length > 0) {
-      mapRef.current.fitToCoordinates(route.coordinates, {
-        edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-        animated: true,
-      });
-    }
-  };
-
+  // Center on current location
   const centerOnLocation = () => {
-    if (currentLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
+    if (currentLocation) {
+      mapRef.current?.animateToRegion({
         latitude: currentLocation.latitude,
         longitude: currentLocation.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      });
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 500);
     }
   };
-
-  // New useEffect to handle driver, restaurant, and customer locations from params
-useEffect(() => {
-  const { driverLocation, restaurantLocation, customerLocation } = route.params || {};
-
-  if (driverLocation && restaurantLocation && customerLocation) {
-    // Show markers for the driver, restaurant, and customer
-    setRouteCoordinates([driverLocation, restaurantLocation, customerLocation]);
-
-    // Calculate and display the shortest route
-    getDirections(driverLocation, customerLocation).then((directionsRoute) => {
-      if (directionsRoute) {
-        setActiveDirections(directionsRoute);
-        setRouteCoordinates(directionsRoute.coordinates);
-      }
-    });
-
-    // Fit the map to show all markers
-    if (mapRef.current) {
-      mapRef.current.fitToCoordinates(
-        [driverLocation, restaurantLocation, customerLocation],
-        {
-          edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-          animated: true,
-        }
-      );
-    }
-  }
-}, [route.params, getDirections]);
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1E40AF" />
+        <ActivityIndicator size="large" color="#3B82F6" />
         <Text style={styles.loadingText}>{t('loadingMap')}</Text>
         {locationError && (
           <Text style={styles.errorText}>{locationError}</Text>
@@ -881,39 +687,51 @@ useEffect(() => {
 
   return (
     <View style={styles.container}>
-  {/* Map content (overlay removed to enable full interaction) */}
-      {/* Header */}
+      {/* Modern Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-          {isDrivingMode ? t('drivingMode') : t('map')}
-        </Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <View>
+            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+              {isDrivingMode ? t('drivingMode') : t('map')}
+            </Text>
+            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
+              {deliveries.length} {t('deliveries')} available
+            </Text>
+          </View>
+        </View>
+        
         <View style={styles.headerActions}>
-          {isDrivingMode && (
+          {isDrivingMode ? (
             <TouchableOpacity
-              style={[styles.exitButton, { backgroundColor: theme.colors.error + '20' }]}
+              style={[styles.actionButton, styles.exitButton]}
               onPress={exitDrivingMode}
             >
-              <Ionicons name="close" size={20} color={theme.colors.error} />
-              <Text style={[styles.exitButtonText, { color: theme.colors.error }]}>{t('exit')}</Text>
+              <Ionicons name="stop" size={18} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>{t('exit')}</Text>
             </TouchableOpacity>
-          )}
-          {!isDrivingMode && (
+          ) : (
             <TouchableOpacity
-              style={styles.routeButton}
+              style={[styles.actionButton, styles.primaryButton]}
               onPress={() => setShowRouteModal(true)}
             >
-              <Ionicons name="list-outline" size={20} color={theme.colors.primary} />
-              <Text style={[styles.routeButtonText, { color: theme.colors.primary }]}>{t('deliveries')}</Text>
+              <Ionicons name="list" size={18} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>{t('deliveries')}</Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* Google Maps */}
+      {/* Map */}
       <MapView
         ref={mapRef}
-        provider={PROVIDER_GOOGLE}
         style={styles.map}
+        provider={PROVIDER_GOOGLE}
         initialRegion={{
           latitude: currentLocation?.latitude || 40.7128,
           longitude: currentLocation?.longitude || -74.0060,
@@ -922,144 +740,161 @@ useEffect(() => {
         }}
         showsUserLocation={true}
         showsMyLocationButton={false}
-        showsTraffic={isDrivingMode}
-        showsBuildings={true}
-        showsIndoors={true}
-        mapType={theme.isDark ? 'standard' : 'standard'}
-        userInterfaceStyle={theme.isDark ? 'dark' : 'light'}
-        minZoomLevel={4}
-        maxZoomLevel={20}
-        rotateEnabled={true}
-        pitchEnabled={true}
-        moveOnMarkerPress={true}
-        loadingEnabled={true}
-        loadingIndicatorColor={theme.colors.primary}
-        loadingBackgroundColor={theme.colors.surface}
-        onMapReady={() => {
-          console.log('Map is ready');
-        }}
+        customMapStyle={theme.isDark ? darkMapStyle : []}
       >
-        {/* Driver Marker */}
-        {route.params?.driverLocation && (
-          <Marker
-            coordinate={route.params.driverLocation}
-            title="Driver"
-            pinColor="blue"
-          />
-        )}
-
-        {/* Restaurant Marker */}
-        {route.params?.restaurantLocation && (
-          <Marker
-            coordinate={route.params.restaurantLocation}
-            title="Restaurant"
-            pinColor="orange"
-          />
-        )}
-
-        {/* Customer Marker */}
-        {route.params?.customerLocation && (
-          <Marker
-            coordinate={route.params.customerLocation}
-            title="Customer"
-            pinColor="green"
-          />
-        )}
-
-        {/* Show destination marker only in driving mode */}
-        {isDrivingMode && activeDelivery && (
-          <Marker
-            coordinate={{
-              latitude: activeDelivery.lat,
-              longitude: activeDelivery.lng,
-            }}
-            title={activeDelivery.customerName}
-            description={activeDelivery.address}
-            pinColor={theme.colors.error}
-          />
-        )}
-
-        {/* Show route polyline in driving mode */}
-        {isDrivingMode && routeCoordinates.length > 0 && (
+        {/* Route Polyline */}
+        {routeCoordinates.length > 0 && (
           <Polyline
             coordinates={routeCoordinates}
             strokeColor={theme.colors.primary}
             strokeWidth={4}
-            lineDashPattern={[1]}
+            lineDashPattern={[0]}
           />
         )}
 
-        {/* Show all delivery markers only when NOT in driving mode */}
+        {/* Delivery Markers */}
         {!isDrivingMode && deliveries.map((delivery) => (
           <Marker
             key={delivery.id}
             coordinate={{ latitude: delivery.lat, longitude: delivery.lng }}
-            title={delivery.customerName}
-            description={`${delivery.restaurant} - ${delivery.payment}`}
-            pinColor={selectedDelivery?.id === delivery.id ? "#FF6B6B" : getMarkerColor(delivery.status)}
             onPress={() => handleDeliveryPress(delivery)}
           >
-            {selectedDelivery?.id === delivery.id && (
-              <View style={styles.selectedMarker}>
-                <Ionicons name="location" size={30} color="#FF6B6B" />
-              </View>
-            )}
+            <View style={[
+              styles.markerContainer,
+              { 
+                backgroundColor: selectedDelivery?.id === delivery.id ? '#3B82F6' : getMarkerColor(delivery.status),
+                transform: [{ scale: selectedDelivery?.id === delivery.id ? 1.2 : 1 }]
+              }
+            ]}>
+              <Ionicons 
+                name="location" 
+                size={20} 
+                color="#FFFFFF" 
+              />
+            </View>
           </Marker>
         ))}
 
-        {/* Route Polyline */}
-        {activeDirections && routeCoordinates.length > 0 && (
-          <Polyline
-            coordinates={routeCoordinates}
-            strokeColor={theme.colors.primary}
-            strokeWidth={5}
-          />
+        {/* Active Delivery Marker */}
+        {isDrivingMode && activeDelivery && (
+          <Marker
+            coordinate={{ latitude: activeDelivery.lat, longitude: activeDelivery.lng }}
+            title={activeDelivery.customerName}
+            description={activeDelivery.address}
+          >
+            <View style={[styles.markerContainer, styles.activeMarker]}>
+              <Ionicons name="flag" size={20} color="#FFFFFF" />
+            </View>
+          </Marker>
         )}
 
-        {/* Target Location Marker (from navigation params) */}
+        {/* Target Location Marker */}
         {targetLocation && (
           <Marker
-            coordinate={targetLocation}
-            title={targetCustomerName || "Target Location"}
-            description={targetAddress || "Delivery Address"}
-            pinColor="#FF6B6B"
-          />
+            coordinate={{
+              latitude: targetLocation.latitude || targetLocation.lat,
+              longitude: targetLocation.longitude || targetLocation.lng
+            }}
+            title={targetCustomerName || 'Target Location'}
+          >
+            <View style={[styles.markerContainer, styles.targetMarker]}>
+              <Ionicons name="pin" size={20} color="#FFFFFF" />
+            </View>
+          </Marker>
         )}
       </MapView>
 
-      {/* Control Buttons */}
-      <View style={styles.controlsContainer}>
-        <TouchableOpacity 
-          style={[styles.controlButton, { backgroundColor: theme.colors.surface }]} 
-          onPress={centerOnLocation}
-        >
-          <Ionicons name="locate" size={24} color={theme.colors.primary} />
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.controlButton, styles.routeButton, { backgroundColor: theme.colors.primary }]} 
-          onPress={() => setShowRouteModal(true)}
-        >
-          <Ionicons name="map" size={24} color="#FFFFFF" />
-          <Text style={styles.routeButtonText}>{t('routes')}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Selected Delivery Info */}
-      {(selectedDelivery || activeDelivery) && (
-        <View style={[styles.deliveryInfo, { backgroundColor: theme.colors.card }]}>
-          <View style={styles.deliveryHeader}>
-            <View>
-              <Text style={[styles.deliveryName, { color: theme.colors.text }]}>
-                {(selectedDelivery || activeDelivery)?.customerName}
+      {/* Directions Panel */}
+      {showDirections && activeDirections && (
+        <View style={[styles.directionsPanel, { backgroundColor: theme.colors.surface }]}>
+          <View style={styles.directionsPanelHeader}>
+            <View style={styles.routeSummary}>
+              <Text style={[styles.routeDistance, { color: theme.colors.primary }]}>
+                {activeDirections.distance}
               </Text>
-              <Text style={[styles.deliveryAddress, { color: theme.colors.text }]}>
-                {(selectedDelivery || activeDelivery)?.address}
-              </Text>
-              <Text style={[styles.deliveryDetails, { color: theme.colors.textSecondary }]}>
-                {(selectedDelivery || activeDelivery)?.restaurant} • {(selectedDelivery || activeDelivery)?.distance} • {(selectedDelivery || activeDelivery)?.estimatedTime}
+              <Text style={[styles.routeDuration, { color: theme.colors.textSecondary }]}>
+                {activeDirections.duration}
               </Text>
             </View>
+            <TouchableOpacity
+              style={styles.directionsCloseButton}
+              onPress={() => {
+                setShowDirections(false);
+                setActiveDirections(null);
+                setRouteCoordinates([]);
+              }}
+            >
+              <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.directionsList} showsVerticalScrollIndicator={false}>
+            {activeDirections.steps.map((step, index) => (
+              <View key={index} style={[styles.directionStep, { borderBottomColor: theme.colors.border }]}>
+                <View style={[styles.stepIcon, { backgroundColor: theme.colors.primary }]}>
+                  <Ionicons 
+                    name={getManeuverIcon(step.maneuver)} 
+                    size={16} 
+                    color="#FFFFFF" 
+                  />
+                </View>
+                <View style={styles.stepDetails}>
+                  <Text style={[styles.stepInstruction, { color: theme.colors.text }]}>
+                    {step.instruction}
+                  </Text>
+                  <Text style={[styles.stepDistance, { color: theme.colors.textSecondary }]}>
+                    {step.distance} • {step.duration}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Directions Toggle Button */}
+      {activeDirections && !showDirections && (
+        <TouchableOpacity
+          style={[styles.directionsToggle, { backgroundColor: theme.colors.primary }]}
+          onPress={() => setShowDirections(true)}
+        >
+          <Ionicons name="list" size={20} color="#FFFFFF" />
+          <Text style={styles.directionsToggleText}>Directions</Text>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity 
+        style={[styles.fab, { backgroundColor: theme.colors.primary }]} 
+        onPress={centerOnLocation}
+      >
+        <Ionicons name="locate" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
+
+      {/* Selected Delivery Card */}
+      {(selectedDelivery || activeDelivery) && (
+        <View style={[styles.deliveryCard, { backgroundColor: theme.colors.surface }]}>
+          <View style={styles.deliveryCardHeader}>
+            <View style={styles.deliveryInfo}>
+              <Text style={[styles.customerName, { color: theme.colors.text }]}>
+                {(selectedDelivery || activeDelivery)?.customerName}
+              </Text>
+              <Text style={[styles.deliveryAddress, { color: theme.colors.textSecondary }]}>
+                {(selectedDelivery || activeDelivery)?.address}
+              </Text>
+              <View style={styles.deliveryMeta}>
+                <View style={[styles.statusBadge, { backgroundColor: getMarkerColor((selectedDelivery || activeDelivery)?.status || 'pending') }]}>
+                  <Text style={styles.statusText}>
+                    {((selectedDelivery || activeDelivery)?.status || '').toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
+                  {(selectedDelivery || activeDelivery)?.distance} • {(selectedDelivery || activeDelivery)?.estimatedTime}
+                </Text>
+              </View>
+              <Text style={[styles.restaurantInfo, { color: theme.colors.text }]}>
+                {(selectedDelivery || activeDelivery)?.restaurant} • {(selectedDelivery || activeDelivery)?.payment}
+              </Text>
+            </View>
+            
             {!isDrivingMode && (
               <TouchableOpacity
                 style={styles.closeButton}
@@ -1073,16 +908,16 @@ useEffect(() => {
           <View style={styles.deliveryActions}>
             {!activeDirections && !isDrivingMode && (
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
+                style={[styles.actionButton, styles.secondaryButton]}
                 onPress={() => calculateRouteToClient(selectedDelivery!)}
                 disabled={isCalculatingRoute}
               >
                 {isCalculatingRoute ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color={theme.colors.primary} />
                 ) : (
-                  <Ionicons name="map" size={20} color="#FFFFFF" />
+                  <Ionicons name="map" size={18} color={theme.colors.primary} />
                 )}
-                <Text style={styles.actionButtonText}>
+                <Text style={[styles.actionButtonText, { color: theme.colors.primary }]}>
                   {isCalculatingRoute ? t('calculating') : t('calculateRoute')}
                 </Text>
               </TouchableOpacity>
@@ -1090,29 +925,18 @@ useEffect(() => {
             
             {(activeDirections || isDrivingMode) && (
               <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: "#10B981" }]}
+                style={[styles.actionButton, styles.successButton]}
                 onPress={() => startNavigation(selectedDelivery || activeDelivery!)}
               >
-                <Ionicons name="navigate" size={20} color="#FFFFFF" />
+                <Ionicons name="navigate" size={18} color="#FFFFFF" />
                 <Text style={styles.actionButtonText}>{t('startNavigation')}</Text>
               </TouchableOpacity>
             )}
-            
-            {/* <TouchableOpacity
-              style={[styles.actionButton, styles.callButton]}
-              onPress={() => handleCall(
-                (selectedDelivery || activeDelivery)?.customerName || '', 
-                (selectedDelivery || activeDelivery)?.customerPhone
-              )}
-            >
-              <Ionicons name="call" size={20} color="#FFFFFF" />
-              <Text style={styles.actionButtonText}>{t('call')}</Text>
-            </TouchableOpacity> */}
           </View>
         </View>
       )}
 
-      {/* Route Selection Modal */}
+      {/* Deliveries Modal */}
       <Modal
         visible={showRouteModal}
         animationType="slide"
@@ -1122,51 +946,58 @@ useEffect(() => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>{t('availableDeliveries')}</Text>
-              <TouchableOpacity onPress={() => setShowRouteModal(false)}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+                {t('availableDeliveries')}
+              </Text>
+              <TouchableOpacity 
+                style={styles.modalCloseButton}
+                onPress={() => setShowRouteModal(false)}
+              >
                 <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.routesList}>
+            <ScrollView style={styles.deliveriesList} showsVerticalScrollIndicator={false}>
               {deliveries.map((delivery) => (
                 <TouchableOpacity
                   key={delivery.id}
-                  style={[
-                    styles.routeItem,
-                    { backgroundColor: theme.colors.card },
-                  ]}
+                  style={[styles.deliveryItem, { backgroundColor: theme.colors.card }]}
                   onPress={() => {
                     setShowRouteModal(false);
                     handleDeliveryPress(delivery);
                   }}
                 >
-                  <View style={styles.routeHeader}>
-                    <View style={styles.routeInfo}>
-                      <Text style={[styles.routeName, { color: theme.colors.text }]}>{delivery.customerName}</Text>
+                  <View style={styles.deliveryItemHeader}>
+                    <View style={styles.deliveryItemInfo}>
+                      <Text style={[styles.deliveryItemName, { color: theme.colors.text }]}>
+                        {delivery.customerName}
+                      </Text>
                       <View style={[styles.statusBadge, { backgroundColor: getMarkerColor(delivery.status) }]}>
                         <Text style={styles.statusText}>{delivery.status.toUpperCase()}</Text>
                       </View>
                     </View>
-                    <View style={styles.routeStats}>
-                      <Text style={[styles.routeDistance, { color: theme.colors.primary }]}>
+                    <View style={styles.deliveryItemMeta}>
+                      <Text style={[styles.deliveryDistance, { color: theme.colors.primary }]}>
                         {delivery.distance}
                       </Text>
-                      <Text style={[styles.routeDuration, { color: theme.colors.textSecondary }]}>
+                      <Text style={[styles.deliveryTime, { color: theme.colors.textSecondary }]}>
                         {delivery.estimatedTime}
                       </Text>
                     </View>
                   </View>
-                  <Text style={[styles.deliveryAddress, { color: theme.colors.textSecondary }]}>
+                  
+                  <Text style={[styles.deliveryItemAddress, { color: theme.colors.textSecondary }]}>
                     {delivery.address}
                   </Text>
-                  <Text style={[styles.restaurantName, { color: theme.colors.text }]}>
-                    {delivery.restaurant} • {delivery.payment}
-                  </Text>
                   
-                  <Text style={[styles.stopsCount, { color: theme.colors.textSecondary }]}>
-                    Status: {delivery.status}
-                  </Text>
+                  <View style={styles.deliveryItemFooter}>
+                    <Text style={[styles.deliveryItemRestaurant, { color: theme.colors.text }]}>
+                      {delivery.restaurant}
+                    </Text>
+                    <Text style={[styles.deliveryItemPayment, { color: theme.colors.primary }]}>
+                      {delivery.payment}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -1177,9 +1008,120 @@ useEffect(() => {
   );
 }
 
+// Dark map style for Google Maps
+const darkMapStyle = [
+  {
+    elementType: 'geometry',
+    stylers: [{ color: '#242f3e' }],
+  },
+  {
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#746855' }],
+  },
+  {
+    elementType: 'labels.text.stroke',
+    stylers: [{ color: '#242f3e' }],
+  },
+  {
+    featureType: 'administrative.locality',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#d59563' }],
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#d59563' }],
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#263c3f' }],
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#6b9a76' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#38414e' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#212a37' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#9ca5b3' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#746855' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#1f2937' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#f3d19c' }],
+  },
+  {
+    featureType: 'transit',
+    elementType: 'geometry',
+    stylers: [{ color: '#2f3948' }],
+  },
+  {
+    featureType: 'transit.station',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#d59563' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#17263c' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#515c6d' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'labels.text.stroke',
+    stylers: [{ color: '#17263c' }],
+  },
+];
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  errorText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#EF4444',
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   header: {
     flexDirection: 'row',
@@ -1189,132 +1131,164 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingTop: 50,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  backButton: {
+    marginRight: 16,
+    padding: 4,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  exitButton: {
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginRight: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 6,
   },
-  exitButtonText: {
-    marginLeft: 8,
-    fontSize: 16,
-    fontWeight: '600',
+  primaryButton: {
+    backgroundColor: '#3B82F6',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+  secondaryButton: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#6B7280',
+  successButton: {
+    backgroundColor: '#10B981',
   },
-  errorText: {
-    marginTop: 8,
+  exitButton: {
+    backgroundColor: '#EF4444',
+  },
+  actionButtonText: {
     fontSize: 14,
-    color: '#EF4444',
-    textAlign: 'center',
-    paddingHorizontal: 20,
+    fontWeight: '600',
   },
   map: {
     flex: 1,
   },
-  controlsContainer: {
+  fab: {
     position: 'absolute',
-    top: 120,
+    bottom: 140,
     right: 20,
-    gap: 10,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
   },
-  controlButton: {
-    borderRadius: 25,
-    padding: 12,
+  markerContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
     elevation: 3,
   },
-  routeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#EBF4FF',
-    borderRadius: 8,
+  activeMarker: {
+    backgroundColor: '#EF4444',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
-  routeButtonText: {
-    marginLeft: 8,
-    fontSize: 16,
-    fontWeight: '600',
+  targetMarker: {
+    backgroundColor: '#8B5CF6',
   },
-  deliveryInfo: {
+  deliveryCard: {
     position: 'absolute',
     bottom: 20,
     left: 20,
     right: 20,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  deliveryHeader: {
+  deliveryCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  deliveryName: {
+  deliveryInfo: {
+    flex: 1,
+  },
+  customerName: {
     fontSize: 18,
     fontWeight: 'bold',
+    marginBottom: 4,
   },
   deliveryAddress: {
     fontSize: 14,
-    marginTop: 2,
+    marginBottom: 8,
+    lineHeight: 20,
   },
-  deliveryDetails: {
+  deliveryMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 12,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  metaText: {
     fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 4,
+    fontWeight: '500',
+  },
+  restaurantInfo: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   closeButton: {
-    padding: 4,
+    padding: 8,
+    borderRadius: 8,
   },
   deliveryActions: {
     flexDirection: 'row',
     gap: 12,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 6,
-  },
-  callButton: {
-    backgroundColor: '#10B981',
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
@@ -1322,9 +1296,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: height * 0.7,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: height * 0.75,
+    paddingBottom: 20,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1332,84 +1307,164 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#E2E8F0',
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
   },
-  routesList: {
+  modalCloseButton: {
+    padding: 4,
+  },
+  deliveriesList: {
     padding: 20,
   },
-  routeItem: {
+  deliveryItem: {
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  selectedRouteItem: {
-    borderColor: '#1E40AF',
-    backgroundColor: '#EFF6FF',
-  },
-  routeHeader: {
+  deliveryItemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 8,
   },
-  routeInfo: {
+  deliveryItemInfo: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  routeName: {
+  deliveryItemName: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-  },
-  statusText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  restaurantName: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  optimalBadge: {
-    backgroundColor: '#10B981',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-  },
-  optimalText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  routeStats: {
+  deliveryItemMeta: {
     alignItems: 'flex-end',
   },
-  routeDistance: {
+  deliveryDistance: {
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  deliveryTime: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  deliveryItemAddress: {
+    fontSize: 14,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  deliveryItemFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  deliveryItemRestaurant: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  deliveryItemPayment: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  // Directions Panel Styles
+  directionsPanel: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    right: 20,
+    maxHeight: height * 0.4,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  directionsPanelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  routeSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  routeDistance: {
+    fontSize: 18,
     fontWeight: 'bold',
   },
   routeDuration: {
     fontSize: 14,
+    fontWeight: '500',
   },
-  stopsCount: {
-    fontSize: 12,
+  directionsCloseButton: {
+    padding: 8,
+    borderRadius: 8,
   },
-  selectedMarker: {
-    alignItems: 'center',
+  directionsList: {
+    maxHeight: height * 0.25,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  directionStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  stepIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
   },
-  // Removed comingSoonOverlay styles
+  stepDetails: {
+    flex: 1,
+  },
+  stepInstruction: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  stepDistance: {
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  directionsToggle: {
+    position: 'absolute',
+    top: 120,
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  directionsToggleText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
