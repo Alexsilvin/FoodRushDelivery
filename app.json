@@ -68,7 +68,7 @@
       "expo-font"
     ],
     "extra": {
-      "googleMapsApiKey": "CHANGE_ME_ADD_REAL_KEY",
+      "googleMapsApiKey": "AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18",
       "eas": {
         "projectId": "426d0b7d-9f04-4fb3-ace5-9ec5b7503c1b"
       }
