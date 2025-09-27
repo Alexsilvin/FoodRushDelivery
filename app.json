@@ -62,7 +62,8 @@
           "icon": "./assets/notification-icon.png",
           "color": "#ffffff"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "googleMapsApiKey": "CHANGE_ME_ADD_REAL_KEY"
