@@ -43,6 +43,7 @@ export default function ProfileScreen() {
   const [rating, setRating] = useState<number | null>(null);
   const [completedDeliveries, setCompletedDeliveries] = useState<number | null>(null);
   const [completionRate, setCompletionRate] = useState<string | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
   const [notificationList, setNotificationList] = useState<Notification[]>([]); // Explicitly define the type
 
   // Derive vehicle type (backend may store on vehicle or root)
@@ -132,26 +133,24 @@ export default function ProfileScreen() {
     const load = async () => {
       try {
         setProfileLoading(true);
-        // Status
-        const statusRes = await riderAPI.getStatus().catch(() => null);
-        if (mounted && statusRes?.data) setIsOnline(statusRes.data.status === 'online');
-        // Account for additional stats if provided
-        if (user) {
-          setRating(user.rating ?? user['averageRating'] ?? null);
-          setCompletedDeliveries(user.completedDeliveries ?? user['totalDeliveries'] ?? null);
-          const comp = user['completionRate'] ?? user['deliveryCompletionRate'];
-          if (comp != null) setCompletionRate(typeof comp === 'number' ? `${comp}%` : String(comp));
+        // Fetch all stats from analytics summary endpoint
+        const summaryRes = await axios.get('/api/v1/analytics/riders/my/summary').catch(() => null);
+        if (mounted && summaryRes?.data) {
+          setTodayEarnings(summaryRes.data.todayEarnings ?? null);
+          setCompletedDeliveries(summaryRes.data.completedDeliveries ?? null);
+          setRating(summaryRes.data.rating ?? null);
+          setCompletionRate(summaryRes.data.completionRate != null ? `${summaryRes.data.completionRate}%` : null);
         }
-        // Earnings today
-        const earnRes = await riderAPI.getEarnings('today').catch(() => null);
-        if (mounted && earnRes?.data) setTodayEarnings(earnRes.data.total ?? null);
+        // Fetch balance if needed
+        const balanceRes = await axios.get('/api/v1/analytics/riders/my/balance').catch(() => null);
+        if (mounted && balanceRes?.data) setBalance(balanceRes.data.balance ?? null);
       } finally {
         mounted && setProfileLoading(false);
       }
     };
     load();
     return () => { mounted = false; };
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     const registerForPushNotifications = async () => {
@@ -219,14 +218,16 @@ export default function ProfileScreen() {
   const refreshProfile = async () => {
     setProfileLoading(true);
     try {
-      const account = await riderAuthAPI.getAccount();
-      if (account?.data) {
-        // minimal fields already stored in context; stats extracted earlier via user dependency
+      // Re-fetch analytics summary and balance
+      const summaryRes = await axios.get('/api/v1/analytics/riders/my/summary').catch(() => null);
+      if (summaryRes?.data) {
+        setTodayEarnings(summaryRes.data.todayEarnings ?? null);
+        setCompletedDeliveries(summaryRes.data.completedDeliveries ?? null);
+        setRating(summaryRes.data.rating ?? null);
+        setCompletionRate(summaryRes.data.completionRate != null ? `${summaryRes.data.completionRate}%` : null);
       }
-      const statusRes = await riderAPI.getStatus().catch(()=>null);
-      if (statusRes?.data) setIsOnline(statusRes.data.status === 'online');
-      const earnRes = await riderAPI.getEarnings('today').catch(()=>null);
-      if (earnRes?.data) setTodayEarnings(earnRes.data.total ?? null);
+      const balanceRes = await axios.get('/api/v1/analytics/riders/my/balance').catch(() => null);
+      if (balanceRes?.data) setBalance(balanceRes.data.balance ?? null);
     } finally {
       setProfileLoading(false);
     }

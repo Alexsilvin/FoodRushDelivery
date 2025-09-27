@@ -36,6 +36,7 @@ interface DeliveryLocation {
   restaurant: string;
   payment: string;
   restaurant_active?: boolean;
+  verificationStatus?: string; // ADDED: for filtering approved restaurants
 }
 
 interface DirectionsStep {
@@ -71,6 +72,7 @@ export default function MapScreen({ navigation, route }: any) {
   
   // State
   const [showAcceptedRestaurantsOnly, setShowAcceptedRestaurantsOnly] = useState(false);
+  const [showApprovedOnly, setShowApprovedOnly] = useState(false); // NEW: filter for approved restaurants
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
   const [fetchingDeliveries, setFetchingDeliveries] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryLocation | null>(null);
@@ -476,6 +478,8 @@ export default function MapScreen({ navigation, route }: any) {
 
   // Initialize location and fetch deliveries
   useEffect(() => {
+
+    // Add verificationStatus to mock deliveries for demo
     const mockDeliveries: DeliveryLocation[] = [
       {
         id: '1',
@@ -489,6 +493,7 @@ export default function MapScreen({ navigation, route }: any) {
         estimatedTime: '15 min',
         restaurant: 'Sushi Spot',
         payment: '$25.50',
+        verificationStatus: 'APPROVED',
       },
       {
         id: '2',
@@ -502,6 +507,7 @@ export default function MapScreen({ navigation, route }: any) {
         estimatedTime: '12 min',
         restaurant: 'Taco Bell',
         payment: '$18.75',
+        verificationStatus: 'PENDING',
       },
       {
         id: '3',
@@ -515,6 +521,7 @@ export default function MapScreen({ navigation, route }: any) {
         estimatedTime: '8 min',
         restaurant: 'Pizza Palace',
         payment: '$32.25',
+        verificationStatus: 'APPROVED',
       },
       {
         id: '4',
@@ -528,6 +535,7 @@ export default function MapScreen({ navigation, route }: any) {
         estimatedTime: '20 min',
         restaurant: 'Burger King',
         payment: '$22.00',
+        verificationStatus: 'REJECTED',
       },
     ];
 
@@ -754,27 +762,29 @@ export default function MapScreen({ navigation, route }: any) {
           />
         )}
 
-        {/* Delivery Markers */}
-        {!isDrivingMode && deliveries.map((delivery) => (
-          <Marker
-            key={delivery.id}
-            coordinate={{ latitude: delivery.lat, longitude: delivery.lng }}
-            onPress={() => handleDeliveryPress(delivery)}
-          >
-            <View style={[
-              styles.markerContainer,
-              { 
-                backgroundColor: selectedDelivery?.id === delivery.id ? '#3B82F6' : getMarkerColor(delivery.status),
-                transform: [{ scale: selectedDelivery?.id === delivery.id ? 1.2 : 1 }]
-              }
-            ]}>
-              <Ionicons 
-                name="location" 
-                size={20} 
-                color="#FFFFFF" 
-              />
-            </View>
-          </Marker>
+        {/* Delivery Markers (filtered by showApprovedOnly) */}
+        {!isDrivingMode && deliveries
+          .filter(delivery => !showApprovedOnly || delivery.verificationStatus === 'APPROVED')
+          .map((delivery) => (
+            <Marker
+              key={delivery.id}
+              coordinate={{ latitude: delivery.lat, longitude: delivery.lng }}
+              onPress={() => handleDeliveryPress(delivery)}
+            >
+              <View style={[
+                styles.markerContainer,
+                { 
+                  backgroundColor: selectedDelivery?.id === delivery.id ? '#3B82F6' : getMarkerColor(delivery.status),
+                  transform: [{ scale: selectedDelivery?.id === delivery.id ? 1.2 : 1 }]
+                }
+              ]}>
+                <Ionicons 
+                  name="location" 
+                  size={20} 
+                  color="#FFFFFF" 
+                />
+              </View>
+            </Marker>
         ))}
 
         {/* Active Delivery Marker */}
@@ -790,7 +800,7 @@ export default function MapScreen({ navigation, route }: any) {
           </Marker>
         )}
 
-        {/* Target Location Marker */}
+        {/* Target Location Marker (not filtered) */}
         {targetLocation && (
           <Marker
             coordinate={{
@@ -864,6 +874,21 @@ export default function MapScreen({ navigation, route }: any) {
           <Text style={styles.directionsToggleText}>Directions</Text>
         </TouchableOpacity>
       )}
+
+      {/* Filter Button (Floating) */}
+      <TouchableOpacity
+        style={[
+          styles.filterFab,
+          { backgroundColor: showApprovedOnly ? '#10B981' : theme.colors.primary }
+        ]}
+        onPress={() => setShowApprovedOnly(v => !v)}
+        activeOpacity={0.85}
+      >
+        <Ionicons name={showApprovedOnly ? 'filter' : 'filter-outline'} size={22} color="#FFF" />
+        <Text style={styles.filterFabText}>{showApprovedOnly ? 'Approved Only' : 'All'}</Text>
+      </TouchableOpacity>
+
+      {/* Center Location Button (Floating) */}
       <TouchableOpacity 
         style={[styles.fab, { backgroundColor: theme.colors.primary }]} 
         onPress={centerOnLocation}
@@ -1108,10 +1133,37 @@ const darkMapStyle = [
   },
 ];
 
+// Floating filter button style
+const filterFabHeight = 56;
+const filterFabWidth = 140;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  filterFab: {
+    position: 'absolute',
+    top: 140,
+    right: 20,
+    width: filterFabWidth,
+    height: filterFabHeight,
+    borderRadius: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
+    zIndex: 10,
+    gap: 8,
+  },
+  filterFabText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 15,
   },
   loadingContainer: {
     flex: 1,

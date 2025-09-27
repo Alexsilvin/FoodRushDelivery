@@ -60,28 +60,26 @@ export default function DashboardScreen({ navigation }: any) {
     setError(null);
     try {
       // Fetch analytics summary and balance
-      const [summaryRes, balanceRes, currentRes] = await Promise.all([
-        axios.get('/api/v1/analytics/riders/my/summary').catch(e => { console.warn('Analytics summary fetch failed', e?.response?.status); return { data: {} }; }),
-        axios.get('/api/v1/analytics/riders/my/balance').catch(e => { console.warn('Analytics balance fetch failed', e?.response?.status); return { data: {} }; }),
-        riderAPI.getCurrentDeliveries().catch(e => { console.warn('Current deliveries fetch failed', e?.response?.status); return { success: false, data: [] }; })
+      const [summaryRes, balanceRes] = await Promise.all([
+        axios.get('/api/v1/analytics/riders/my/summary').catch(() => ({ data: {} })),
+        axios.get('/api/v1/analytics/riders/my/balance').catch(() => ({ data: {} })),
       ]);
-
+      const summary = summaryRes?.data || {};
+      const balance = balanceRes?.data?.balance ?? 0;
+      setStats({
+        todayEarnings: summary.todayEarnings ?? 0,
+        completedDeliveries: summary.completedDeliveries ?? 0,
+        rating: summary.rating ?? 0,
+        activeDeliveries: summary.activeDeliveries ?? 0,
+        balance,
+      });
+      // Fetch deliveries separately if needed
+      const currentRes = await riderAPI.getCurrentDeliveries().catch(() => ({ success: false, data: [] }));
       if (currentRes?.data) {
         setDeliveries(mapApiDeliveries(currentRes.data));
       }
-
-      // Use analytics summary and balance for stats
-      setStats(prev => ({
-        ...prev,
-        todayEarnings: summaryRes.data?.todayEarnings ?? prev.todayEarnings,
-        completedDeliveries: summaryRes.data?.completedDeliveries ?? prev.completedDeliveries,
-        rating: summaryRes.data?.rating ?? prev.rating,
-        activeDeliveries: currentRes?.data?.length || 0,
-        balance: balanceRes.data?.balance ?? 0
-      }));
     } catch (e: any) {
-      console.error('Dashboard fetch error', e);
-      setError(e?.response?.data?.message || e.message || 'Failed to load data');
+      setError(e?.message || 'Failed to load dashboard');
     } finally {
       setLoading(false);
     }
@@ -269,8 +267,8 @@ export default function DashboardScreen({ navigation }: any) {
           </View>
 
           <View style={styles.statsContainer}>
-            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-              <Text style={[styles.statValue, { color: theme.colors.text }]}>${stats.todayEarnings}</Text>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}> 
+              <Text style={[styles.statValue, { color: theme.colors.text }]}>XAF {stats.todayEarnings}</Text>
               <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('todayEarnings')}</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
