@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+// MapScreen.tsx
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,13 +17,39 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useRoute } from '@react-navigation/native';
+
+// Add imports for API and mappers (like DashboardScreen)
 import { riderAPI } from '../../services/api';
 import { mapApiDeliveries } from '../../utils/mappers';
+
+// Helper to convert Delivery[] (from API/mappers) to DeliveryLocation[] (for MapScreen)
 import { Delivery } from '../../types/api';
-import { useRoute } from '@react-navigation/native';
+
+function convertToDeliveryLocations(deliveries: Delivery[]): DeliveryLocation[] {
+  if (!Array.isArray(deliveries)) return [];
+  return deliveries.map((d) => ({
+    id: d.id,
+    customerName: d.customerName || '',
+    customerPhone: d.customerPhone,
+    address: d.address || '',
+    lat: d.dropoffLat ?? d.lat ?? 0,
+    lng: d.dropoffLng ?? d.lng ?? 0,
+    status: (d.status as 'pending' | 'accepted' | 'picked_up' | 'delivered'),
+    distance: d.distance || '',
+    estimatedTime: d.estimatedTime || '',
+    restaurant: d.restaurant || '',
+    payment: d.payment || '',
+    restaurant_active: d.restaurant_active,
+    verificationStatus: d.verificationStatus,
+    restaurantLat: d.pickupLat ?? d.restaurantLat ?? 0,
+    restaurantLng: d.pickupLng ?? d.restaurantLng ?? 0,
+  }));
+}
 
 const { width, height } = Dimensions.get('window');
 
+/* ---------- Types ---------- */
 interface DeliveryLocation {
   id: string;
   customerName: string;
@@ -36,7 +63,20 @@ interface DeliveryLocation {
   restaurant: string;
   payment: string;
   restaurant_active?: boolean;
-  verificationStatus?: string; // ADDED: for filtering approved restaurants
+  verificationStatus?: string;
+  restaurantLat?: number;
+  restaurantLng?: number;
+}
+
+interface Restaurant {
+  id: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  latitude: number;
+  longitude: number;
+  verificationStatus?: string;
+  [key: string]: any;
 }
 
 interface DirectionsStep {
@@ -54,59 +94,79 @@ interface DirectionsRoute {
   summary: string;
 }
 
-interface Route {
-  id: string;
-  name: string;
-  distance: string;
-  duration: string;
-  stops: DeliveryLocation[];
-  coordinates: Array<{ latitude: number; longitude: number }>;
-  isOptimal: boolean;
-  directionsRoute?: DirectionsRoute;
-}
+/* ---------- Config ---------- */
+// Your Google Directions API key (you provided this)
+const GOOGLE_MAPS_APIKEY = 'AIzaSyAlILoX4PV-nTzRcwdkP6iTOcFbV0IURMA';
 
+// Restaurants endpoint (replace with full URL if backend is on other host)
+const RESTAURANTS_ENDPOINT = 'https://foodrush-be.onrender.com/api/v1/restaurants'; // <-- change to full URL if needed
+
+/* ---------- Dark map style (used by default) ---------- */
+const darkMapStyle = [
+  { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#263c3f' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1f2937' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
+  { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
+  { featureType: 'water', elementType: 'labels.text.stroke', stylers: [{ color: '#17263c' }] },
+];
+
+/* ---------- Component ---------- */
 export default function MapScreen({ navigation, route }: any) {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const routeParams = useRoute();
-  
-  // State
-  const [showAcceptedRestaurantsOnly, setShowAcceptedRestaurantsOnly] = useState(false);
-  const [showApprovedOnly, setShowApprovedOnly] = useState(false); // NEW: filter for approved restaurants
+
+  // state
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
   const [fetchingDeliveries, setFetchingDeliveries] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryLocation | null>(null);
-  const [availableRoutes, setAvailableRoutes] = useState<Route[]>([]);
-  const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
+  const [availableRoutes, setAvailableRoutes] = useState<DirectionsRoute[]>([]);
+  const [selectedRoute, setSelectedRoute] = useState<DirectionsRoute | null>(null);
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [isDrivingMode, setIsDrivingMode] = useState(false);
   const [activeDelivery, setActiveDelivery] = useState<DeliveryLocation | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
-  const [currentLocation, setCurrentLocation] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [activeDirections, setActiveDirections] = useState<DirectionsRoute | null>(null);
   const [targetClient, setTargetClient] = useState<DeliveryLocation | null>(null);
   const [showDirections, setShowDirections] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
-  
-  // Refs
+
+  // Restaurants
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [showRestaurantModal, setShowRestaurantModal] = useState(false);
+
+  // Driver animation
+  const [driverPosition, setDriverPosition] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const animIndexRef = useRef<number>(0);
+  const animIntervalRef = useRef<any>(null);
   const mapRef = useRef<MapView>(null);
 
-  // Navigation params
+  // Route params (if any)
   const targetLocation = (routeParams.params as any)?.targetLocation;
   const targetCustomerName = (routeParams.params as any)?.customerName;
   const targetAddress = (routeParams.params as any)?.address;
 
-  // Utility function to calculate distance between two points
-  const calculateDistance = useCallback((
-    point1: { latitude: number; longitude: number },
-    point2: { latitude: number; longitude: number }
-  ): number => {
-    const R = 6371e3; // Earth's radius in meters
+  /* ---------- Utilities ---------- */
+  const calculateDistance = useCallback((point1: { latitude: number; longitude: number }, point2: { latitude: number; longitude: number }) => {
+    const R = 6371e3;
     const φ1 = point1.latitude * Math.PI / 180;
     const φ2 = point2.latitude * Math.PI / 180;
     const Δφ = (point2.latitude - point1.latitude) * Math.PI / 180;
@@ -116,260 +176,123 @@ export default function MapScreen({ navigation, route }: any) {
               Math.cos(φ1) * Math.cos(φ2) *
               Math.sin(Δλ/2) * Math.sin(Δλ/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-    return R * c; // Distance in meters
+    return R * c;
   }, []);
 
-  // Create demo route function
+  const getDirection = (from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }) => {
+    const latDiff = to.latitude - from.latitude;
+    const lngDiff = to.longitude - from.longitude;
+    if (Math.abs(latDiff) > Math.abs(lngDiff)) return latDiff > 0 ? 'north' : 'south';
+    return lngDiff > 0 ? 'east' : 'west';
+  };
+
+  const getManeuverIcon = (maneuver: string) => {
+    switch (maneuver) {
+      case 'depart':
+      case 'start': return 'play';
+      case 'turn-left': return 'arrow-back';
+      case 'turn-right': return 'arrow-forward';
+      case 'turn-slight-left':
+      case 'turn-slight-right': return 'arrow-up-outline';
+      case 'continue':
+      case 'straight': return 'arrow-up';
+      case 'ramp-left': return 'arrow-back';
+      case 'ramp-right': return 'arrow-forward';
+      case 'merge': return 'git-merge-outline';
+      case 'fork-left':
+      case 'fork-right': return 'git-branch-outline';
+      case 'arrive': return 'flag';
+      case 'roundabout-left':
+      case 'roundabout-right': return 'refresh-circle';
+      default: return 'arrow-up';
+    }
+  };
+
+  /* ---------- Demo route generator (fallback) ---------- */
   const createDemoRoute = useCallback((
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number }
   ): DirectionsRoute => {
-    const coordinates = [];
+    const coordinates: Array<{ latitude: number; longitude: number }> = [];
     coordinates.push(origin);
-    
+
     const latDiff = destination.latitude - origin.latitude;
     const lngDiff = destination.longitude - origin.longitude;
     const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
-    
-    // Create more realistic road-like path
-    const numberOfSegments = Math.max(10, Math.floor(distance * 1000)); // More segments for longer routes
-    
-    // Define some waypoints that simulate turns and road patterns
+    const numberOfSegments = Math.max(10, Math.floor(distance * 10000));
+
     const waypoints: Array<{ latitude: number; longitude: number }> = [];
-    
-    // Add intermediate waypoints to simulate realistic routing
     if (Math.abs(latDiff) > Math.abs(lngDiff)) {
-      // Primarily north-south route
-      waypoints.push({
-        latitude: origin.latitude + latDiff * 0.3,
-        longitude: origin.longitude + lngDiff * 0.1
-      });
-      waypoints.push({
-        latitude: origin.latitude + latDiff * 0.7,
-        longitude: origin.longitude + lngDiff * 0.4
-      });
-      waypoints.push({
-        latitude: origin.latitude + latDiff * 0.9,
-        longitude: origin.longitude + lngDiff * 0.8
-      });
+      waypoints.push({ latitude: origin.latitude + latDiff * 0.3, longitude: origin.longitude + lngDiff * 0.1 });
+      waypoints.push({ latitude: origin.latitude + latDiff * 0.7, longitude: origin.longitude + lngDiff * 0.4 });
+      waypoints.push({ latitude: origin.latitude + latDiff * 0.9, longitude: origin.longitude + lngDiff * 0.8 });
     } else {
-      // Primarily east-west route
-      waypoints.push({
-        latitude: origin.latitude + latDiff * 0.1,
-        longitude: origin.longitude + lngDiff * 0.3
-      });
-      waypoints.push({
-        latitude: origin.latitude + latDiff * 0.4,
-        longitude: origin.longitude + lngDiff * 0.7
-      });
-      waypoints.push({
-        latitude: origin.latitude + latDiff * 0.8,
-        longitude: origin.longitude + lngDiff * 0.9
-      });
+      waypoints.push({ latitude: origin.latitude + latDiff * 0.1, longitude: origin.longitude + lngDiff * 0.3 });
+      waypoints.push({ latitude: origin.latitude + latDiff * 0.4, longitude: origin.longitude + lngDiff * 0.7 });
+      waypoints.push({ latitude: origin.latitude + latDiff * 0.8, longitude: origin.longitude + lngDiff * 0.9 });
     }
-    
+
     const allPoints = [origin, ...waypoints, destination];
-    
-    // Generate smooth path between waypoints
+
     for (let i = 0; i < allPoints.length - 1; i++) {
       const start = allPoints[i];
       const end = allPoints[i + 1];
-      const segmentSteps = Math.floor(numberOfSegments / (allPoints.length - 1));
-      
+      const segmentSteps = Math.floor(numberOfSegments / (allPoints.length - 1)) || 5;
+
       for (let j = 0; j < segmentSteps; j++) {
         const progress = j / segmentSteps;
-        const smoothProgress = 0.5 * (1 - Math.cos(progress * Math.PI)); // Smooth transition
-        
+        const smoothProgress = 0.5 * (1 - Math.cos(progress * Math.PI));
         let lat = start.latitude + (end.latitude - start.latitude) * smoothProgress;
         let lng = start.longitude + (end.longitude - start.longitude) * smoothProgress;
-        
-        // Add realistic road variations (following street grid patterns)
-        const roadVariation = 0.0003; // Reduced for more realistic movement
-        const gridAlignment = 0.0001; // Slight grid alignment for city roads
-        
-        // Simulate following street grid
+
+        const roadVariation = 0.00012;
+        const gridAlignment = 0.00005;
         const latGrid = Math.floor(lat / gridAlignment) * gridAlignment;
         const lngGrid = Math.floor(lng / gridAlignment) * gridAlignment;
-        
+
         lat = latGrid + (Math.random() - 0.5) * roadVariation;
         lng = lngGrid + (Math.random() - 0.5) * roadVariation;
-        
-        // Avoid duplicate coordinates
+
         const lastCoord = coordinates[coordinates.length - 1];
-        if (Math.abs(lat - lastCoord.latitude) > 0.00001 || Math.abs(lng - lastCoord.longitude) > 0.00001) {
+        if (!lastCoord || Math.abs(lat - lastCoord.latitude) > 0.00001 || Math.abs(lng - lastCoord.longitude) > 0.00001) {
           coordinates.push({ latitude: lat, longitude: lng });
         }
       }
     }
-    
+
     coordinates.push(destination);
 
-    // Calculate realistic distance and time
     let totalDistance = 0;
     for (let i = 0; i < coordinates.length - 1; i++) {
       totalDistance += calculateDistance(coordinates[i], coordinates[i + 1]);
     }
     const distanceKm = (totalDistance / 1000).toFixed(1);
-    const estimatedTimeMinutes = Math.ceil(totalDistance / 300); // Assuming 18 km/h average in city
-    
-    // Create realistic turn-by-turn directions
-    const steps: DirectionsStep[] = [];
-    const totalSegments = coordinates.length - 1;
-    const segmentDistance = totalDistance / totalSegments;
-    
-    steps.push({
-      instruction: `Head ${getDirection(origin, coordinates[Math.floor(coordinates.length * 0.1)])} on local roads`,
-      distance: `${(segmentDistance * 3 / 1000).toFixed(1)} km`,
-      duration: `${Math.ceil(segmentDistance * 3 / 300)} min`,
-      maneuver: 'depart'
-    });
-    
-    if (waypoints.length > 0) {
-      waypoints.forEach((waypoint, index) => {
-        const direction = getDirection(
-          waypoints[index - 1] || origin, 
-          waypoint
-        );
-        steps.push({
-          instruction: `Continue ${direction}`,
-          distance: `${(segmentDistance * 2 / 1000).toFixed(1)} km`,
-          duration: `${Math.ceil(segmentDistance * 2 / 300)} min`,
-          maneuver: 'continue'
-        });
-      });
-    }
-    
-    steps.push({
-      instruction: 'Arrive at your destination on the right',
-      distance: '0.0 km',
-      duration: '1 min',
-      maneuver: 'arrive'
-    });
+    const estimatedTimeMinutes = Math.max(1, Math.ceil(totalDistance / 300));
+
+    const steps: DirectionsStep[] = [
+      { instruction: `Head ${getDirection(origin, coordinates[Math.floor(coordinates.length * 0.1)])} on local roads`, distance: `${(totalDistance / 1000).toFixed(1)} km`, duration: `${Math.ceil(estimatedTimeMinutes)} min`, maneuver: 'depart' },
+      { instruction: 'Continue on main streets', distance: '—', duration: `${Math.max(1, Math.floor(estimatedTimeMinutes / 2))} min`, maneuver: 'continue' },
+      { instruction: 'Arrive at your destination on the right', distance: '0.0 km', duration: '1 min', maneuver: 'arrive' },
+    ];
 
     return {
       distance: `${distanceKm} km`,
       duration: `${estimatedTimeMinutes} min`,
       coordinates,
       steps,
-      summary: `Fastest route via city roads`
+      summary: 'Demo route via local roads',
     };
   }, [calculateDistance]);
 
-  // Helper function to determine direction
-  const getDirection = (from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }) => {
-    const latDiff = to.latitude - from.latitude;
-    const lngDiff = to.longitude - from.longitude;
-    
-    if (Math.abs(latDiff) > Math.abs(lngDiff)) {
-      return latDiff > 0 ? 'north' : 'south';
-    } else {
-      return lngDiff > 0 ? 'east' : 'west';
-    }
-  };
-
-  // Helper function to get maneuver icons
-  const getManeuverIcon = (maneuver: string) => {
-    switch (maneuver) {
-      case 'depart':
-      case 'start':
-        return 'play';
-      case 'turn-left':
-        return 'arrow-back';
-      case 'turn-right':
-        return 'arrow-forward';
-      case 'turn-slight-left':
-        return 'arrow-up-outline';
-      case 'turn-slight-right':
-        return 'arrow-up-outline';
-      case 'continue':
-      case 'straight':
-        return 'arrow-up';
-      case 'ramp-left':
-        return 'arrow-back';
-      case 'ramp-right':
-        return 'arrow-forward';
-      case 'merge':
-        return 'git-merge-outline';
-      case 'fork-left':
-        return 'git-branch-outline';
-      case 'fork-right':
-        return 'git-branch-outline';
-      case 'arrive':
-        return 'flag';
-      case 'roundabout-left':
-        return 'refresh-circle';
-      case 'roundabout-right':
-        return 'refresh-circle';
-      default:
-        return 'arrow-up';
-    }
-  };
-
-  // Google Directions API - Replace YOUR_API_KEY with your actual Google Maps API key
-  const GOOGLE_MAPS_API_KEY = 'AIzaSyAlILoX4PV-nTzRcwdkP6iTOcFbV0IURMA'; // Get this from Google Cloud Console
-
-  const getDirections = useCallback(async (
-    origin: { latitude: number; longitude: number },
-    destination: { latitude: number; longitude: number }
-  ): Promise<DirectionsRoute | null> => {
-    try {
-      // If no API key is provided, fall back to demo route
-      if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'AIzaSyAlILoX4PV-nTzRcwdkP6iTOcFbV0IURMA') {
-        console.log('Using demo route - add Google Maps API key for real routing');
-        return createDemoRoute(origin, destination);
-      }
-
-      const originStr = `${origin.latitude},${origin.longitude}`;
-      const destinationStr = `${destination.latitude},${destination.longitude}`;
-      
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&mode=driving&key=${GOOGLE_MAPS_API_KEY}`;
-
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.status !== 'OK' || !data.routes || data.routes.length === 0) {
-        console.warn('Google Directions API error:', data.status);
-        return createDemoRoute(origin, destination);
-      }
-
-      const route = data.routes[0];
-      const leg = route.legs[0];
-      
-      // Decode the polyline points to get coordinates
-      const coordinates = decodePolyline(route.overview_polyline.points);
-      
-      // Extract turn-by-turn directions
-      const steps: DirectionsStep[] = leg.steps.map((step: any) => ({
-        instruction: step.html_instructions.replace(/<[^>]*>/g, ''), // Remove HTML tags
-        distance: step.distance.text,
-        duration: step.duration.text,
-        maneuver: step.maneuver || 'continue',
-      }));
-
-      return {
-        distance: leg.distance.text,
-        duration: leg.duration.text,
-        coordinates,
-        steps,
-        summary: route.summary || 'Route via roads',
-      };
-    } catch (error) {
-      console.warn('Google Directions API failed, using demo route:', error);
-      return createDemoRoute(origin, destination);
-    }
-  }, [createDemoRoute]);
-
-  // Polyline decoder for Google Directions API
+  /* ---------- Polyline decoder (for Google Directions) ---------- */
   const decodePolyline = (encoded: string): Array<{ latitude: number; longitude: number }> => {
-    const poly = [];
+    const poly: Array<{ latitude: number; longitude: number }> = [];
     let index = 0;
-    const len = encoded.length;
     let lat = 0;
     let lng = 0;
 
-    while (index < len) {
-      let b;
+    while (index < encoded.length) {
+      let b: number;
       let shift = 0;
       let result = 0;
       do {
@@ -390,38 +313,149 @@ export default function MapScreen({ navigation, route }: any) {
       const dlng = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
       lng += dlng;
 
-      poly.push({
-        latitude: lat / 1E5,
-        longitude: lng / 1E5,
-      });
+      poly.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
     }
 
     return poly;
   };
 
-  // Start navigation function
-  const startNavigation = useCallback((client: DeliveryLocation) => {
-    const url = Platform.OS === 'ios' 
-      ? `maps://app?daddr=${client.lat},${client.lng}`
-      : `google.navigation:q=${client.lat},${client.lng}`;
-    
+  /* ---------- Google Directions (primary) ---------- */
+  const getDirections = useCallback(async (
+    origin: { latitude: number; longitude: number },
+    destination: { latitude: number; longitude: number }
+  ): Promise<DirectionsRoute | null> => {
+    try {
+      const originStr = `${origin.latitude},${origin.longitude}`;
+      const destinationStr = `${destination.latitude},${destination.longitude}`;
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&mode=driving&key=${GOOGLE_MAPS_APIKEY}`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (!data || data.status !== 'OK' || !data.routes || data.routes.length === 0) {
+        console.warn('Google Directions API error (status != OK or no routes), falling back to demo route:', data?.status);
+        return createDemoRoute(origin, destination);
+      }
+
+      const route = data.routes[0];
+      const leg = route.legs[0];
+
+      const coordinates = decodePolyline(route.overview_polyline.points);
+      const steps: DirectionsStep[] = leg.steps.map((step: any) => ({
+        instruction: step.html_instructions.replace(/<[^>]*>/g, ''),
+        distance: step.distance?.text || '',
+        duration: step.duration?.text || '',
+        maneuver: step.maneuver || 'continue',
+      }));
+
+      return {
+        distance: leg.distance?.text || '0 km',
+        duration: leg.duration?.text || '0 min',
+        coordinates,
+        steps,
+        summary: route.summary || 'Route',
+      };
+    } catch (error) {
+      console.warn('Google Directions fetch failed — using demo route:', error);
+      return createDemoRoute(origin, destination);
+    }
+  }, [createDemoRoute]);
+
+  /* ---------- Start navigation (open external maps) ---------- */
+  const startNavigation = useCallback((destLat: number, destLng: number) => {
+    const url = Platform.OS === 'ios' ? `maps://app?daddr=${destLat},${destLng}` : `google.navigation:q=${destLat},${destLng}`;
     Alert.alert(
       t('startNavigation'),
       t('startNavigationConfirm'),
       [
         { text: t('cancel'), style: 'cancel' },
-        { 
-          text: t('openMaps'), 
+        {
+          text: t('openMaps'),
           onPress: () => {
-            console.log('Opening navigation to:', client.address);
-            // In real app, use Linking.openURL(url)
+            console.log('Open maps URL:', url);
+            // in a real app: Linking.openURL(url)
           }
         }
       ]
     );
   }, [t]);
 
-  // Calculate route to client
+  /* ---------- Calculate route driver -> restaurant -> customer ---------- */
+  const calculateDriverRestaurantCustomerRoute = useCallback(async (delivery: DeliveryLocation) => {
+    if (!currentLocation) {
+      Alert.alert(t('error'), 'Current location not available');
+      return;
+    }
+    if (delivery.restaurantLat == null || delivery.restaurantLng == null) {
+      Alert.alert(t('error'), 'Restaurant location not provided for this delivery.');
+      return;
+    }
+
+    setIsCalculatingRoute(true);
+    try {
+      const driver = { latitude: currentLocation.latitude, longitude: currentLocation.longitude };
+      const restaurant = { latitude: delivery.restaurantLat!, longitude: delivery.restaurantLng! };
+      const customer = { latitude: delivery.lat, longitude: delivery.lng };
+
+      const seg1 = await getDirections(driver, restaurant);
+      const seg2 = await getDirections(restaurant, customer);
+
+      // combine coordinates
+      const coords1 = seg1?.coordinates || [];
+      const coords2 = seg2?.coordinates || [];
+      const combined: Array<{ latitude: number; longitude: number }> = [...coords1];
+
+      if (coords2.length > 0) {
+        const last1 = combined[combined.length - 1];
+        const first2 = coords2[0];
+        if (last1 && first2 && Math.abs(last1.latitude - first2.latitude) < 0.000001 && Math.abs(last1.longitude - first2.longitude) < 0.000001) {
+          combined.push(...coords2.slice(1));
+        } else {
+          combined.push(...coords2);
+        }
+      }
+
+      const combinedDistance = `${((parseFloat(seg1?.distance || '0') || 0) + (parseFloat(seg2?.distance || '0') || 0)).toFixed(1)} km`;
+      const combinedDuration = `${(parseInt(seg1?.duration || '0') + parseInt(seg2?.duration || '0')).toString()} min`;
+      const combinedSteps = [...(seg1?.steps || []), ...(seg2?.steps || [])];
+
+      const combinedRoute: DirectionsRoute = {
+        distance: combinedDistance,
+        duration: combinedDuration,
+        coordinates: combined,
+        steps: combinedSteps,
+        summary: 'Driver → Restaurant → Customer'
+      };
+
+      setActiveDirections(combinedRoute);
+      setRouteCoordinates(combinedRoute.coordinates);
+      setShowDirections(true);
+      setSelectedDelivery(delivery);
+      setActiveDelivery(delivery);
+      setIsDrivingMode(true);
+
+      // set driver initial position to current location
+      setDriverPosition(currentLocation);
+      animIndexRef.current = 0;
+
+      // fit map
+      if (combinedRoute.coordinates.length > 0) {
+        mapRef.current?.fitToCoordinates(combinedRoute.coordinates, {
+          edgePadding: { top: 80, right: 80, bottom: 220, left: 80 },
+          animated: true,
+        });
+      }
+
+      Alert.alert(t('routeCalculated'), `${t('distance')}: ${combinedRoute.distance}\n${t('estTime')}: ${combinedRoute.duration}`, [{ text: t('ok') }]);
+    } catch (err) {
+      console.error('Calculate combined route error:', err);
+      Alert.alert(t('error'), 'Failed to calculate route.');
+    } finally {
+      setIsCalculatingRoute(false);
+    }
+  }, [currentLocation, getDirections, t]);
+
+  /* ---------- Calculate route to client only (existing behavior) ---------- */
   const calculateRouteToClient = useCallback(async (client: DeliveryLocation) => {
     if (!currentLocation) {
       Alert.alert(t('error'), 'Current location not available');
@@ -431,9 +465,8 @@ export default function MapScreen({ navigation, route }: any) {
     setIsCalculatingRoute(true);
     setTargetClient(client);
     setSelectedDelivery(client);
-    
+
     try {
-      // Animate map to show the selected delivery
       mapRef.current?.animateToRegion({
         latitude: client.lat,
         longitude: client.lng,
@@ -441,20 +474,14 @@ export default function MapScreen({ navigation, route }: any) {
         longitudeDelta: 0.01,
       }, 1000);
 
-      // Get directions
-      const directionsRoute = await getDirections(
-        currentLocation,
-        { latitude: client.lat, longitude: client.lng }
-      );
-      
+      const directionsRoute = await getDirections(currentLocation, { latitude: client.lat, longitude: client.lng });
+
       if (directionsRoute) {
         setActiveDirections(directionsRoute);
         setRouteCoordinates(directionsRoute.coordinates);
         setShowDirections(true);
 
-        // Fit map to show the entire route
-        const coordinates = [currentLocation, { latitude: client.lat, longitude: client.lng }];
-        mapRef.current?.fitToCoordinates(coordinates, {
+        mapRef.current?.fitToCoordinates([currentLocation, { latitude: client.lat, longitude: client.lng }], {
           edgePadding: { top: 50, right: 50, bottom: 200, left: 50 },
           animated: true,
         });
@@ -464,7 +491,7 @@ export default function MapScreen({ navigation, route }: any) {
           `${t('distance')}: ${directionsRoute.distance}\n${t('estTime')}: ${directionsRoute.duration}\n\n${t('startNavigationConfirm')}`,
           [
             { text: t('cancel'), style: 'cancel' },
-            { text: t('startNavigation'), onPress: () => startNavigation(client) },
+            { text: t('startNavigation'), onPress: () => startNavigation(client.lat, client.lng) },
           ]
         );
       }
@@ -476,70 +503,113 @@ export default function MapScreen({ navigation, route }: any) {
     }
   }, [currentLocation, getDirections, startNavigation, t]);
 
-  // Initialize location and fetch deliveries
+  /* ---------- Accept delivery (driving toward client) ---------- */
+  const acceptDelivery = (delivery: DeliveryLocation) => {
+    setActiveDelivery(delivery);
+    setIsDrivingMode(true);
+    setSelectedDelivery(delivery);
+
+    if (currentLocation) {
+      getDirections(currentLocation, { latitude: delivery.lat, longitude: delivery.lng })
+        .then((route) => {
+          if (route) {
+            setRouteCoordinates(route.coordinates);
+            setActiveDirections(route);
+
+            mapRef.current?.fitToCoordinates(route.coordinates, {
+              edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+              animated: true,
+            });
+
+            setDriverPosition(currentLocation);
+            animIndexRef.current = 0;
+          }
+        });
+    }
+  };
+
+  /* ---------- Exit driving mode ---------- */
+  const exitDrivingMode = () => {
+    setIsDrivingMode(false);
+    setActiveDelivery(null);
+    setRouteCoordinates([]);
+    setActiveDirections(null);
+    setIsAnimating(false);
+    if (animIntervalRef.current) {
+      clearInterval(animIntervalRef.current);
+      animIntervalRef.current = null;
+    }
+    if (currentLocation) {
+      setDriverPosition(currentLocation);
+      mapRef.current?.animateToRegion({
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 800);
+    }
+  };
+
+  /* ---------- Handle delivery press ---------- */
+  const handleDeliveryPress = (delivery: DeliveryLocation) => {
+    setSelectedDelivery(delivery);
+    mapRef.current?.animateToRegion({
+      latitude: delivery.lat,
+      longitude: delivery.lng,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }, 800);
+
+    if (!isDrivingMode) {
+      Alert.alert(
+        `${delivery.customerName}`,
+        `${t('address')}: ${delivery.address}\n${delivery.restaurant} • ${delivery.payment}\n${t('distance')}: ${delivery.distance} • ${t('estTime')}: ${delivery.estimatedTime}`,
+        [
+          { text: t('cancel'), style: 'cancel' },
+          {
+            text: 'Driver → Restaurant → Customer',
+            onPress: () => calculateDriverRestaurantCustomerRoute(delivery),
+          },
+          {
+            text: t('acceptDeliveryAction'),
+            onPress: () => acceptDelivery(delivery),
+          },
+        ]
+      );
+    }
+  };
+
+  /* ---------- Center on user ---------- */
+  const centerOnLocation = () => {
+    if (currentLocation) {
+      mapRef.current?.animateToRegion({
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 500);
+    }
+  };
+
+  /* ---------- Fetch deliveries from backend & initialize location ---------- */
   useEffect(() => {
-
-    // Add verificationStatus to mock deliveries for demo
-    const mockDeliveries: DeliveryLocation[] = [
-      {
-        id: '1',
-        customerName: 'Emma Davis',
-        customerPhone: '+1 (555) 123-4567',
-        address: '123 Broadway, New York, NY',
-        lat: 40.7589,
-        lng: -73.9851,
-        status: 'accepted',
-        distance: '1.2 km',
-        estimatedTime: '15 min',
-        restaurant: 'Sushi Spot',
-        payment: '$25.50',
-        verificationStatus: 'APPROVED',
-      },
-      {
-        id: '2',
-        customerName: 'John Smith',
-        customerPhone: '+1 (555) 234-5678',
-        address: '456 5th Avenue, New York, NY',
-        lat: 40.7505,
-        lng: -73.9934,
-        status: 'pending',
-        distance: '2.1 km',
-        estimatedTime: '12 min',
-        restaurant: 'Taco Bell',
-        payment: '$18.75',
-        verificationStatus: 'PENDING',
-      },
-      {
-        id: '3',
-        customerName: 'Sarah Johnson',
-        customerPhone: '+1 (555) 345-6789',
-        address: '789 Madison Avenue, New York, NY',
-        lat: 40.7614,
-        lng: -73.9776,
-        status: 'picked_up',
-        distance: '0.8 km',
-        estimatedTime: '8 min',
-        restaurant: 'Pizza Palace',
-        payment: '$32.25',
-        verificationStatus: 'APPROVED',
-      },
-      {
-        id: '4',
-        customerName: 'Mike Chen',
-        customerPhone: '+1 (555) 456-7890',
-        address: '321 Park Avenue, New York, NY',
-        lat: 40.7549,
-        lng: -73.9707,
-        status: 'pending',
-        distance: '1.7 km',
-        estimatedTime: '20 min',
-        restaurant: 'Burger King',
-        payment: '$22.00',
-        verificationStatus: 'REJECTED',
-      },
-    ];
-
-    setDeliveries(mockDeliveries);
+    const fetchDeliveries = async () => {
+      setFetchingDeliveries(true);
+      try {
+        const res = await riderAPI.getCurrentDeliveries().catch(() => ({ success: false, data: [] }));
+        if (res?.data) {
+          const mapped = mapApiDeliveries(res.data);
+          setDeliveries(convertToDeliveryLocations(mapped));
+        } else {
+          setDeliveries([]);
+        }
+      } catch (err) {
+        console.warn('Could not fetch deliveries:', err);
+        setDeliveries([]);
+      } finally {
+        setFetchingDeliveries(false);
+      }
+    };
 
     const initializeLocation = async () => {
       try {
@@ -560,37 +630,49 @@ export default function MapScreen({ navigation, route }: any) {
 
         setCurrentLocation(userLocation);
         setLoading(false);
+        setDriverPosition(userLocation); // driver starts at user location
 
-        // Center map on user location
         mapRef.current?.animateToRegion({
           latitude: userLocation.latitude,
           longitude: userLocation.longitude,
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         }, 1000);
-
       } catch (error) {
         console.error('Error getting location:', error);
         setLocationError(error instanceof Error ? error.message : 'Failed to get location');
-        const defaultLocation = {
-          latitude: 40.7128,
-          longitude: -74.0060,
-        };
+        const defaultLocation = { latitude: 40.7128, longitude: -74.0060 };
         setCurrentLocation(defaultLocation);
+        setDriverPosition(defaultLocation);
         setLoading(false);
-        
-        Alert.alert(
-          t('locationError'), 
-          t('locationErrorMessage'),
-          [{ text: 'OK' }]
-        );
+
+        Alert.alert(t('locationError'), t('locationErrorMessage'), [{ text: 'OK' }]);
       }
     };
 
+    fetchDeliveries();
     initializeLocation();
   }, [t]);
 
-  // Get marker color based on status
+  /* ---------- Fetch restaurants from backend ---------- */
+  useEffect(() => {
+    const fetchRestaurants = async () => {
+      try {
+        // NOTE: If your API is not on the same origin, replace RESTAURANTS_ENDPOINT with full URL.
+        const res = await fetch(RESTAURANTS_ENDPOINT);
+        if (!res.ok) throw new Error(`Failed to fetch restaurants: ${res.status}`);
+        const data = await res.json();
+        // Expect data to be an array of restaurants with at least { id, name, latitude, longitude }
+        setRestaurants(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.warn('Could not fetch restaurants, continuing with none:', err);
+        setRestaurants([]); // safe fallback
+      }
+    };
+    fetchRestaurants();
+  }, []);
+
+  /* ---------- Marker color logic ---------- */
   const getMarkerColor = (status: string) => {
     switch (status) {
       case 'pending': return '#FCD34D';
@@ -601,135 +683,103 @@ export default function MapScreen({ navigation, route }: any) {
     }
   };
 
-  // Accept delivery and enter driving mode
-  const acceptDelivery = (delivery: DeliveryLocation) => {
-    setActiveDelivery(delivery);
-    setIsDrivingMode(true);
-    setSelectedDelivery(delivery);
+  /* ---------- Restaurant marker tap: show details ---------- */
+  const onRestaurantPress = (restaurant: Restaurant) => {
+    setSelectedRestaurant(restaurant);
+    setShowRestaurantModal(true);
 
-    if (currentLocation) {
-      getDirections(currentLocation, { latitude: delivery.lat, longitude: delivery.lng })
-        .then((route) => {
-          if (route) {
-            setRouteCoordinates(route.coordinates);
-            setActiveDirections(route);
-            
-            // Fit map to show route
-            mapRef.current?.fitToCoordinates(route.coordinates, {
-              edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-              animated: true,
-            });
-          }
-        });
-    }
-  };
-
-  // Exit driving mode
-  const exitDrivingMode = () => {
-    setIsDrivingMode(false);
-    setActiveDelivery(null);
-    setRouteCoordinates([]);
-    setActiveDirections(null);
-    
-    // Return to user location
-    if (currentLocation) {
-      mapRef.current?.animateToRegion({
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 800);
-    }
-  };
-
-  // Handle delivery press
-  const handleDeliveryPress = (delivery: DeliveryLocation) => {
-    setSelectedDelivery(delivery);
+    // animate map to restaurant
     mapRef.current?.animateToRegion({
-      latitude: delivery.lat,
-      longitude: delivery.lng,
+      latitude: restaurant.latitude,
+      longitude: restaurant.longitude,
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
-    }, 800);
-
-    if (!isDrivingMode) {
-      Alert.alert(
-        `${delivery.customerName}`,
-        `${t('address')}: ${delivery.address}\n${delivery.restaurant} • ${delivery.payment}\n${t('distance')}: ${delivery.distance} • ${t('estTime')}: ${delivery.estimatedTime}`,
-        [
-          { text: t('cancel'), style: 'cancel' },
-          {
-            text: t('calculateRoute'),
-            onPress: () => calculateRouteToClient(delivery),
-          },
-          {
-            text: t('acceptDeliveryAction'),
-            onPress: () => acceptDelivery(delivery),
-          },
-        ]
-      );
-    }
+    }, 700);
   };
 
-  // Center on current location
-  const centerOnLocation = () => {
-    if (currentLocation) {
-      mapRef.current?.animateToRegion({
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 500);
+  /* ---------- Driver animation control ---------- */
+  useEffect(() => {
+    if (isAnimating) {
+      // small guard
+      if (!routeCoordinates || routeCoordinates.length === 0) {
+        setIsAnimating(false);
+        Alert.alert('No route', 'Calculate a route first (driver → restaurant → customer).');
+        return;
+      }
+
+      animIntervalRef.current = setInterval(() => {
+        const idx = animIndexRef.current;
+        if (idx >= routeCoordinates.length) {
+          // reached end
+          clearInterval(animIntervalRef.current);
+          animIntervalRef.current = null;
+          setIsAnimating(false);
+          return;
+        }
+
+        const next = routeCoordinates[idx];
+        setDriverPosition(next);
+        animIndexRef.current = idx + 1;
+      }, 700); // 700ms per step (tweak to change speed)
+    } else {
+      if (animIntervalRef.current) {
+        clearInterval(animIntervalRef.current);
+        animIntervalRef.current = null;
+      }
     }
+
+    return () => {
+      if (animIntervalRef.current) {
+        clearInterval(animIntervalRef.current);
+        animIntervalRef.current = null;
+      }
+    };
+  }, [isAnimating, routeCoordinates]);
+
+  const toggleAnimation = () => {
+    if (!routeCoordinates || routeCoordinates.length === 0) {
+      Alert.alert('No route', 'Calculate route first (Driver → Restaurant → Customer).');
+      return;
+    }
+    // if we reached the end, reset index to start
+    if (animIndexRef.current >= routeCoordinates.length) animIndexRef.current = 0;
+    setIsAnimating(v => !v);
   };
 
+  /* ---------- Render loading ---------- */
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#3B82F6" />
         <Text style={styles.loadingText}>{t('loadingMap')}</Text>
-        {locationError && (
-          <Text style={styles.errorText}>{locationError}</Text>
-        )}
+        {locationError && <Text style={styles.errorText}>{locationError}</Text>}
       </View>
     );
   }
 
+  /* ---------- UI ---------- */
   return (
     <View style={styles.container}>
-      {/* Modern Header */}
+      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <View>
-            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-              {isDrivingMode ? t('drivingMode') : t('map')}
-            </Text>
-            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
-              {deliveries.length} {t('deliveries')} available
-            </Text>
+            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>{isDrivingMode ? t('drivingMode') : t('map')}</Text>
+            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>{deliveries.length} {t('deliveries')} available</Text>
           </View>
         </View>
-        
+
         <View style={styles.headerActions}>
           {isDrivingMode ? (
-            <TouchableOpacity
-              style={[styles.actionButton, styles.exitButton]}
-              onPress={exitDrivingMode}
-            >
+            <TouchableOpacity style={[styles.actionButton, styles.exitButton]} onPress={exitDrivingMode}>
               <Ionicons name="stop" size={18} color="#FFFFFF" />
               <Text style={styles.actionButtonText}>{t('exit')}</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity
-              style={[styles.actionButton, styles.primaryButton]}
-              onPress={() => setShowRouteModal(true)}
-            >
+            <TouchableOpacity style={[styles.actionButton, styles.primaryButton]} onPress={() => setShowRouteModal(true)}>
               <Ionicons name="list" size={18} color="#FFFFFF" />
               <Text style={styles.actionButtonText}>{t('deliveries')}</Text>
             </TouchableOpacity>
@@ -750,9 +800,9 @@ export default function MapScreen({ navigation, route }: any) {
         }}
         showsUserLocation={true}
         showsMyLocationButton={false}
-        customMapStyle={theme.isDark ? darkMapStyle : []}
+        customMapStyle={darkMapStyle} // dark style set as default
       >
-        {/* Route Polyline */}
+        {/* Route polyline */}
         {routeCoordinates.length > 0 && (
           <Polyline
             coordinates={routeCoordinates}
@@ -762,53 +812,74 @@ export default function MapScreen({ navigation, route }: any) {
           />
         )}
 
-        {/* Delivery Markers (filtered by showApprovedOnly) */}
-        {!isDrivingMode && deliveries
-          .filter(delivery => !showApprovedOnly || delivery.verificationStatus === 'APPROVED')
-          .map((delivery) => (
-            <Marker
-              key={delivery.id}
-              coordinate={{ latitude: delivery.lat, longitude: delivery.lng }}
-              onPress={() => handleDeliveryPress(delivery)}
-            >
-              <View style={[
-                styles.markerContainer,
-                { 
-                  backgroundColor: selectedDelivery?.id === delivery.id ? '#3B82F6' : getMarkerColor(delivery.status),
-                  transform: [{ scale: selectedDelivery?.id === delivery.id ? 1.2 : 1 }]
-                }
-              ]}>
-                <Ionicons 
-                  name="location" 
-                  size={20} 
-                  color="#FFFFFF" 
-                />
-              </View>
-            </Marker>
-        ))}
-
-        {/* Active Delivery Marker */}
-        {isDrivingMode && activeDelivery && (
+        {/* Delivery markers */}
+        {!isDrivingMode && deliveries.map((delivery) => (
           <Marker
-            coordinate={{ latitude: activeDelivery.lat, longitude: activeDelivery.lng }}
-            title={activeDelivery.customerName}
-            description={activeDelivery.address}
+            key={delivery.id}
+            coordinate={{ latitude: delivery.lat, longitude: delivery.lng }}
+            onPress={() => handleDeliveryPress(delivery)}
           >
-            <View style={[styles.markerContainer, styles.activeMarker]}>
-              <Ionicons name="flag" size={20} color="#FFFFFF" />
+            <View style={[
+              styles.markerContainer,
+              {
+                backgroundColor: selectedDelivery?.id === delivery.id ? '#3B82F6' : getMarkerColor(delivery.status),
+                transform: [{ scale: selectedDelivery?.id === delivery.id ? 1.2 : 1 }]
+              }
+            ]}>
+              <Ionicons name="location" size={20} color="#FFFFFF" />
             </View>
           </Marker>
+        ))}
+
+        {/* Restaurants markers (fetched from backend) */}
+        {restaurants.map((r) => (
+          <Marker
+            key={String(r.id)}
+            coordinate={{ latitude: r.latitude, longitude: r.longitude }}
+            onPress={() => onRestaurantPress(r)}
+          >
+            <View style={[styles.markerContainer, styles.targetMarker]}>
+              <Ionicons name="restaurant" size={18} color="#FFFFFF" />
+            </View>
+          </Marker>
+        ))}
+
+        {/* Active delivery markers (when driving) */}
+        {isDrivingMode && activeDelivery && (
+          <>
+            {/* customer */}
+            <Marker coordinate={{ latitude: activeDelivery.lat, longitude: activeDelivery.lng }} title={activeDelivery.customerName} description={activeDelivery.address}>
+              <View style={[styles.markerContainer, styles.activeMarker]}>
+                <Ionicons name="flag" size={20} color="#FFFFFF" />
+              </View>
+            </Marker>
+
+            {/* restaurant */}
+            {typeof activeDelivery.restaurantLat === 'number' && typeof activeDelivery.restaurantLng === 'number' && (
+              <Marker coordinate={{ latitude: activeDelivery.restaurantLat!, longitude: activeDelivery.restaurantLng! }} title={activeDelivery.restaurant}>
+                <View style={[styles.markerContainer, styles.targetMarker]}>
+                  <Ionicons name="restaurant" size={18} color="#FFFFFF" />
+                </View>
+              </Marker>
+            )}
+
+            {/* driver (animated) */}
+            {driverPosition && (
+              <Marker coordinate={driverPosition}>
+                <View style={[styles.markerContainer, { backgroundColor: '#374151' }]}>
+                  <Ionicons name="car" size={18} color="#FFFFFF" />
+                </View>
+              </Marker>
+            )}
+          </>
         )}
 
-        {/* Target Location Marker (not filtered) */}
+        {/* targetLocation param if provided */}
         {targetLocation && (
-          <Marker
-            coordinate={{
-              latitude: targetLocation.latitude || targetLocation.lat,
-              longitude: targetLocation.longitude || targetLocation.lng
-            }}
-            title={targetCustomerName || 'Target Location'}
-          >
+          <Marker coordinate={{
+            latitude: targetLocation.latitude || targetLocation.lat,
+            longitude: targetLocation.longitude || targetLocation.lng
+          }} title={targetCustomerName || 'Target Location'}>
             <View style={[styles.markerContainer, styles.targetMarker]}>
               <Ionicons name="pin" size={20} color="#FFFFFF" />
             </View>
@@ -821,42 +892,23 @@ export default function MapScreen({ navigation, route }: any) {
         <View style={[styles.directionsPanel, { backgroundColor: theme.colors.surface }]}>
           <View style={styles.directionsPanelHeader}>
             <View style={styles.routeSummary}>
-              <Text style={[styles.routeDistance, { color: theme.colors.primary }]}>
-                {activeDirections.distance}
-              </Text>
-              <Text style={[styles.routeDuration, { color: theme.colors.textSecondary }]}>
-                {activeDirections.duration}
-              </Text>
+              <Text style={[styles.routeDistance, { color: theme.colors.primary }]}>{activeDirections.distance}</Text>
+              <Text style={[styles.routeDuration, { color: theme.colors.textSecondary }]}>{activeDirections.duration}</Text>
             </View>
-            <TouchableOpacity
-              style={styles.directionsCloseButton}
-              onPress={() => {
-                setShowDirections(false);
-                setActiveDirections(null);
-                setRouteCoordinates([]);
-              }}
-            >
+            <TouchableOpacity style={styles.directionsCloseButton} onPress={() => { setShowDirections(false); setActiveDirections(null); setRouteCoordinates([]); }}>
               <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
-          
+
           <ScrollView style={styles.directionsList} showsVerticalScrollIndicator={false}>
             {activeDirections.steps.map((step, index) => (
               <View key={index} style={[styles.directionStep, { borderBottomColor: theme.colors.border }]}>
                 <View style={[styles.stepIcon, { backgroundColor: theme.colors.primary }]}>
-                  <Ionicons 
-                    name={getManeuverIcon(step.maneuver)} 
-                    size={16} 
-                    color="#FFFFFF" 
-                  />
+                  <Ionicons name={getManeuverIcon(step.maneuver)} size={16} color="#FFFFFF" />
                 </View>
                 <View style={styles.stepDetails}>
-                  <Text style={[styles.stepInstruction, { color: theme.colors.text }]}>
-                    {step.instruction}
-                  </Text>
-                  <Text style={[styles.stepDistance, { color: theme.colors.textSecondary }]}>
-                    {step.distance} • {step.duration}
-                  </Text>
+                  <Text style={[styles.stepInstruction, { color: theme.colors.text }]}>{step.instruction}</Text>
+                  <Text style={[styles.stepDistance, { color: theme.colors.textSecondary }]}>{step.distance} • {step.duration}</Text>
                 </View>
               </View>
             ))}
@@ -866,34 +918,23 @@ export default function MapScreen({ navigation, route }: any) {
 
       {/* Directions Toggle Button */}
       {activeDirections && !showDirections && (
-        <TouchableOpacity
-          style={[styles.directionsToggle, { backgroundColor: theme.colors.primary }]}
-          onPress={() => setShowDirections(true)}
-        >
+        <TouchableOpacity style={[styles.directionsToggle, { backgroundColor: theme.colors.primary }]} onPress={() => setShowDirections(true)}>
           <Ionicons name="list" size={20} color="#FFFFFF" />
           <Text style={styles.directionsToggleText}>Directions</Text>
         </TouchableOpacity>
       )}
 
-      {/* Filter Button (Floating) */}
-      <TouchableOpacity
-        style={[
-          styles.filterFab,
-          { backgroundColor: showApprovedOnly ? '#10B981' : theme.colors.primary }
-        ]}
-        onPress={() => setShowApprovedOnly(v => !v)}
-        activeOpacity={0.85}
-      >
-        <Ionicons name={showApprovedOnly ? 'filter' : 'filter-outline'} size={22} color="#FFF" />
-        <Text style={styles.filterFabText}>{showApprovedOnly ? 'Approved Only' : 'All'}</Text>
+      {/* Center Location Button */}
+      <TouchableOpacity style={[styles.fab, { backgroundColor: theme.colors.primary }]} onPress={centerOnLocation}>
+        <Ionicons name="locate" size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Center Location Button (Floating) */}
-      <TouchableOpacity 
-        style={[styles.fab, { backgroundColor: theme.colors.primary }]} 
-        onPress={centerOnLocation}
+      {/* Animate driver toggle (small FAB) */}
+      <TouchableOpacity
+        style={[styles.animateFab, { backgroundColor: isAnimating ? '#EF4444' : '#10B981' }]}
+        onPress={toggleAnimation}
       >
-        <Ionicons name="locate" size={24} color="#FFFFFF" />
+        <Ionicons name={isAnimating ? 'stop' : 'play'} size={18} color="#fff" />
       </TouchableOpacity>
 
       {/* Selected Delivery Card */}
@@ -901,60 +942,34 @@ export default function MapScreen({ navigation, route }: any) {
         <View style={[styles.deliveryCard, { backgroundColor: theme.colors.surface }]}>
           <View style={styles.deliveryCardHeader}>
             <View style={styles.deliveryInfo}>
-              <Text style={[styles.customerName, { color: theme.colors.text }]}>
-                {(selectedDelivery || activeDelivery)?.customerName}
-              </Text>
-              <Text style={[styles.deliveryAddress, { color: theme.colors.textSecondary }]}>
-                {(selectedDelivery || activeDelivery)?.address}
-              </Text>
+              <Text style={[styles.customerName, { color: theme.colors.text }]}>{(selectedDelivery || activeDelivery)?.customerName}</Text>
+              <Text style={[styles.deliveryAddress, { color: theme.colors.textSecondary }]}>{(selectedDelivery || activeDelivery)?.address}</Text>
               <View style={styles.deliveryMeta}>
                 <View style={[styles.statusBadge, { backgroundColor: getMarkerColor((selectedDelivery || activeDelivery)?.status || 'pending') }]}>
-                  <Text style={styles.statusText}>
-                    {((selectedDelivery || activeDelivery)?.status || '').toUpperCase()}
-                  </Text>
+                  <Text style={styles.statusText}>{((selectedDelivery || activeDelivery)?.status || '').toUpperCase()}</Text>
                 </View>
-                <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
-                  {(selectedDelivery || activeDelivery)?.distance} • {(selectedDelivery || activeDelivery)?.estimatedTime}
-                </Text>
+                <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>{(selectedDelivery || activeDelivery)?.distance} • {(selectedDelivery || activeDelivery)?.estimatedTime}</Text>
               </View>
-              <Text style={[styles.restaurantInfo, { color: theme.colors.text }]}>
-                {(selectedDelivery || activeDelivery)?.restaurant} • {(selectedDelivery || activeDelivery)?.payment}
-              </Text>
+              <Text style={[styles.restaurantInfo, { color: theme.colors.text }]}>{(selectedDelivery || activeDelivery)?.restaurant} • {(selectedDelivery || activeDelivery)?.payment}</Text>
             </View>
-            
+
             {!isDrivingMode && (
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setSelectedDelivery(null)}
-              >
+              <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedDelivery(null)}>
                 <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
-          
+
           <View style={styles.deliveryActions}>
             {!activeDirections && !isDrivingMode && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.secondaryButton]}
-                onPress={() => calculateRouteToClient(selectedDelivery!)}
-                disabled={isCalculatingRoute}
-              >
-                {isCalculatingRoute ? (
-                  <ActivityIndicator size="small" color={theme.colors.primary} />
-                ) : (
-                  <Ionicons name="map" size={18} color={theme.colors.primary} />
-                )}
-                <Text style={[styles.actionButtonText, { color: theme.colors.primary }]}>
-                  {isCalculatingRoute ? t('calculating') : t('calculateRoute')}
-                </Text>
+              <TouchableOpacity style={[styles.actionButton, styles.secondaryButton]} onPress={() => calculateRouteToClient(selectedDelivery!)} disabled={isCalculatingRoute}>
+                {isCalculatingRoute ? <ActivityIndicator size="small" color={theme.colors.primary} /> : <Ionicons name="map" size={18} color={theme.colors.primary} />}
+                <Text style={[styles.actionButtonText, { color: theme.colors.primary }]}>{isCalculatingRoute ? t('calculating') : t('calculateRoute')}</Text>
               </TouchableOpacity>
             )}
-            
+
             {(activeDirections || isDrivingMode) && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.successButton]}
-                onPress={() => startNavigation(selectedDelivery || activeDelivery!)}
-              >
+              <TouchableOpacity style={[styles.actionButton, styles.successButton]} onPress={() => startNavigation((selectedDelivery || activeDelivery)!.lat, (selectedDelivery || activeDelivery)!.lng)}>
                 <Ionicons name="navigate" size={18} color="#FFFFFF" />
                 <Text style={styles.actionButtonText}>{t('startNavigation')}</Text>
               </TouchableOpacity>
@@ -964,73 +979,37 @@ export default function MapScreen({ navigation, route }: any) {
       )}
 
       {/* Deliveries Modal */}
-      <Modal
-        visible={showRouteModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowRouteModal(false)}
-      >
+      <Modal visible={showRouteModal} animationType="slide" transparent onRequestClose={() => setShowRouteModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
-                {t('availableDeliveries')}
-              </Text>
-              <TouchableOpacity 
-                style={styles.modalCloseButton}
-                onPress={() => setShowRouteModal(false)}
-              >
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>{t('availableDeliveries')}</Text>
+              <TouchableOpacity style={styles.modalCloseButton} onPress={() => setShowRouteModal(false)}>
                 <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.deliveriesList} showsVerticalScrollIndicator={false}>
-              {deliveries
-                .filter((delivery) => {
-                  // If filter is off, show all deliveries
-                  if (!showAcceptedRestaurantsOnly) return true;
-                  // If filter is on, only show deliveries with active/accepted restaurants
-                  return delivery.restaurant_active === true;
-                })
-                .map((delivery) => (
-                <TouchableOpacity
-                  key={delivery.id}
-                  style={[styles.deliveryItem, { backgroundColor: theme.colors.card }]}
-                  onPress={() => {
-                    setShowRouteModal(false);
-                    handleDeliveryPress(delivery);
-                  }}
-                >
+              {deliveries.map((delivery) => (
+                <TouchableOpacity key={delivery.id} style={[styles.deliveryItem, { backgroundColor: theme.colors.card }]} onPress={() => { setShowRouteModal(false); handleDeliveryPress(delivery); }}>
                   <View style={styles.deliveryItemHeader}>
                     <View style={styles.deliveryItemInfo}>
-                      <Text style={[styles.deliveryItemName, { color: theme.colors.text }]}>
-                        {delivery.customerName}
-                      </Text>
+                      <Text style={[styles.deliveryItemName, { color: theme.colors.text }]}>{delivery.customerName}</Text>
                       <View style={[styles.statusBadge, { backgroundColor: getMarkerColor(delivery.status) }]}>
                         <Text style={styles.statusText}>{delivery.status.toUpperCase()}</Text>
                       </View>
                     </View>
                     <View style={styles.deliveryItemMeta}>
-                      <Text style={[styles.deliveryDistance, { color: theme.colors.primary }]}>
-                        {delivery.distance}
-                      </Text>
-                      <Text style={[styles.deliveryTime, { color: theme.colors.textSecondary }]}>
-                        {delivery.estimatedTime}
-                      </Text>
+                      <Text style={[styles.deliveryDistance, { color: theme.colors.primary }]}>{delivery.distance}</Text>
+                      <Text style={[styles.deliveryTime, { color: theme.colors.textSecondary }]}>{delivery.estimatedTime}</Text>
                     </View>
                   </View>
-                  
-                  <Text style={[styles.deliveryItemAddress, { color: theme.colors.textSecondary }]}>
-                    {delivery.address}
-                  </Text>
-                  
+
+                  <Text style={[styles.deliveryItemAddress, { color: theme.colors.textSecondary }]}>{delivery.address}</Text>
+
                   <View style={styles.deliveryItemFooter}>
-                    <Text style={[styles.deliveryItemRestaurant, { color: theme.colors.text }]}>
-                      {delivery.restaurant}
-                    </Text>
-                    <Text style={[styles.deliveryItemPayment, { color: theme.colors.primary }]}>
-                      {delivery.payment}
-                    </Text>
+                    <Text style={[styles.deliveryItemRestaurant, { color: theme.colors.text }]}>{delivery.restaurant}</Text>
+                    <Text style={[styles.deliveryItemPayment, { color: theme.colors.primary }]}>{delivery.payment}</Text>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -1038,494 +1017,141 @@ export default function MapScreen({ navigation, route }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* Restaurant Modal */}
+      <Modal visible={showRestaurantModal} animationType="slide" transparent onRequestClose={() => { setShowRestaurantModal(false); setSelectedRestaurant(null); }}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            {selectedRestaurant ? (
+              <>
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: theme.colors.text }]}>{selectedRestaurant.name}</Text>
+                  <TouchableOpacity style={styles.modalCloseButton} onPress={() => { setShowRestaurantModal(false); setSelectedRestaurant(null); }}>
+                    <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.deliveriesList}>
+                  <Text style={[styles.deliveryItemAddress, { color: theme.colors.text }]}>{selectedRestaurant.address}</Text>
+                  {selectedRestaurant.phone && <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>Phone: {selectedRestaurant.phone}</Text>}
+                  {selectedRestaurant.verificationStatus && <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>Status: {selectedRestaurant.verificationStatus}</Text>}
+                  <View style={{ height: 12 }} />
+
+                  <TouchableOpacity style={[styles.actionButton, styles.primaryButton, { alignSelf: 'stretch', justifyContent: 'center' }]} onPress={async () => {
+                    // route driver -> this restaurant -> nearest delivery (optional)
+                    setShowRestaurantModal(false);
+                    // Option: find a delivery belonging to this restaurant. If none, just route to restaurant.
+                    const deliveryForThisRestaurant = deliveries.find(d => d.restaurant === selectedRestaurant.name);
+                    if (deliveryForThisRestaurant && deliveryForThisRestaurant.restaurantLat && deliveryForThisRestaurant.restaurantLng) {
+                      // route to driver->restaurant->customer using that delivery
+                      await calculateDriverRestaurantCustomerRoute(deliveryForThisRestaurant);
+                    } else {
+                      // just calculate driver -> restaurant
+                      if (!currentLocation) { Alert.alert(t('error'), 'Current location not available'); return; }
+                      const route = await getDirections(currentLocation, { latitude: selectedRestaurant.latitude, longitude: selectedRestaurant.longitude });
+                      if (route) {
+                        setActiveDirections(route);
+                        setRouteCoordinates(route.coordinates);
+                        setShowDirections(true);
+                        setIsDrivingMode(true);
+                        setDriverPosition(currentLocation);
+                        animIndexRef.current = 0;
+                        mapRef.current?.fitToCoordinates(route.coordinates, { edgePadding: { top: 80, right: 80, bottom: 220, left: 80 }, animated: true });
+                      }
+                    }
+                  }}>
+                    <Ionicons name="map" size={18} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Route via this restaurant</Text>
+                  </TouchableOpacity>
+
+                  <View style={{ height: 12 }} />
+                  <TouchableOpacity style={[styles.actionButton, styles.secondaryButton, { alignSelf: 'stretch', justifyContent: 'center' }]} onPress={() => {
+                    // center on restaurant
+                    mapRef.current?.animateToRegion({ latitude: selectedRestaurant.latitude, longitude: selectedRestaurant.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 500);
+                  }}>
+                    <Ionicons name="locate" size={18} color={theme.colors.primary} style={{ marginRight: 8 }} />
+                    <Text style={[styles.actionButtonText, { color: theme.colors.primary }]}>Center on restaurant</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </>
+            ) : (
+              <ActivityIndicator size="large" />
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-// Dark map style for Google Maps
-const darkMapStyle = [
-  {
-    elementType: 'geometry',
-    stylers: [{ color: '#242f3e' }],
-  },
-  {
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#746855' }],
-  },
-  {
-    elementType: 'labels.text.stroke',
-    stylers: [{ color: '#242f3e' }],
-  },
-  {
-    featureType: 'administrative.locality',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#d59563' }],
-  },
-  {
-    featureType: 'poi',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#d59563' }],
-  },
-  {
-    featureType: 'poi.park',
-    elementType: 'geometry',
-    stylers: [{ color: '#263c3f' }],
-  },
-  {
-    featureType: 'poi.park',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#6b9a76' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry',
-    stylers: [{ color: '#38414e' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry.stroke',
-    stylers: [{ color: '#212a37' }],
-  },
-  {
-    featureType: 'road',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#9ca5b3' }],
-  },
-  {
-    featureType: 'road.highway',
-    elementType: 'geometry',
-    stylers: [{ color: '#746855' }],
-  },
-  {
-    featureType: 'road.highway',
-    elementType: 'geometry.stroke',
-    stylers: [{ color: '#1f2937' }],
-  },
-  {
-    featureType: 'road.highway',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#f3d19c' }],
-  },
-  {
-    featureType: 'transit',
-    elementType: 'geometry',
-    stylers: [{ color: '#2f3948' }],
-  },
-  {
-    featureType: 'transit.station',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#d59563' }],
-  },
-  {
-    featureType: 'water',
-    elementType: 'geometry',
-    stylers: [{ color: '#17263c' }],
-  },
-  {
-    featureType: 'water',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#515c6d' }],
-  },
-  {
-    featureType: 'water',
-    elementType: 'labels.text.stroke',
-    stylers: [{ color: '#17263c' }],
-  },
-];
-
-// Floating filter button style
+/* ---------- Styles ---------- */
 const filterFabHeight = 56;
 const filterFabWidth = 140;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  filterFab: {
-    position: 'absolute',
-    top: 140,
-    right: 20,
-    width: filterFabWidth,
-    height: filterFabHeight,
-    borderRadius: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-    zIndex: 10,
-    gap: 8,
-  },
-  filterFabText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  errorText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#EF4444',
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    paddingTop: 50,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  backButton: {
-    marginRight: 16,
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    gap: 6,
-  },
-  primaryButton: {
-    backgroundColor: '#3B82F6',
-  },
-  secondaryButton: {
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  successButton: {
-    backgroundColor: '#10B981',
-  },
-  exitButton: {
-    backgroundColor: '#EF4444',
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  map: {
-    flex: 1,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 140,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  markerContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  activeMarker: {
-    backgroundColor: '#EF4444',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  targetMarker: {
-    backgroundColor: '#8B5CF6',
-  },
-  deliveryCard: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  deliveryCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  deliveryInfo: {
-    flex: 1,
-  },
-  customerName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  deliveryAddress: {
-    fontSize: 14,
-    marginBottom: 8,
-    lineHeight: 20,
-  },
-  deliveryMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 12,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-  },
-  metaText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  restaurantInfo: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  closeButton: {
-    padding: 8,
-    borderRadius: 8,
-  },
-  deliveryActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: height * 0.75,
-    paddingBottom: 20,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  modalCloseButton: {
-    padding: 4,
-  },
-  deliveriesList: {
-    padding: 20,
-  },
-  deliveryItem: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  deliveryItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  deliveryItemInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  deliveryItemName: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  deliveryItemMeta: {
-    alignItems: 'flex-end',
-  },
-  deliveryDistance: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  deliveryTime: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  deliveryItemAddress: {
-    fontSize: 14,
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  deliveryItemFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  deliveryItemRestaurant: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  deliveryItemPayment: {
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  // Directions Panel Styles
-  directionsPanel: {
-    position: 'absolute',
-    top: 100,
-    left: 20,
-    right: 20,
-    maxHeight: height * 0.4,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  directionsPanelHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  routeSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  routeDistance: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  routeDuration: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  directionsCloseButton: {
-    padding: 8,
-    borderRadius: 8,
-  },
-  directionsList: {
-    maxHeight: height * 0.25,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  directionStep: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    gap: 12,
-  },
-  stepIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  stepDetails: {
-    flex: 1,
-  },
-  stepInstruction: {
-    fontSize: 14,
-    fontWeight: '500',
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  stepDistance: {
-    fontSize: 12,
-    fontWeight: '400',
-  },
-  directionsToggle: {
-    position: 'absolute',
-    top: 120,
-    left: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  directionsToggleText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+  loadingText: { marginTop: 16, fontSize: 16, color: '#64748B', fontWeight: '500' },
+  errorText: { marginTop: 8, fontSize: 14, color: '#EF4444', textAlign: 'center', paddingHorizontal: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, paddingTop: 50, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  backButton: { marginRight: 16, padding: 4 },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 2 },
+  headerSubtitle: { fontSize: 14, fontWeight: '500' },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
+  actionButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, gap: 6 },
+  primaryButton: { backgroundColor: '#3B82F6' },
+  secondaryButton: { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
+  successButton: { backgroundColor: '#10B981' },
+  exitButton: { backgroundColor: '#EF4444' },
+  actionButtonText: { fontSize: 14, fontWeight: '600' },
+  map: { flex: 1 },
+  fab: { position: 'absolute', bottom: 140, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
+  animateFab: { position: 'absolute', bottom: 80, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
+  markerContainer: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 3 },
+  activeMarker: { backgroundColor: '#EF4444', width: 44, height: 44, borderRadius: 22 },
+  targetMarker: { backgroundColor: '#8B5CF6' },
+  deliveryCard: { position: 'absolute', bottom: 20, left: 20, right: 20, borderRadius: 16, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  deliveryCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  deliveryInfo: { flex: 1 },
+  customerName: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
+  deliveryAddress: { fontSize: 14, marginBottom: 8, lineHeight: 20 },
+  deliveryMeta: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 12 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusText: { color: '#FFFFFF', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 },
+  metaText: { fontSize: 12, fontWeight: '500' },
+  restaurantInfo: { fontSize: 14, fontWeight: '600' },
+  closeButton: { padding: 8, borderRadius: 8 },
+  deliveryActions: { flexDirection: 'row', gap: 12 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: height * 0.75, paddingBottom: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold' },
+  modalCloseButton: { padding: 4 },
+  deliveriesList: { padding: 20 },
+  deliveryItem: { borderRadius: 12, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  deliveryItemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  deliveryItemInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  deliveryItemName: { fontSize: 16, fontWeight: '600' },
+  deliveryItemMeta: { alignItems: 'flex-end' },
+  deliveryDistance: { fontSize: 16, fontWeight: 'bold' },
+  deliveryTime: { fontSize: 14, marginTop: 2 },
+  deliveryItemAddress: { fontSize: 14, lineHeight: 18, marginBottom: 8 },
+  deliveryItemFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  deliveryItemRestaurant: { fontSize: 14, fontWeight: '500' },
+  deliveryItemPayment: { fontSize: 14, fontWeight: 'bold' },
+  directionsPanel: { position: 'absolute', top: 100, left: 20, right: 20, maxHeight: height * 0.4, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 6 },
+  directionsPanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  routeSummary: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  routeDistance: { fontSize: 18, fontWeight: 'bold' },
+  routeDuration: { fontSize: 14, fontWeight: '500' },
+  directionsCloseButton: { padding: 8, borderRadius: 8 },
+  directionsList: { maxHeight: height * 0.25, paddingHorizontal: 16, paddingBottom: 16 },
+  directionStep: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12, borderBottomWidth: 1, gap: 12 },
+  stepIcon: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginTop: 2 },
+  stepDetails: { flex: 1 },
+  stepInstruction: { fontSize: 14, fontWeight: '500', lineHeight: 18, marginBottom: 4 },
+  stepDistance: { fontSize: 12, fontWeight: '400' },
+  directionsToggle: { position: 'absolute', top: 120, left: 20, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, gap: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 4 },
+  directionsToggleText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
 });
