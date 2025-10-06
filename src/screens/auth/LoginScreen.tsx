@@ -60,7 +60,7 @@ export default function LoginScreen({ navigation }: any) {
 
   setLoading(true);
   try {
-    const response = await login(email, password); // now returns { success, user, token, state }
+    const response = await login(email, password); // returns { success, user, token, state }
 
     if (!response.success || !response.user) {
       Alert.alert(t('loginFailed'), t('invalidCredentials'), [
@@ -69,15 +69,32 @@ export default function LoginScreen({ navigation }: any) {
       return;
     }
 
-    const riderState = response.state?.toLowerCase();
+    // Log the backend state for debugging
+console.log('Driver account state from backend:', response.state);
+console.log('User object:', response.user);
 
-    if (riderState === 'active') {
-      navigation.replace('Home');
-    } else {
-      navigation.replace('Waiting', {
-        reason: `Your account is currently "${riderState}". Please wait for activation.`,
-      });
-    }
+// Normalize backend state
+const normalizeState = (state: string | undefined) => {
+  if (!state) return '';
+  return state.replace(/\s+/g, '_').replace(/-/g, '_').replace(/\W/g, '').toUpperCase();
+};
+
+const riderState = normalizeState(response.state);
+console.log('Normalized state:', riderState);
+
+// Check state and navigate accordingly
+if (riderState === 'READY' || riderState === 'ACTIVE') {
+  console.log('✅ Navigating to dashboard for state:', riderState);
+  navigation.replace('Home');
+} else if (riderState === 'REJECTED') {
+  console.log('❌ Navigating to Rejected screen for state:', riderState);
+  navigation.replace('Rejected');
+} else {
+  console.log('⏳ Navigating to Waiting screen for state:', riderState);
+  navigation.replace('Waiting', {
+    reason: `Your account is currently "${response.state}". Please wait for verification or activation.`,
+  });
+}
 
   } catch (error: any) {
     const errorMsg = error.message || t('somethingWentWrong');
