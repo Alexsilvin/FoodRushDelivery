@@ -380,7 +380,7 @@ export default function RegisterScreen({ navigation }: any) {
 
       {/* Document Upload */}
       <View style={styles.uploadSection}>
-        <Text style={styles.uploadLabel}>ID Document (Optional)</Text>
+        <Text style={styles.uploadLabel}>ID Document</Text>
         <Text style={styles.uploadSubLabel}>Upload ID card or driver license</Text>
         {documentUri ? (
           <View style={styles.uploadedImageContainer}>
