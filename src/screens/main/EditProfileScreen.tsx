@@ -27,6 +27,7 @@ export default function EditProfileScreen({ navigation }: { navigation: any }) {
   const [loading, setLoading] = useState(false);
 
   const handleSave = async () => {
+    // Validation
     if (!firstName.trim() || !lastName.trim()) {
       Alert.alert(t('error') || 'Error', t('nameRequired') || 'Name is required');
       return;
@@ -37,18 +38,55 @@ export default function EditProfileScreen({ navigation }: { navigation: any }) {
       return;
     }
     
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert(t('error') || 'Error', t('invalidEmail') || 'Please enter a valid email address');
+      return;
+    }
+    
     setLoading(true);
     try {
-      const success = await updateUserProfile({ firstName, lastName, email });
+      console.log('📝 Saving profile changes:', { firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim() });
+      
+      const success = await updateUserProfile({ 
+        firstName: firstName.trim(), 
+        lastName: lastName.trim(), 
+        email: email.trim() 
+      });
+      
       if (success) {
-        Alert.alert(t('success') || 'Success', t('profileUpdated') || 'Profile updated successfully');
-        navigation.goBack();
+        console.log('✅ Profile update successful');
+        Alert.alert(
+          t('success') || 'Success', 
+          t('profileUpdated') || 'Profile updated successfully',
+          [
+            {
+              text: t('ok') || 'OK',
+              onPress: () => navigation.goBack()
+            }
+          ]
+        );
       } else {
-        Alert.alert(t('error') || 'Error', t('updateFailed') || 'Failed to update profile');
+        console.warn('⚠️ Profile update failed');
+        Alert.alert(
+          t('error') || 'Error', 
+          t('updateFailed') || 'Failed to update profile. Please try again.'
+        );
       }
-    } catch (error) {
-      console.error('Profile update error:', error);
-      Alert.alert(t('error') || 'Error', t('somethingWentWrong') || 'Something went wrong');
+    } catch (error: any) {
+      console.error('❌ Profile update error:', error);
+      
+      // Extract meaningful error message
+      let errorMessage = t('somethingWentWrong') || 'Something went wrong';
+      
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert(t('error') || 'Error', errorMessage);
     } finally {
       setLoading(false);
     }

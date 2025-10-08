@@ -14,7 +14,8 @@ export const ENDPOINTS = {
     forgotPassword: '/auth/forgot-password',
     resetPassword: '/auth/reset-password',
     me: '/auth/me',
-    updateProfile: '/auth/update-profile',
+    updateProfile: '/auth/update-profile', // legacy endpoint
+    profile: '/auth/profile', // correct JWT endpoint
     verifyEmail: '/auth/verify-email',
     resendVerification: '/auth/resend-verification', // speculative
     activateAccount: '/auth/activate-account', // speculative
@@ -208,10 +209,23 @@ export const authAPI = {
     return response.data;
   },
 
-  // Update user profile
+  // Update user profile (legacy)
   updateProfile: async (userData: Partial<User>) => {
     const response = await api.put<ApiResponse<User>>(ENDPOINTS.auth.updateProfile, userData);
     return response.data;
+  },
+
+  // Update profile using the correct endpoint with JWT
+  updateProfileJWT: async (userData: { firstName?: string; lastName?: string; email?: string; fullName?: string }) => {
+    try {
+      console.log('🔄 Making PATCH request to /api/v1/auth/profile with data:', userData);
+      const response = await api.patch<ApiResponse<User>>(ENDPOINTS.auth.profile, userData);
+      console.log('✅ Profile update response:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Profile update error:', error?.response?.data || error.message);
+      throw error;
+    }
   },
 
   // Verify email address

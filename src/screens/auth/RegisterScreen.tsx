@@ -146,21 +146,55 @@ export default function RegisterScreen({ navigation }: any) {
 
       const userState = response?.user?.state?.toLowerCase();
 
-      if (response?.success || userState === 'pending') {
-        Alert.alert(
-          t('success') || 'Success',
-          userState === 'pending'
-            ? t('accountPending') || 'Your account has been created and is pending approval. Please check your email for verification.'
-            : t('accountCreated') || 'Account created successfully! Please check your email for a verification link.',
-          [
-            {
-              text: t('goToLogin') || 'Go to Login',
-              onPress: () => navigation.navigate('Login'),
-            },
-          ]
-        );
+      if (response?.success) {
+        console.log('🎯 Registration successful, user state:', userState);
+        
+        // Handle navigation based on user state
+        if (userState === 'pending' || userState === 'pending_verification') {
+          Alert.alert(
+            t('success') || 'Success',
+            t('accountPending') || 'Your account has been created and is pending approval. Please check your email for verification.',
+            [
+              {
+                text: t('ok') || 'OK',
+                onPress: () => navigation.replace('Waiting', {
+                  reason: 'Your account is pending approval. Please wait for admin review.'
+                }),
+              },
+            ]
+          );
+        } else if (userState === 'active' || userState === 'approved') {
+          Alert.alert(
+            t('success') || 'Success',
+            'Account created successfully! Welcome to Food Rush.',
+            [
+              {
+                text: t('getStarted') || 'Get Started',
+                onPress: () => navigation.replace('Login'),
+              },
+            ]
+          );
+        } else if (userState === 'rejected') {
+          navigation.replace('Rejected');
+        } else {
+          // Default case - go to login
+          Alert.alert(
+            t('success') || 'Success',
+            'Account created successfully! Please log in to continue.',
+            [
+              {
+                text: 'Go to Login',
+                onPress: () => navigation.navigate('Login'),
+              },
+            ]
+          );
+        }
       } else {
-        Alert.alert(t('success') || 'success', t('registration ok') || ' created account. Please go back to login.');
+        // Registration failed
+        Alert.alert(
+          t('error') || 'Error',
+          'Registration failed. Please check your information and try again.'
+        );
       }
     } catch (error: any) {
       const errorMsg =

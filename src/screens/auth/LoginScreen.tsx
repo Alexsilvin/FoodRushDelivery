@@ -86,7 +86,7 @@ export default function LoginScreen({ navigation }: any) {
     // Navigation logic based on normalized state
     if (riderState === 'ACTIVE' || riderState === 'READY' || riderState === 'APPROVED') {
       console.log('✅ Navigating to dashboard for state:', riderState);
-      navigation.replace('Home');
+      navigation.replace('Main');
     } else if (riderState === 'REJECTED') {
       console.log('❌ Navigating to Rejected screen for state:', riderState);
       navigation.replace('Rejected');

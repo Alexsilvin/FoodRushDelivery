@@ -267,32 +267,52 @@ const login = async (
     try {
       if (!user) return false;
       
-      // Attempt rider account update (if endpoint exists) else fallback to legacy updateProfile
-      let response;
-      try {
-        // Some backends might expose PATCH /riders/my/account for updates
-        response = await riderAuthAPI.getAccount(); // fetch current first (no dedicated update endpoint specified)
-        // If we had an update endpoint we'd call it; for now we fallback to legacy
-        const legacy = await authAPI.updateProfile(data);
-        response = legacy;
-      } catch (e) {
-        response = await authAPI.updateProfile(data);
-      }
+      console.log('🔄 Updating profile with data:', data);
+      
+      // Use the correct JWT-authenticated profile endpoint
+      const profileData = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        fullName: `${data.firstName} ${data.lastName}`.trim()
+      };
+      
+      const response = await authAPI.updateProfileJWT(profileData);
       
       if (response.success && response.data) {
+        console.log('✅ Profile updated successfully:', response.data);
+        
+        // Update the user object with the new data
         const updatedUser = {
           ...user,
-          ...data
+          ...response.data,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          fullName: `${data.firstName} ${data.lastName}`.trim()
         };
         
+        // Save to secure storage and update context
         await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
+        
         return true;
+      } else {
+        console.warn('⚠️ Profile update failed:', response.message);
+        return false;
+      }
+    } catch (error: any) {
+      console.error('❌ Profile update error:', error?.response?.data || error.message);
+      
+      // Log the specific error for debugging
+      if (error?.response?.status === 404) {
+        console.error('❌ Profile endpoint not found - check if /api/v1/auth/profile exists');
+      } else if (error?.response?.status === 401) {
+        console.error('❌ Unauthorized - JWT token may be invalid or expired');
+      } else if (error?.response?.status === 422) {
+        console.error('❌ Validation error - check request data format');
       }
       
-      return false;
-    } catch (error) {
-      console.error('Profile update error:', error);
       return false;
     }
   };
