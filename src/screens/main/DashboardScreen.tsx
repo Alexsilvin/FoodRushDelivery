@@ -21,6 +21,7 @@ import { Delivery, RiderStatus } from '../../types/api';
 import { mapApiDeliveries } from '../../utils/mappers';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import * as Location from 'expo-location';
 import axios from 'axios';
 const driverImg = require('../../../assets/driver.png');
 
@@ -175,6 +176,107 @@ export default function DashboardScreen({ navigation }: any) {
     navigation.navigate('DeliveryDetails', { deliveryId });
   };
 
+  const handleNavigateToLocation = async (delivery: Delivery) => {
+    try {
+      // Request location permissions and get the current location
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required to start navigation.');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const driverLocation = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+
+      // Mock restaurant coordinates (in real app, this would come from API)
+      const restaurantCoords = {
+        latitude: 40.7505, // Restaurant location (different from customer)
+        longitude: -73.9934,
+      };
+
+      // Mock customer coordinates (in real app, this would come from delivery data)
+      const customerCoords = {
+        latitude: delivery.dropoffLat || delivery.lat || 40.7589,
+        longitude: delivery.dropoffLng || delivery.lng || -73.9851,
+      };
+
+      // Navigate to the MapScreen with proper restaurant and customer locations
+      navigation.navigate('Map', {
+        driverLocation,
+        restaurantLocation: restaurantCoords,
+        customerLocation: customerCoords,
+        deliveryId: delivery.id,
+        deliveryStatus: delivery.status,
+        navigationMode: delivery.status === 'accepted' ? 'toRestaurant' : 'toCustomer',
+        customerName: delivery.customerName,
+        restaurantName: delivery.restaurant,
+      });
+    } catch (error) {
+      console.error('Error fetching location:', error);
+      Alert.alert('Error', 'Unable to fetch your current location. Please try again.');
+    }
+  };
+
+  const handleMarkAsPickedUp = async (delivery: Delivery) => {
+    Alert.alert(
+      'Mark as Picked Up',
+      'Are you sure you want to mark this delivery as picked up?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            // Update delivery status locally
+            setDeliveries(prev => prev.map(d => 
+              d.id === delivery.id ? { ...d, status: 'picked_up' } : d
+            ));
+            
+            // Navigate to customer location after pickup
+            try {
+              const { status } = await Location.requestForegroundPermissionsAsync();
+              if (status === 'granted') {
+                const location = await Location.getCurrentPositionAsync({
+                  accuracy: Location.Accuracy.High,
+                });
+
+                const driverLocation = {
+                  latitude: location.coords.latitude,
+                  longitude: location.coords.longitude,
+                };
+
+                // Mock customer coordinates
+                const customerCoords = {
+                  latitude: delivery.dropoffLat || delivery.lat || 40.7589,
+                  longitude: delivery.dropoffLng || delivery.lng || -73.9851,
+                };
+
+                // Navigate to customer location
+                navigation.navigate('Map', {
+                  driverLocation,
+                  customerLocation: customerCoords,
+                  deliveryId: delivery.id,
+                  deliveryStatus: 'picked_up',
+                  navigationMode: 'toCustomer', // Now going to customer
+                  customerName: delivery.customerName,
+                  restaurantName: delivery.restaurant,
+                });
+              }
+            } catch (error) {
+              console.error('Error getting location for customer navigation:', error);
+              Alert.alert('Success', 'Delivery marked as picked up!');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderDeliveryCard = (delivery: Delivery) => (
     <TouchableOpacity 
       key={delivery.id} 
@@ -191,10 +293,14 @@ export default function DashboardScreen({ navigation }: any) {
           <Ionicons name="restaurant-outline" size={16} color={theme.colors.textSecondary} />
           <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>{delivery.restaurant}</Text>
         </View>
-        <View style={styles.infoRow}>
-          <Ionicons name="location-outline" size={16} color={theme.colors.textSecondary} />
+        <TouchableOpacity 
+          style={styles.infoRow}
+          onPress={() => handleNavigateToLocation(delivery)}
+        >
+          <Ionicons name="location-outline" size={16} color={theme.colors.primary} />
           <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>{delivery.address}</Text>
-        </View>
+          <Ionicons name="navigate-outline" size={16} color={theme.colors.primary} />
+        </TouchableOpacity>
         <View style={styles.infoRow}>
           <Ionicons name="car-outline" size={16} color={theme.colors.textSecondary} />
           <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>{delivery.distance} • {delivery.estimatedTime}</Text>
@@ -218,10 +324,29 @@ export default function DashboardScreen({ navigation }: any) {
         </View>
       )}
 
-  {delivery.status === 'accepted' && (
+      {delivery.status === 'accepted' && (
+        <View style={styles.deliveryActions}>
+          <TouchableOpacity
+            style={[styles.navigateButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => handleNavigateToLocation(delivery)}
+          >
+            <Ionicons name="navigate" size={16} color="#FFFFFF" />
+            <Text style={styles.navigateButtonText}>{t('navigate') || 'Navigate'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.pickupButton, { backgroundColor: '#8B5CF6' }]}
+            onPress={() => handleMarkAsPickedUp(delivery)}
+          >
+            <Ionicons name="bag-check" size={16} color="#FFFFFF" />
+            <Text style={styles.pickupButtonText}>{t('markPickedUp') || 'Mark as Picked Up'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {delivery.status === 'picked_up' && (
         <View style={styles.statusContainer}>
-          <View style={[styles.statusBadge, { backgroundColor: theme.colors.success + '20' }]}>
-            <Text style={[styles.statusText, { color: theme.colors.success }]}>{t('acceptedReady')}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: '#8B5CF6' + '20' }]}>
+            <Text style={[styles.statusText, { color: '#8B5CF6' }]}>{t('pickedUpDelivering') || 'Picked Up - Delivering'}</Text>
           </View>
         </View>
       )}
@@ -626,5 +751,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9CA3AF',
     textAlign: 'center',
+  },
+  navigateButton: {
+    backgroundColor: '#1E40AF',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    flex: 1,
+    marginRight: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navigateButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+    marginLeft: 6,
+  },
+  pickupButton: {
+    backgroundColor: '#8B5CF6',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    flex: 1,
+    marginLeft: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickupButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+    marginLeft: 6,
   },
 });

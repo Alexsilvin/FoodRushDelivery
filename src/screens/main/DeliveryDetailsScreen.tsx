@@ -203,17 +203,25 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
           longitude: location.coords.longitude,
         };
 
-        // Navigate to the MapScreen with the required parameters
+        // Mock restaurant coordinates (in real app, this would come from API)
+        const restaurantCoords = {
+          latitude: 40.7505, // Restaurant location (different from customer)
+          longitude: -73.9934,
+        };
+
+        // Navigate to the MapScreen with proper restaurant and customer locations
         navigation.navigate('Map', {
           driverLocation,
-          restaurantLocation: {
-            latitude: delivery.coordinates.lat,
-            longitude: delivery.coordinates.lng,
-          },
+          restaurantLocation: restaurantCoords,
           customerLocation: {
             latitude: delivery.coordinates.lat,
             longitude: delivery.coordinates.lng,
           },
+          deliveryId: delivery.id,
+          deliveryStatus: delivery.status,
+          navigationMode: 'toRestaurant', // Start by going to restaurant
+          customerName: delivery.customerName,
+          restaurantName: delivery.restaurant,
         });
       } catch (error) {
         console.error('Error fetching location:', error);
@@ -222,7 +230,7 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
     }
   };
 
-  const handleUpdateStatus = (newStatus: 'picked_up' | 'delivered') => {
+  const handleUpdateStatus = async (newStatus: 'picked_up' | 'delivered') => {
     if (delivery) {
       const statusText = newStatus === 'picked_up' ? 'Picked Up' : 'Delivered';
       Alert.alert(
@@ -232,11 +240,46 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Confirm',
-            onPress: () => {
+            onPress: async () => {
               setDelivery({ ...delivery, status: newStatus });
-              Alert.alert('Success', `Delivery marked as ${statusText.toLowerCase()}!`);
-              if (newStatus === 'delivered') {
-                setTimeout(() => navigation.goBack(), 1500);
+              
+              if (newStatus === 'picked_up') {
+                // Navigate to customer location after pickup
+                try {
+                  const { status } = await Location.requestForegroundPermissionsAsync();
+                  if (status === 'granted') {
+                    const location = await Location.getCurrentPositionAsync({
+                      accuracy: Location.Accuracy.High,
+                    });
+
+                    const driverLocation = {
+                      latitude: location.coords.latitude,
+                      longitude: location.coords.longitude,
+                    };
+
+                    // Navigate to customer location
+                    navigation.navigate('Map', {
+                      driverLocation,
+                      customerLocation: {
+                        latitude: delivery.coordinates.lat,
+                        longitude: delivery.coordinates.lng,
+                      },
+                      deliveryId: delivery.id,
+                      deliveryStatus: 'picked_up',
+                      navigationMode: 'toCustomer', // Now going to customer
+                      customerName: delivery.customerName,
+                      restaurantName: delivery.restaurant,
+                    });
+                  }
+                } catch (error) {
+                  console.error('Error getting location for customer navigation:', error);
+                  Alert.alert('Success', `Delivery marked as ${statusText.toLowerCase()}!`);
+                }
+              } else {
+                Alert.alert('Success', `Delivery marked as ${statusText.toLowerCase()}!`);
+                if (newStatus === 'delivered') {
+                  setTimeout(() => navigation.goBack(), 1500);
+                }
               }
             },
           },

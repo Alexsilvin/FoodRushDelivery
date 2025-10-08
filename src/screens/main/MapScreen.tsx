@@ -163,6 +163,16 @@ export default function MapScreen({ navigation, route }: any) {
   const targetLocation = (routeParams.params as any)?.targetLocation;
   const targetCustomerName = (routeParams.params as any)?.customerName;
   const targetAddress = (routeParams.params as any)?.address;
+  
+  // New navigation params from DeliveryDetailsScreen
+  const driverLocation = (routeParams.params as any)?.driverLocation;
+  const restaurantLocation = (routeParams.params as any)?.restaurantLocation;
+  const customerLocation = (routeParams.params as any)?.customerLocation;
+  const deliveryId = (routeParams.params as any)?.deliveryId;
+  const deliveryStatus = (routeParams.params as any)?.deliveryStatus;
+  const navigationMode = (routeParams.params as any)?.navigationMode; // 'toRestaurant' or 'toCustomer'
+  const customerName = (routeParams.params as any)?.customerName;
+  const restaurantName = (routeParams.params as any)?.restaurantName;
 
   /* ---------- Utilities ---------- */
   const calculateDistance = useCallback((point1: { latitude: number; longitude: number }, point2: { latitude: number; longitude: number }) => {
@@ -327,20 +337,35 @@ export default function MapScreen({ navigation, route }: any) {
     try {
       const originStr = `${origin.latitude},${origin.longitude}`;
       const destinationStr = `${destination.latitude},${destination.longitude}`;
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originStr}&destination=${destinationStr}&mode=driving&key=${GOOGLE_MAPS_APIKEY}`;
+      
+      // Enhanced URL with optimizations for real roads and avoiding buildings
+      const url = `https://maps.googleapis.com/maps/api/directions/json?` +
+        `origin=${originStr}&` +
+        `destination=${destinationStr}&` +
+        `mode=driving&` +
+        `avoid=tolls&` + // Avoid tolls for delivery drivers
+        `optimize=true&` + // Optimize route
+        `traffic_model=best_guess&` + // Consider traffic
+        `departure_time=now&` + // Current traffic conditions
+        `alternatives=false&` + // Get best route only
+        `key=${GOOGLE_MAPS_APIKEY}`;
 
+      console.log('🗺️ Fetching directions from Google Maps API...');
       const response = await fetch(url);
       const data = await response.json();
 
       if (!data || data.status !== 'OK' || !data.routes || data.routes.length === 0) {
-        console.warn('Google Directions API error (status != OK or no routes), falling back to demo route:', data?.status);
+        console.warn('Google Directions API error (status != OK or no routes), falling back to demo route:', data?.status, data?.error_message);
         return createDemoRoute(origin, destination);
       }
 
       const route = data.routes[0];
       const leg = route.legs[0];
 
+      // Decode the polyline to get precise road coordinates
       const coordinates = decodePolyline(route.overview_polyline.points);
+      console.log(`✅ Route calculated: ${coordinates.length} coordinate points`);
+      
       const steps: DirectionsStep[] = leg.steps.map((step: any) => ({
         instruction: step.html_instructions.replace(/<[^>]*>/g, ''),
         distance: step.distance?.text || '',
@@ -353,7 +378,7 @@ export default function MapScreen({ navigation, route }: any) {
         duration: leg.duration?.text || '0 min',
         coordinates,
         steps,
-        summary: route.summary || 'Route',
+        summary: route.summary || 'Route via real roads',
       };
     } catch (error) {
       console.warn('Google Directions fetch failed — using demo route:', error);
@@ -588,6 +613,63 @@ export default function MapScreen({ navigation, route }: any) {
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       }, 500);
+    }
+  };
+
+  /* ---------- Handle navigation from DeliveryDetailsScreen ---------- */
+  useEffect(() => {
+    if (navigationMode && driverLocation && (restaurantLocation || customerLocation)) {
+      console.log('🗺️ Navigation mode:', navigationMode);
+      
+      // Set current location from passed driver location
+      setCurrentLocation(driverLocation);
+      setDriverPosition(driverLocation);
+      setLoading(false);
+      
+      // Calculate route based on navigation mode
+      if (navigationMode === 'toRestaurant' && restaurantLocation) {
+        console.log('🏪 Calculating route to restaurant:', restaurantName);
+        calculateRouteToDestination(driverLocation, restaurantLocation, 'restaurant');
+      } else if (navigationMode === 'toCustomer' && customerLocation) {
+        console.log('🏠 Calculating route to customer:', customerName);
+        calculateRouteToDestination(driverLocation, customerLocation, 'customer');
+      }
+    }
+  }, [navigationMode, driverLocation, restaurantLocation, customerLocation]);
+  
+  /* ---------- Calculate route to specific destination ---------- */
+  const calculateRouteToDestination = async (
+    origin: { latitude: number; longitude: number },
+    destination: { latitude: number; longitude: number },
+    destinationType: 'restaurant' | 'customer'
+  ) => {
+    setIsCalculatingRoute(true);
+    try {
+      const route = await getDirections(origin, destination);
+      if (route) {
+        setActiveDirections(route);
+        setRouteCoordinates(route.coordinates);
+        setShowDirections(true);
+        setIsDrivingMode(true);
+        
+        // Fit map to show the route
+        mapRef.current?.fitToCoordinates(route.coordinates, {
+          edgePadding: { top: 80, right: 80, bottom: 220, left: 80 },
+          animated: true,
+        });
+        
+        const destinationName = destinationType === 'restaurant' ? restaurantName : customerName;
+        Alert.alert(
+          'Route Calculated',
+          `Route to ${destinationName}\nDistance: ${route.distance}\nEstimated Time: ${route.duration}`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Error calculating route to destination:', error);
+      Alert.alert('Error', 'Could not calculate route. Please try again.');
+    } finally {
+      setIsCalculatingRoute(false);
     }
   };
 
@@ -882,6 +964,40 @@ export default function MapScreen({ navigation, route }: any) {
           }} title={targetCustomerName || 'Target Location'}>
             <View style={[styles.markerContainer, styles.targetMarker]}>
               <Ionicons name="pin" size={20} color="#FFFFFF" />
+            </View>
+          </Marker>
+        )}
+        
+        {/* Navigation mode markers */}
+        {navigationMode && restaurantLocation && (
+          <Marker 
+            coordinate={restaurantLocation} 
+            title={restaurantName || 'Restaurant'}
+            description="Pickup location"
+          >
+            <View style={[styles.markerContainer, { backgroundColor: '#F59E0B' }]}>
+              <Ionicons name="restaurant" size={20} color="#FFFFFF" />
+            </View>
+          </Marker>
+        )}
+        
+        {navigationMode && customerLocation && (
+          <Marker 
+            coordinate={customerLocation} 
+            title={customerName || 'Customer'}
+            description="Delivery location"
+          >
+            <View style={[styles.markerContainer, { backgroundColor: '#10B981' }]}>
+              <Ionicons name="home" size={20} color="#FFFFFF" />
+            </View>
+          </Marker>
+        )}
+        
+        {/* Driver position in navigation mode */}
+        {navigationMode && driverPosition && (
+          <Marker coordinate={driverPosition} title="Your Location">
+            <View style={[styles.markerContainer, { backgroundColor: '#3B82F6' }]}>
+              <Ionicons name="car" size={20} color="#FFFFFF" />
             </View>
           </Marker>
         )}
