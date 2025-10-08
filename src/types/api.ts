@@ -88,3 +88,22 @@ export interface EarningsSummary {
   currency?: string;
   breakdown?: any;
 }
+
+export interface Restaurant {
+  id: string;
+  name: string;
+  address?: string;
+  latitude: number;
+  longitude: number;
+  isOpen?: boolean;
+  verificationStatus?: 'PENDING_VERIFICATION' | 'APPROVED' | 'REJECTED';
+  menuMode?: 'FIXED' | 'DAILY';
+  createdAt?: string;
+  distanceKm?: number;
+  deliveryPrice?: number;
+  estimatedDeliveryTime?: string;
+  rating?: number | null;
+  ratingCount?: number;
+  pictureUrl?: string | null;
+  [key: string]: any;
+}

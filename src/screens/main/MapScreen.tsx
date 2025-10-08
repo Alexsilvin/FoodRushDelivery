@@ -20,8 +20,10 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useRoute } from '@react-navigation/native';
 
 // Add imports for API and mappers (like DashboardScreen)
-import { riderAPI } from '../../services/api';
+import { riderAPI, restaurantAPI } from '../../services/api';
 import { mapApiDeliveries } from '../../utils/mappers';
+import { useLocation } from '../../contexts/LocationContext';
+import { Restaurant } from '../../types/api';
 
 // Helper to convert Delivery[] (from API/mappers) to DeliveryLocation[] (for MapScreen)
 import { Delivery } from '../../types/api';
@@ -68,16 +70,7 @@ interface DeliveryLocation {
   restaurantLng?: number;
 }
 
-interface Restaurant {
-  id: string;
-  name: string;
-  address?: string;
-  phone?: string;
-  latitude: number;
-  longitude: number;
-  verificationStatus?: string;
-  [key: string]: any;
-}
+// Restaurant interface moved to types/api.ts
 
 interface DirectionsStep {
   instruction: string;
@@ -94,12 +87,19 @@ interface DirectionsRoute {
   summary: string;
 }
 
-/* ---------- Config ---------- */
+// Config
 // Your Google Directions API key (you provided this)
 const GOOGLE_MAPS_APIKEY = 'AIzaSyAlILoX4PV-nTzRcwdkP6iTOcFbV0IURMA';
 
-// Restaurants endpoint (replace with full URL if backend is on other host)
-const RESTAURANTS_ENDPOINT = 'https://foodrush-be.onrender.com/api/v1/restaurants'; // <-- change to full URL if needed
+// Restaurant browsing configuration
+const RESTAURANT_CONFIG = {
+  radiusKm: 10, // 10km radius
+  limit: 50, // Max 50 restaurants
+  sortBy: 'distance' as const,
+  sortDir: 'ASC' as const,
+  verificationStatus: 'APPROVED' as const, // Only show approved restaurants
+  isOpen: true, // Only show open restaurants
+};
 
 /* ---------- Dark map style (used by default) ---------- */
 const darkMapStyle = [
@@ -128,6 +128,7 @@ export default function MapScreen({ navigation, route }: any) {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const routeParams = useRoute();
+  const { currentLocation, isLocationTracking, forceLocationUpdate } = useLocation();
 
   // state
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
@@ -139,8 +140,8 @@ export default function MapScreen({ navigation, route }: any) {
   const [isDrivingMode, setIsDrivingMode] = useState(false);
   const [activeDelivery, setActiveDelivery] = useState<DeliveryLocation | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
-  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchingRestaurants, setFetchingRestaurants] = useState(false);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [activeDirections, setActiveDirections] = useState<DirectionsRoute | null>(null);
   const [targetClient, setTargetClient] = useState<DeliveryLocation | null>(null);
@@ -673,7 +674,7 @@ export default function MapScreen({ navigation, route }: any) {
     }
   };
 
-  /* ---------- Fetch deliveries from backend & initialize location ---------- */
+  /* ---------- Fetch deliveries from backend ---------- */
   useEffect(() => {
     const fetchDeliveries = async () => {
       setFetchingDeliveries(true);
@@ -693,66 +694,65 @@ export default function MapScreen({ navigation, route }: any) {
       }
     };
 
-    const initializeLocation = async () => {
-      try {
-        setLocationError(null);
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          throw new Error('Location permission denied');
-        }
-
-        const location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-
-        const userLocation = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        };
-
-        setCurrentLocation(userLocation);
-        setLoading(false);
-        setDriverPosition(userLocation); // driver starts at user location
-
-        mapRef.current?.animateToRegion({
-          latitude: userLocation.latitude,
-          longitude: userLocation.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        }, 1000);
-      } catch (error) {
-        console.error('Error getting location:', error);
-        setLocationError(error instanceof Error ? error.message : 'Failed to get location');
-        const defaultLocation = { latitude: 40.7128, longitude: -74.0060 };
-        setCurrentLocation(defaultLocation);
-        setDriverPosition(defaultLocation);
-        setLoading(false);
-
-        Alert.alert(t('locationError'), t('locationErrorMessage'), [{ text: 'OK' }]);
-      }
-    };
-
     fetchDeliveries();
-    initializeLocation();
-  }, [t]);
+  }, []);
+
+  /* ---------- Initialize map when location is available ---------- */
+  useEffect(() => {
+    if (currentLocation) {
+      setLoading(false);
+      setDriverPosition(currentLocation);
+      
+      // Animate to current location
+      mapRef.current?.animateToRegion({
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
+      
+      console.log('📍 Map initialized with location:', currentLocation);
+    }
+  }, [currentLocation]);
 
   /* ---------- Fetch restaurants from backend ---------- */
-  useEffect(() => {
-    const fetchRestaurants = async () => {
-      try {
-        // NOTE: If your API is not on the same origin, replace RESTAURANTS_ENDPOINT with full URL.
-        const res = await fetch(RESTAURANTS_ENDPOINT);
-        if (!res.ok) throw new Error(`Failed to fetch restaurants: ${res.status}`);
-        const data = await res.json();
-        // Expect data to be an array of restaurants with at least { id, name, latitude, longitude }
-        setRestaurants(Array.isArray(data) ? data : []);
-      } catch (err) {
-        console.warn('Could not fetch restaurants, continuing with none:', err);
-        setRestaurants([]); // safe fallback
+  const fetchRestaurants = useCallback(async (location?: { latitude: number; longitude: number }) => {
+    if (!location) {
+      console.log('📍 No location available for restaurant fetching');
+      return;
+    }
+
+    setFetchingRestaurants(true);
+    try {
+      console.log('🍽️ Fetching restaurants near location:', location);
+      
+      const response = await restaurantAPI.browseRestaurants({
+        nearLat: location.latitude,
+        nearLng: location.longitude,
+        ...RESTAURANT_CONFIG,
+      });
+
+      if (response.success && response.data) {
+        console.log(`✅ Fetched ${response.data.length} restaurants`);
+        setRestaurants(response.data);
+      } else {
+        console.warn('⚠️ Restaurant API returned no data');
+        setRestaurants([]);
       }
-    };
-    fetchRestaurants();
+    } catch (err) {
+      console.error('❌ Failed to fetch restaurants:', err);
+      setRestaurants([]);
+    } finally {
+      setFetchingRestaurants(false);
+    }
   }, []);
+
+  // Fetch restaurants when location changes
+  useEffect(() => {
+    if (currentLocation) {
+      fetchRestaurants(currentLocation);
+    }
+  }, [currentLocation, fetchRestaurants]);
 
   /* ---------- Marker color logic ---------- */
   const getMarkerColor = (status: string) => {
@@ -850,7 +850,14 @@ export default function MapScreen({ navigation, route }: any) {
           </TouchableOpacity>
           <View>
             <Text style={[styles.headerTitle, { color: theme.colors.text }]}>{isDrivingMode ? t('drivingMode') : t('map')}</Text>
-            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>{deliveries.length} {t('deliveries')} available</Text>
+            <View style={styles.headerSubtitleContainer}>
+              <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
+                {deliveries.length} {t('deliveries')} • {restaurants.length} restaurants
+              </Text>
+              <View style={[styles.locationStatus, { backgroundColor: isLocationTracking ? '#10B981' : '#EF4444' }]}>
+                <Ionicons name={isLocationTracking ? "radio-button-on" : "radio-button-off"} size={12} color="#FFFFFF" />
+              </View>
+            </View>
           </View>
         </View>
 
@@ -914,13 +921,22 @@ export default function MapScreen({ navigation, route }: any) {
         ))}
 
         {/* Restaurants markers (fetched from backend) */}
-        {restaurants.map((r) => (
+        {restaurants.map((restaurant) => (
           <Marker
-            key={String(r.id)}
-            coordinate={{ latitude: r.latitude, longitude: r.longitude }}
-            onPress={() => onRestaurantPress(r)}
+            key={String(restaurant.id)}
+            coordinate={{ 
+              latitude: typeof restaurant.latitude === 'string' ? parseFloat(restaurant.latitude) : restaurant.latitude,
+              longitude: typeof restaurant.longitude === 'string' ? parseFloat(restaurant.longitude) : restaurant.longitude
+            }}
+            title={restaurant.name}
+            description={`${restaurant.address || 'No address'} • ${restaurant.distanceKm ? `${restaurant.distanceKm.toFixed(2)}km` : 'Distance unknown'}`}
+            onPress={() => onRestaurantPress(restaurant)}
           >
-            <View style={[styles.markerContainer, styles.targetMarker]}>
+            <View style={[
+              styles.markerContainer, 
+              styles.restaurantMarker,
+              { backgroundColor: restaurant.isOpen ? '#10B981' : '#6B7280' }
+            ]}>
               <Ionicons name="restaurant" size={18} color="#FFFFFF" />
             </View>
           </Marker>
@@ -1045,6 +1061,26 @@ export default function MapScreen({ navigation, route }: any) {
         <Ionicons name="locate" size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
+      {/* Refresh Location & Restaurants Button */}
+      <TouchableOpacity 
+        style={[styles.refreshFab, { backgroundColor: fetchingRestaurants ? '#6B7280' : '#F59E0B' }]} 
+        onPress={async () => {
+          if (fetchingRestaurants) return;
+          console.log('🔄 Manual refresh triggered');
+          await forceLocationUpdate();
+          if (currentLocation) {
+            await fetchRestaurants(currentLocation);
+          }
+        }}
+        disabled={fetchingRestaurants}
+      >
+        <Ionicons 
+          name={fetchingRestaurants ? "hourglass" : "refresh"} 
+          size={20} 
+          color="#FFFFFF" 
+        />
+      </TouchableOpacity>
+
       {/* Animate driver toggle (small FAB) */}
       <TouchableOpacity
         style={[styles.animateFab, { backgroundColor: isAnimating ? '#EF4444' : '#10B981' }]}
@@ -1148,10 +1184,44 @@ export default function MapScreen({ navigation, route }: any) {
                 </View>
 
                 <ScrollView style={styles.deliveriesList}>
-                  <Text style={[styles.deliveryItemAddress, { color: theme.colors.text }]}>{selectedRestaurant.address}</Text>
-                  {selectedRestaurant.phone && <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>Phone: {selectedRestaurant.phone}</Text>}
-                  {selectedRestaurant.verificationStatus && <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>Status: {selectedRestaurant.verificationStatus}</Text>}
-                  <View style={{ height: 12 }} />
+                  <Text style={[styles.deliveryItemAddress, { color: theme.colors.text, marginBottom: 8 }]}>{selectedRestaurant.address}</Text>
+                  
+                  {/* Restaurant Details */}
+                  <View style={styles.restaurantDetails}>
+                    {selectedRestaurant.distanceKm && (
+                      <Text style={[styles.metaText, { color: theme.colors.primary }]}>📍 {selectedRestaurant.distanceKm.toFixed(2)} km away</Text>
+                    )}
+                    
+                    {selectedRestaurant.verificationStatus && (
+                      <Text style={[styles.metaText, { color: selectedRestaurant.verificationStatus === 'APPROVED' ? '#10B981' : '#F59E0B' }]}>
+                        ✓ {selectedRestaurant.verificationStatus}
+                      </Text>
+                    )}
+                    
+                    <Text style={[styles.metaText, { color: selectedRestaurant.isOpen ? '#10B981' : '#EF4444' }]}>
+                      {selectedRestaurant.isOpen ? '🟢 Open' : '🔴 Closed'}
+                    </Text>
+                    
+                    {selectedRestaurant.rating && (
+                      <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
+                        ⭐ {selectedRestaurant.rating}/5 ({selectedRestaurant.ratingCount || 0} reviews)
+                      </Text>
+                    )}
+                    
+                    {selectedRestaurant.deliveryPrice && (
+                      <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
+                        🚚 Delivery: {selectedRestaurant.deliveryPrice} FCFA
+                      </Text>
+                    )}
+                    
+                    {selectedRestaurant.estimatedDeliveryTime && (
+                      <Text style={[styles.metaText, { color: theme.colors.textSecondary }]}>
+                        ⏱️ {selectedRestaurant.estimatedDeliveryTime}
+                      </Text>
+                    )}
+                  </View>
+                  
+                  <View style={{ height: 16 }} />
 
                   <TouchableOpacity style={[styles.actionButton, styles.primaryButton, { alignSelf: 'stretch', justifyContent: 'center' }]} onPress={async () => {
                     // route driver -> this restaurant -> nearest delivery (optional)
@@ -1214,6 +1284,8 @@ const styles = StyleSheet.create({
   backButton: { marginRight: 16, padding: 4 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 2 },
   headerSubtitle: { fontSize: 14, fontWeight: '500' },
+  headerSubtitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  locationStatus: { width: 16, height: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   headerActions: { flexDirection: 'row', alignItems: 'center' },
   actionButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, gap: 6 },
   primaryButton: { backgroundColor: '#3B82F6' },
@@ -1223,10 +1295,12 @@ const styles = StyleSheet.create({
   actionButtonText: { fontSize: 14, fontWeight: '600' },
   map: { flex: 1 },
   fab: { position: 'absolute', bottom: 140, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
+  refreshFab: { position: 'absolute', bottom: 140, right: 90, width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
   animateFab: { position: 'absolute', bottom: 80, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 6 },
   markerContainer: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 3 },
   activeMarker: { backgroundColor: '#EF4444', width: 44, height: 44, borderRadius: 22 },
   targetMarker: { backgroundColor: '#8B5CF6' },
+  restaurantMarker: { backgroundColor: '#10B981' },
   deliveryCard: { position: 'absolute', bottom: 20, left: 20, right: 20, borderRadius: 16, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
   deliveryCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   deliveryInfo: { flex: 1 },
@@ -1256,6 +1330,7 @@ const styles = StyleSheet.create({
   deliveryItemFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   deliveryItemRestaurant: { fontSize: 14, fontWeight: '500' },
   deliveryItemPayment: { fontSize: 14, fontWeight: 'bold' },
+  restaurantDetails: { marginVertical: 8, gap: 4 },
   directionsPanel: { position: 'absolute', top: 100, left: 20, right: 20, maxHeight: height * 0.4, borderRadius: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 6 },
   directionsPanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   routeSummary: { flexDirection: 'row', alignItems: 'center', gap: 16 },
