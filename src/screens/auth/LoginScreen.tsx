@@ -68,33 +68,35 @@ export default function LoginScreen({ navigation }: any) {
       ]);
       return;
     }
+// Log everything for debugging
+    console.log('=== LOGIN DEBUG ===');
+    console.log('Response state:', response.state);
+    console.log('User state:', response.user.state);
+    console.log('User status:', response.user.status);
 
-    // Log the backend state for debugging
-console.log('Driver account state from backend:', response.state);
-console.log('User object:', response.user);
+    // Normalize backend state
+    const normalizeState = (state: string | undefined) => {
+      if (!state) return '';
+      return state.replace(/\s+/g, '_').replace(/-/g, '_').replace(/\W/g, '').toUpperCase();
+    };
 
-// Normalize backend state
-const normalizeState = (state: string | undefined) => {
-  if (!state) return '';
-  return state.replace(/\s+/g, '_').replace(/-/g, '_').replace(/\W/g, '').toUpperCase();
-};
+    const riderState = normalizeState(response.state);
+    console.log('Normalized state:', riderState);
 
-const riderState = normalizeState(response.state);
-console.log('Normalized state:', riderState);
-
-// Check state and navigate accordingly
-if (riderState === 'READY' || riderState === 'ACTIVE') {
-  console.log('✅ Navigating to dashboard for state:', riderState);
-  navigation.replace('Home');
-} else if (riderState === 'REJECTED') {
-  console.log('❌ Navigating to Rejected screen for state:', riderState);
-  navigation.replace('Rejected');
-} else {
-  console.log('⏳ Navigating to Waiting screen for state:', riderState);
-  navigation.replace('Waiting', {
-    reason: `Your account is currently "${response.state}". Please wait for verification or activation.`,
-  });
-}
+    // Navigation logic based on normalized state
+    if (riderState === 'ACTIVE' || riderState === 'READY' || riderState === 'APPROVED') {
+      console.log('✅ Navigating to dashboard for state:', riderState);
+      navigation.replace('Home');
+    } else if (riderState === 'REJECTED') {
+      console.log('❌ Navigating to Rejected screen for state:', riderState);
+      navigation.replace('Rejected');
+    } else {
+      // All other states (PENDING, PENDING_VERIFICATION, etc.) go to waiting
+      console.log('⏳ Navigating to Waiting screen for state:', riderState);
+      navigation.replace('Waiting', {
+        reason: `Your account is currently "${response.state}". Please wait for approval.`,
+      });
+    }
 
   } catch (error: any) {
     const errorMsg = error.message || t('somethingWentWrong');

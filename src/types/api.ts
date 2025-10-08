@@ -23,6 +23,8 @@ export interface User {
   fullName?: string;
   phoneNumber?: string;
   role: string;
+  state?: string;  // Account state: active, pending, rejected, etc.
+  status?: string; // Alternative field name for state
   isVerified?: boolean;
   vehicles?: Vehicle[];
   phoneNumbers?: PhoneNumber[];

@@ -41,8 +41,9 @@ function AppContent() {
       rawStatus: user.status,
     });
 
-    // Only allow access to main app if user is ACTIVE or READY
-    return userState === 'ACTIVE' || userState === 'READY';
+    // Only allow access to main app if user is ACTIVE, READY, or APPROVED
+    const activeStates = ['ACTIVE', 'READY', 'APPROVED'];
+    return activeStates.includes(userState);
   };
 
   return (

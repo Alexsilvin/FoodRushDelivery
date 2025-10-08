@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
   }, []);
 
-  const login = async (
+const login = async (
   email: string,
   password: string
 ): Promise<{ success: boolean; user?: User; token?: string; state?: string }> => {
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       success: true,
       user: normalized,
       token,
-      state: normalized.state || state || 'pending',
+      state: normalized.state || state || 'pending',  // ← CHANGE THIS LINE
     };
   } catch (error: any) {
     console.error('Login error:', error);
