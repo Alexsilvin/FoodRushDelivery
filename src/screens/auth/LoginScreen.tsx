@@ -60,7 +60,7 @@ export default function LoginScreen({ navigation }: any) {
 
   setLoading(true);
   try {
-    const response = await login(email, password); // now returns { success, user, token, state }
+    const response = await login(email, password); // returns { success, user, token, state }
 
     if (!response.success || !response.user) {
       Alert.alert(t('loginFailed'), t('invalidCredentials'), [
@@ -68,14 +68,33 @@ export default function LoginScreen({ navigation }: any) {
       ]);
       return;
     }
+// Log everything for debugging
+    console.log('=== LOGIN DEBUG ===');
+    console.log('Response state:', response.state);
+    console.log('User state:', response.user.state);
+    console.log('User status:', response.user.status);
 
-    const riderState = response.state?.toLowerCase();
+    // Normalize backend state
+    const normalizeState = (state: string | undefined) => {
+      if (!state) return '';
+      return state.replace(/\s+/g, '_').replace(/-/g, '_').replace(/\W/g, '').toUpperCase();
+    };
 
-    if (riderState === 'active') {
-      navigation.replace('Home');
+    const riderState = normalizeState(response.state);
+    console.log('Normalized state:', riderState);
+
+    // Navigation logic based on normalized state
+    if (riderState === 'ACTIVE' || riderState === 'READY' || riderState === 'APPROVED') {
+      console.log('✅ Navigating to dashboard for state:', riderState);
+      navigation.replace('Main');
+    } else if (riderState === 'REJECTED') {
+      console.log('❌ Navigating to Rejected screen for state:', riderState);
+      navigation.replace('Rejected');
     } else {
+      // All other states (PENDING, PENDING_VERIFICATION, etc.) go to waiting
+      console.log('⏳ Navigating to Waiting screen for state:', riderState);
       navigation.replace('Waiting', {
-        reason: `Your account is currently "${riderState}". Please wait for activation.`,
+        reason: `Your account is currently "${response.state}". Please wait for approval.`,
       });
     }
 

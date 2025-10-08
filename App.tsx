@@ -23,10 +23,33 @@ function AppContent() {
     return <LoadingScreen />;
   }
 
+  // Helper function to normalize state strings
+  const normalizeState = (state: string | undefined) => {
+    if (!state) return '';
+    return state.replace(/\s+/g, '_').replace(/-/g, '_').replace(/\W/g, '').toUpperCase();
+  };
+
+  // Check if user should access main app
+  const canAccessMainApp = () => {
+    if (!user) return false;
+    
+    const userState = normalizeState(user.state || user.status);
+    
+    console.log('App.tsx Navigation Check:', {
+      userState,
+      rawState: user.state,
+      rawStatus: user.status,
+    });
+
+    // Only allow access to main app if user is ACTIVE, READY, or APPROVED
+    const activeStates = ['ACTIVE', 'READY', 'APPROVED'];
+    return activeStates.includes(userState);
+  };
+
   return (
     <NavigationContainer>
       <StatusBar style={theme.isDark ? "light" : "dark"} backgroundColor={theme.colors.statusBar} />
-      {user ? <MainStack /> : <AuthStack />}
+      {canAccessMainApp() ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );
 }

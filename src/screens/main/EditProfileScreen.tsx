@@ -19,36 +19,91 @@ import { useAuth } from '../../contexts/AuthContext';
 export default function EditProfileScreen({ navigation }: { navigation: any }) {
   const { theme } = useTheme();
   const { t } = useLanguage();
-  const { user, updateUserProfile } = useAuth();
+  const { user, updateUserProfile, updateUserPhoneNumber } = useAuth();
   
-  const [firstName, setFirstName] = useState(user?.firstName || '');
-  const [lastName, setLastName] = useState(user?.lastName || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [fullName, setFullName] = useState(user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || '');
+  const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || '');
   const [loading, setLoading] = useState(false);
 
   const handleSave = async () => {
-    if (!firstName.trim() || !lastName.trim()) {
-      Alert.alert(t('error') || 'Error', t('nameRequired') || 'Name is required');
+    // Validation
+    if (!fullName.trim()) {
+      Alert.alert(t('error') || 'Error', t('nameRequired') || 'Full name is required');
       return;
     }
     
-    if (!email.trim()) {
-      Alert.alert(t('error') || 'Error', t('emailRequired') || 'Email is required');
+    // Phone number validation (optional but if provided, should be valid)
+    if (phoneNumber.trim() && !/^\+?[1-9]\d{1,14}$/.test(phoneNumber.trim().replace(/\s/g, ''))) {
+      Alert.alert(t('error') || 'Error', 'Please enter a valid phone number (e.g., +237612345678)');
       return;
     }
     
     setLoading(true);
     try {
-      const success = await updateUserProfile({ firstName, lastName, email });
+      console.log('📝 Saving profile changes:', { fullName: fullName.trim(), phoneNumber: phoneNumber.trim() });
+      
+      // Parse fullName to firstName and lastName for the existing updateUserProfile method
+      const nameParts = fullName.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
+      const success = await updateUserProfile({ 
+        firstName: firstName, 
+        lastName: lastName, 
+        email: user?.email || '' // Keep existing email
+      });
+      
       if (success) {
-        Alert.alert(t('success') || 'Success', t('profileUpdated') || 'Profile updated successfully');
-        navigation.goBack();
+        console.log('✅ Profile update successful');
+        
+        // Update phone number if it changed
+        let phoneUpdateSuccess = true;
+        if (phoneNumber.trim() !== user?.phoneNumber) {
+          try {
+            phoneUpdateSuccess = await updateUserPhoneNumber(phoneNumber.trim());
+            if (phoneUpdateSuccess) {
+              console.log('✅ Phone number updated successfully');
+            }
+          } catch (phoneError) {
+            console.warn('⚠️ Phone number update failed:', phoneError);
+            phoneUpdateSuccess = false;
+          }
+        }
+        
+        const message = phoneUpdateSuccess 
+          ? 'Profile updated successfully'
+          : 'Name updated successfully, but phone number update failed';
+          
+        Alert.alert(
+          t('success') || 'Success', 
+          t('profileUpdated') || message,
+          [
+            {
+              text: t('ok') || 'OK',
+              onPress: () => navigation.goBack()
+            }
+          ]
+        );
       } else {
-        Alert.alert(t('error') || 'Error', t('updateFailed') || 'Failed to update profile');
+        console.warn('⚠️ Profile update failed');
+        Alert.alert(
+          t('error') || 'Error', 
+          t('updateFailed') || 'Failed to update profile. Please try again.'
+        );
       }
-    } catch (error) {
-      console.error('Profile update error:', error);
-      Alert.alert(t('error') || 'Error', t('somethingWentWrong') || 'Something went wrong');
+    } catch (error: any) {
+      console.error('❌ Profile update error:', error);
+      
+      // Extract meaningful error message
+      let errorMessage = t('somethingWentWrong') || 'Something went wrong';
+      
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert(t('error') || 'Error', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -86,47 +141,39 @@ export default function EditProfileScreen({ navigation }: { navigation: any }) {
 
       <ScrollView style={styles.content}>
         <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
-          {t('firstName') || 'First Name'}
+          {t('fullName') || 'Full Name'}
         </Text>
         <View style={[styles.inputContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
           <Ionicons name="person-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
           <TextInput
             style={[styles.input, { color: theme.colors.text }]}
-            placeholder={t('enterFirstName') || 'Enter first name'}
+            placeholder={t('enterFullName') || 'Enter your full name'}
             placeholderTextColor={theme.colors.textSecondary}
-            value={firstName}
-            onChangeText={setFirstName}
+            value={fullName}
+            onChangeText={setFullName}
           />
         </View>
 
         <Text style={[styles.label, { color: theme.colors.textSecondary, marginTop: 20 }]}>
-          {t('lastName') || 'Last Name'}
+          {t('phoneNumber') || 'Phone Number'}
         </Text>
         <View style={[styles.inputContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-          <Ionicons name="person-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
+          <Ionicons name="call-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
           <TextInput
             style={[styles.input, { color: theme.colors.text }]}
-            placeholder={t('enterLastName') || 'Enter last name'}
+            placeholder={t('enterPhoneNumber') || 'Enter phone number (e.g., +237612345678)'}
             placeholderTextColor={theme.colors.textSecondary}
-            value={lastName}
-            onChangeText={setLastName}
+            value={phoneNumber}
+            onChangeText={setPhoneNumber}
+            keyboardType="phone-pad"
           />
         </View>
 
-        <Text style={[styles.label, { color: theme.colors.textSecondary, marginTop: 20 }]}>
-          {t('email') || 'Email'}
-        </Text>
-        <View style={[styles.inputContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-          <Ionicons name="mail-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
-          <TextInput
-            style={[styles.input, { color: theme.colors.text }]}
-            placeholder={t('enterEmail')}
-            placeholderTextColor={theme.colors.textSecondary}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
+        <View style={[styles.infoContainer, { backgroundColor: theme.colors.card, marginTop: 20 }]}>
+          <Ionicons name="information-circle-outline" size={20} color={theme.colors.textSecondary} style={styles.infoIcon} />
+          <Text style={[styles.infoText, { color: theme.colors.textSecondary }]}>
+            Email updates are not supported through this screen. Contact support if you need to change your email address.
+          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -183,5 +230,22 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
+  },
+  infoContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  infoIcon: {
+    marginRight: 12,
+    marginTop: 2,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

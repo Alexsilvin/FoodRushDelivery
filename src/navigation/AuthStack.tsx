@@ -4,6 +4,7 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import WaitingScreen from '../screens/auth/WaitingScreen';
+import RejectedScreen from '../screens/auth/RejectedScreen';
 
 const Stack = createStackNavigator();
 
@@ -22,6 +23,10 @@ export default function AuthStack() {
       <Stack.Screen 
         name="Waiting" 
         component={WaitingScreen} 
+      />
+      <Stack.Screen 
+        name="Rejected" 
+        component={RejectedScreen} 
       />
       <Stack.Screen 
         name="Register" 

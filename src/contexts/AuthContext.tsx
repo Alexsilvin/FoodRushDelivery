@@ -32,6 +32,7 @@ interface AuthContextType {
   forgotPassword: (email: string) => Promise<boolean>;
   resetPassword: (token: string, newPassword: string) => Promise<boolean>;
   updateUserProfile: (data: { firstName: string; lastName: string; email: string }) => Promise<boolean>;
+  updateUserPhoneNumber: (phoneNumber: string) => Promise<boolean>;
   updateUserVehicles: (vehicles: { id: string; name: string; type: string; default: boolean }[], defaultVehicle: string) => Promise<boolean>;
   updateUserPhoneNumbers: (phoneNumbers: { id: string; number: string; isPrimary: boolean }[], primaryNumber: string) => Promise<boolean>;
 }
@@ -86,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
   }, []);
 
-  const login = async (
+const login = async (
   email: string,
   password: string
 ): Promise<{ success: boolean; user?: User; token?: string; state?: string }> => {
@@ -100,22 +101,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     await AsyncStorage.setItem('auth_token', token);
-    await SecureStore.setItemAsync('user', JSON.stringify(user));
+    
+    // After successful login, fetch the current rider profile to get the latest state
+    let currentUser = user;
+    try {
+      const profileResponse = await riderAuthAPI.getAccount();
+      if (profileResponse.data) {
+        currentUser = profileResponse.data;
+        console.log('✅ Fetched current rider profile:', {
+          state: currentUser.state,
+          status: currentUser.status,
+          id: currentUser.id
+        });
+      }
+    } catch (profileError) {
+      console.warn('⚠️ Could not fetch current profile, using login response:', profileError);
+    }
+
+    await SecureStore.setItemAsync('user', JSON.stringify(currentUser));
 
     const normalized: User = {
-      ...user,
-      firstName: user.firstName || user.fullName?.split(' ')[0] || '',
-      lastName: user.lastName || user.fullName?.split(' ').slice(1).join(' ') || '',
-      role: user.role || 'rider',
+      ...currentUser,
+      firstName: currentUser.firstName || currentUser.fullName?.split(' ')[0] || '',
+      lastName: currentUser.lastName || currentUser.fullName?.split(' ').slice(1).join(' ') || '',
+      role: currentUser.role || 'rider',
     };
 
     setUser(normalized);
+
+    // Use the current profile state, fallback to login response state, then 'pending'
+    const finalState = normalized.state || normalized.status || state || 'pending';
+    
+    console.log('🔍 Final login state determination:', {
+      profileState: normalized.state,
+      profileStatus: normalized.status,
+      loginResponseState: state,
+      finalState
+    });
 
     return {
       success: true,
       user: normalized,
       token,
-      state: normalized.state || state || 'pending',
+      state: finalState,
     };
   } catch (error: any) {
     console.error('Login error:', error);
@@ -240,32 +268,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!user) return false;
       
-      // Attempt rider account update (if endpoint exists) else fallback to legacy updateProfile
-      let response;
-      try {
-        // Some backends might expose PATCH /riders/my/account for updates
-        response = await riderAuthAPI.getAccount(); // fetch current first (no dedicated update endpoint specified)
-        // If we had an update endpoint we'd call it; for now we fallback to legacy
-        const legacy = await authAPI.updateProfile(data);
-        response = legacy;
-      } catch (e) {
-        response = await authAPI.updateProfile(data);
-      }
+      console.log('🔄 Updating profile with data:', data);
+      
+      // API accepts: fullName, phoneNumber, profilePicture (not firstName, lastName, email)
+      const profileData = {
+        fullName: `${data.firstName} ${data.lastName}`.trim()
+      };
+      
+      const response = await authAPI.updateProfileJWT(profileData);
       
       if (response.success && response.data) {
+        console.log('✅ Profile updated successfully:', response.data);
+        
+        // Parse fullName back to firstName/lastName for local storage
+        const fullName = response.data.fullName || `${data.firstName} ${data.lastName}`.trim();
+        const nameParts = fullName.split(' ');
+        const firstName = nameParts[0] || data.firstName;
+        const lastName = nameParts.slice(1).join(' ') || data.lastName;
+        
         const updatedUser = {
           ...user,
-          ...data
+          ...response.data,
+          firstName: firstName,
+          lastName: lastName,
+          fullName: fullName,
+          // Email is not updatable via this endpoint - keep original
+          email: user.email
+        };
+        
+        // Save to secure storage and update context
+        await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        
+        return true;
+      } else {
+        console.warn('⚠️ Profile update failed:', response.message);
+        return false;
+      }
+    } catch (error: any) {
+      console.error('❌ Profile update error:', error?.response?.data || error.message);
+      
+      // Log the specific error for debugging
+      if (error?.response?.status === 404) {
+        console.error('❌ Profile endpoint not found - check if /api/v1/auth/profile exists');
+      } else if (error?.response?.status === 401) {
+        console.error('❌ Unauthorized - JWT token may be invalid or expired');
+      } else if (error?.response?.status === 422) {
+        console.error('❌ Validation error - check request data format');
+      }
+      
+      return false;
+    }
+  };
+
+  const updateUserPhoneNumber = async (phoneNumber: string): Promise<boolean> => {
+    try {
+      if (!user) return false;
+      
+      console.log('🔄 Updating phone number:', phoneNumber);
+      
+      const response = await authAPI.updateProfileJWT({ phoneNumber });
+      
+      if (response.success && response.data) {
+        console.log('✅ Phone number updated successfully:', response.data);
+        
+        const updatedUser = {
+          ...user,
+          ...response.data,
+          phoneNumber: phoneNumber
         };
         
         await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
         setUser(updatedUser);
+        
         return true;
+      } else {
+        console.warn('⚠️ Phone number update failed:', response.message);
+        return false;
       }
-      
-      return false;
-    } catch (error) {
-      console.error('Profile update error:', error);
+    } catch (error: any) {
+      console.error('❌ Phone number update error:', error?.response?.data || error.message);
       return false;
     }
   };
@@ -327,6 +409,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       forgotPassword,
       resetPassword,
       updateUserProfile,
+      updateUserPhoneNumber,
       updateUserVehicles,
       updateUserPhoneNumbers
     }}>
