@@ -100,22 +100,49 @@ const login = async (
     }
 
     await AsyncStorage.setItem('auth_token', token);
-    await SecureStore.setItemAsync('user', JSON.stringify(user));
+    
+    // After successful login, fetch the current rider profile to get the latest state
+    let currentUser = user;
+    try {
+      const profileResponse = await riderAuthAPI.getAccount();
+      if (profileResponse.data) {
+        currentUser = profileResponse.data;
+        console.log('✅ Fetched current rider profile:', {
+          state: currentUser.state,
+          status: currentUser.status,
+          id: currentUser.id
+        });
+      }
+    } catch (profileError) {
+      console.warn('⚠️ Could not fetch current profile, using login response:', profileError);
+    }
+
+    await SecureStore.setItemAsync('user', JSON.stringify(currentUser));
 
     const normalized: User = {
-      ...user,
-      firstName: user.firstName || user.fullName?.split(' ')[0] || '',
-      lastName: user.lastName || user.fullName?.split(' ').slice(1).join(' ') || '',
-      role: user.role || 'rider',
+      ...currentUser,
+      firstName: currentUser.firstName || currentUser.fullName?.split(' ')[0] || '',
+      lastName: currentUser.lastName || currentUser.fullName?.split(' ').slice(1).join(' ') || '',
+      role: currentUser.role || 'rider',
     };
 
     setUser(normalized);
+
+    // Use the current profile state, fallback to login response state, then 'pending'
+    const finalState = normalized.state || normalized.status || state || 'pending';
+    
+    console.log('🔍 Final login state determination:', {
+      profileState: normalized.state,
+      profileStatus: normalized.status,
+      loginResponseState: state,
+      finalState
+    });
 
     return {
       success: true,
       user: normalized,
       token,
-      state: normalized.state || state || 'pending',  // ← CHANGE THIS LINE
+      state: finalState,
     };
   } catch (error: any) {
     console.error('Login error:', error);
