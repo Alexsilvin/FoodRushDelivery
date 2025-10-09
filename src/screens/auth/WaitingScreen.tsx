@@ -361,88 +361,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-<<<<<<< HEAD
-  iconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-=======
   statusTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#111827',
+    textAlign: 'center',
     marginBottom: 8,
->>>>>>> 502270625cd580c1bd9df10530795b44a07b500b
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  message: {
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
-    paddingHorizontal: 20,
-  },
-  userInfo: {
-    width: '100%',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 32,
-  },
-  userInfoLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  userInfoValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  buttonContainer: {
-    width: '100%',
-    gap: 12,
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    gap: 8,
-  },
-  refreshButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 8,
-  },
-  logoutButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  helpText: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 24,
-    fontStyle: 'italic',
   },
   statusSubtitle: {
     fontSize: 16,
@@ -450,6 +374,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     textAlign: 'center',
   },
+
   progressContainer: {
     alignItems: 'center',
     marginBottom: 24,
