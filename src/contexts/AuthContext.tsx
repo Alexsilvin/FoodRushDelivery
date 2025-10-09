@@ -309,8 +309,11 @@ const login = async (
       
       console.log('🔄 Updating profile with data:', data);
       
-      // API accepts: fullName, phoneNumber, profilePicture (not firstName, lastName, email)
+      // Use the correct JWT-authenticated profile endpoint
       const profileData = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
         fullName: `${data.firstName} ${data.lastName}`.trim()
       };
       
@@ -390,6 +393,7 @@ const login = async (
       return false;
     }
   };
+
 
   const updateUserVehicles = async (
     vehicles: { id: string; name: string; type: string; default: boolean }[],
@@ -476,6 +480,7 @@ const login = async (
       return false;
     }
   };
+
 
   return (
     <AuthContext.Provider value={{ 
