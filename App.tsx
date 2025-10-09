@@ -32,19 +32,37 @@ const AppContent = memo(() => {
 
   // Check if user should access main app
   const canAccessMainApp = () => {
-    if (!user) return false;
+    if (!user) {
+      console.log('App.tsx Navigation Check: No user found');
+      return false;
+    }
     
-    const userState = normalizeState(user.state || user.status);
-    
-    console.log('App.tsx Navigation Check:', {
-      userState,
-      rawState: user.state,
-      rawStatus: user.status,
-    });
+    try {
+      const userState = normalizeState(user.state || user.status);
+      
+      console.log('App.tsx Navigation Check:', {
+        userState,
+        rawState: user?.state,
+        rawStatus: user?.status,
+        userExists: !!user,
+        userId: user?.id,
+      });
 
-    // Only allow access to main app if user is ACTIVE, READY, or APPROVED
-    const activeStates = ['ACTIVE', 'READY', 'APPROVED'];
-    return activeStates.includes(userState);
+      // Only allow access to main app if user is ACTIVE, READY, or APPROVED
+      const activeStates = ['ACTIVE', 'READY', 'APPROVED'];
+      const hasAccess = activeStates.includes(userState);
+      
+      console.log('App.tsx Navigation Decision:', {
+        userState,
+        activeStates,
+        hasAccess,
+      });
+      
+      return hasAccess;
+    } catch (error) {
+      console.error('Error in canAccessMainApp:', error);
+      return false;
+    }
   };
 
   return (

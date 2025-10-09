@@ -68,11 +68,7 @@ export const notificationService = {
     createdAt: string;
     updatedAt?: string;
   }>> => {
-    const queryParams = new URLSearchParams();
-    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
-    if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
-
-    const url = `/notifications${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    
     const response = await apiClient.get<ApiResponse<Array<{
       id: string;
       title: string;
@@ -82,7 +78,7 @@ export const notificationService = {
       type?: string;
       createdAt: string;
       updatedAt?: string;
-    }>>>(url);
+    }>>>('/notifications/my');
     return response.data.data!;
   },
 

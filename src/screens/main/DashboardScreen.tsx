@@ -26,11 +26,12 @@ import NotificationBadge from '../../components/NotificationBadge';
 import { 
   useMyDeliveries, 
   useAcceptDelivery, 
-  usePickupDelivery, 
+  useMarkPickedUp, 
   useMarkOutForDelivery,
-  useCompleteDelivery 
+  useMarkDelivered 
 } from '../../hooks/useDeliveries';
-import { useRiderAnalytics, useRiderBalance } from '../../hooks/useRider';
+import { useRiderSummary, useRiderBalance } from '../../hooks/useAnalytics';
+import { useCompleteDelivery } from '../../hooks/useRider';
 
 // Utils
 import { mapDeliveryItemsToLegacy, mapLegacyToDelivery } from '../../utils/deliveryMappers';
@@ -63,7 +64,7 @@ export default function DashboardScreen({ navigation, route }: Props) {
   const scrollY = useRef(new Animated.Value(0)).current;
   const headerHeight = 400; // Height of the header section
 
-  // React Query hooks for data fetching
+  // React Query hooks for data fetching with error handling
   const {
     data: deliveryItems = [],
     isLoading: deliveriesLoading,
@@ -75,16 +76,32 @@ export default function DashboardScreen({ navigation, route }: Props) {
     data: analytics,
     isLoading: analyticsLoading,
     error: analyticsError,
-  } = useRiderAnalytics();
+  } = useRiderSummary();
 
   const {
-    data: balance = 0,
+    data: balanceData,
     isLoading: balanceLoading,
+    error: balanceError,
   } = useRiderBalance();
+
+  const balance = balanceData?.balance || 0;
+
+  // Log any errors for debugging
+  React.useEffect(() => {
+    if (deliveriesError) {
+      console.error('Deliveries error:', deliveriesError);
+    }
+    if (analyticsError) {
+      console.error('Analytics error:', analyticsError);
+    }
+    if (balanceError) {
+      console.error('Balance error:', balanceError);
+    }
+  }, [deliveriesError, analyticsError, balanceError]);
 
   // Mutations for delivery actions
   const acceptDeliveryMutation = useAcceptDelivery();
-  const pickupDeliveryMutation = usePickupDelivery();
+  const pickupDeliveryMutation = useMarkPickedUp();
   const markOutForDeliveryMutation = useMarkOutForDelivery();
   const completeDeliveryMutation = useCompleteDelivery();
 
@@ -97,16 +114,16 @@ export default function DashboardScreen({ navigation, route }: Props) {
 
   // Combine stats from analytics and balance
   const stats = useMemo(() => ({
-    todayEarnings: (analytics as any)?.todayEarnings || 0,
-    completedDeliveries: (analytics as any)?.completedDeliveries || 0,
-    rating: (analytics as any)?.rating || 0,
-    activeDeliveries: (analytics as any)?.activeDeliveries || 0,
+    todayEarnings: analytics?.todayEarnings || 0,
+    completedDeliveries: analytics?.completedDeliveries || 0,
+    rating: analytics?.rating || 0,
+    activeDeliveries: analytics?.activeDeliveries || 0,
     balance,
   }), [analytics, balance]);
 
   // Loading and error states
   const loading = deliveriesLoading || analyticsLoading || balanceLoading;
-  const error = deliveriesError || analyticsError;
+  const error = deliveriesError || analyticsError || balanceError;
 
   // Filter deliveries based on search and status
   const filteredDeliveries = useMemo(() => {

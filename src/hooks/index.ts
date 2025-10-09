@@ -49,6 +49,9 @@ export {
   deliveryKeys,
 } from './useDeliveries';
 
+// Export pickup alias for backward compatibility
+export { useMarkPickedUp as usePickupDelivery } from './useDeliveries';
+
 // ====================== ANALYTICS HOOKS ======================
 export {
   useRiderSummary,

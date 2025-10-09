@@ -149,12 +149,11 @@ const login = async (
     setUser(normalized);
 
     // Use the current profile state, fallback to login response state, then 'pending'
-    const finalState = normalized.state || normalized.status || state || 'pending';
+    const finalState = normalized.state || normalized.status || 'pending';
     
     console.log('🔍 Final login state determination:', {
       profileState: normalized.state,
       profileStatus: normalized.status,
-      loginResponseState: state,
       finalState
     });
 

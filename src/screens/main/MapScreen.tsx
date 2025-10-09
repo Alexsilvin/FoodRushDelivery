@@ -182,8 +182,6 @@ export default function MapScreen({ navigation, route }: Props) {
     lastUpdateTime,
     updateFrequency,
     forceLocationUpdate,
-    getServiceStatus,
-    getErrorLog,
     clearLocationError,
   } = useLocation();
 
@@ -208,8 +206,6 @@ export default function MapScreen({ navigation, route }: Props) {
 
   const [driverPosition, setDriverPosition] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
-
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   const mapRef = useRef<MapView>(null);
   const animIndexRef = useRef<number>(0);
@@ -300,7 +296,6 @@ export default function MapScreen({ navigation, route }: Props) {
         const data = await response.json();
 
         if (!data || data.status !== 'OK' || !data.routes?.length) {
-          console.warn('Google Directions API error:', data?.status);
           return null;
         }
 
@@ -323,7 +318,6 @@ export default function MapScreen({ navigation, route }: Props) {
           summary: route.summary || 'Route',
         };
       } catch (error) {
-        console.error('Error getting directions:', error);
         return null;
       }
     },
@@ -343,7 +337,6 @@ export default function MapScreen({ navigation, route }: Props) {
           setDeliveries([]);
         }
       } catch (err) {
-        console.warn('Could not fetch deliveries:', err);
         setDeliveries([]);
       } finally {
         setFetchingDeliveries(false);
@@ -356,23 +349,24 @@ export default function MapScreen({ navigation, route }: Props) {
   // Fetch restaurants
   const fetchRestaurants = useCallback(async () => {
     if (!currentLocation || currentLocation.latitude === 0) {
-      console.log('No location available for restaurant fetching');
       return;
     }
 
     setFetchingRestaurants(true);
     try {
-      const response = await restaurantService.getNearbyRestaurants({
+      const restaurants = await restaurantService.getNearbyRestaurants({
         nearLat: currentLocation.latitude,
         nearLng: currentLocation.longitude,
-        radiusKm: 10,
+        radiusKm: 50,
+        sortBy: 'distance',
+        sortDir: 'ASC',
         limit: 50,
         offset: 0,
         isOpen: true,
       });
 
-      if (response?.data && Array.isArray(response.data)) {
-        const validRestaurants = response.data.filter((r: Restaurant) => {
+      if (restaurants && Array.isArray(restaurants)) {
+        const validRestaurants = restaurants.filter((r: Restaurant) => {
           const lat = typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude;
           const lng = typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude;
           return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
@@ -382,7 +376,6 @@ export default function MapScreen({ navigation, route }: Props) {
         setRestaurants([]);
       }
     } catch (err) {
-      console.error('Failed to fetch restaurants:', err);
       setRestaurants([]);
     } finally {
       setFetchingRestaurants(false);
@@ -407,8 +400,6 @@ export default function MapScreen({ navigation, route }: Props) {
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       }, 1000);
-
-      console.log('Map initialized with location:', currentLocation);
     }
   }, [currentLocation]);
 
@@ -416,7 +407,6 @@ export default function MapScreen({ navigation, route }: Props) {
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (loading && (!currentLocation || currentLocation.latitude === 0)) {
-        console.warn('Loading timeout');
         setLoading(false);
       }
     }, 15000);
@@ -561,7 +551,6 @@ export default function MapScreen({ navigation, route }: Props) {
         Alert.alert('Error', 'Could not calculate route');
       }
     } catch (error) {
-      console.error('Error calculating route:', error);
       Alert.alert('Error', 'Failed to calculate route');
     } finally {
       setIsCalculatingRoute(false);
@@ -641,7 +630,7 @@ export default function MapScreen({ navigation, route }: Props) {
         await fetchRestaurants();
       }
     } catch (error) {
-      console.error('Refresh failed:', error);
+      // Silently handle refresh errors
     }
   }, [forceLocationUpdate, currentLocation, fetchRestaurants]);
 
@@ -674,109 +663,7 @@ export default function MapScreen({ navigation, route }: Props) {
     );
   }, [isInitializing, isLocationTracking, formatLastUpdate, updateFrequency]);
 
-  const renderDebugPanel = useCallback(() => {
-    if (!showDebugPanel) return null;
 
-    const status = getServiceStatus();
-    const errors = getErrorLog();
-
-    return (
-      <Modal visible={showDebugPanel} animationType="slide" transparent>
-        <View style={styles.debugOverlay}>
-          <View style={[styles.debugPanel, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.debugHeader}>
-              <Text style={[styles.debugTitle, { color: theme.colors.text }]}>
-                Debug Information
-              </Text>
-              <TouchableOpacity onPress={() => setShowDebugPanel(false)}>
-                <Ionicons name="close" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.debugContent}>
-              <Text style={[styles.debugSectionTitle, { color: theme.colors.text }]}>
-                Location Service Status
-              </Text>
-
-              <View style={styles.debugItem}>
-                <Text style={[styles.debugLabel, { color: theme.colors.textSecondary }]}>
-                  Initialized:
-                </Text>
-                <Text style={[styles.debugValue, { color: theme.colors.text }]}>
-                  {status.isInitialized ? 'Yes' : 'No'}
-                </Text>
-              </View>
-
-              <View style={styles.debugItem}>
-                <Text style={[styles.debugLabel, { color: theme.colors.textSecondary }]}>
-                  Tracking:
-                </Text>
-                <Text style={[styles.debugValue, { color: theme.colors.text }]}>
-                  {status.isTracking ? 'Active' : 'Inactive'}
-                </Text>
-              </View>
-
-              <View style={styles.debugItem}>
-                <Text style={[styles.debugLabel, { color: theme.colors.textSecondary }]}>
-                  Current Location:
-                </Text>
-                <Text style={[styles.debugValue, { color: theme.colors.text, fontFamily: 'monospace' }]}>
-                  {status.currentLocation
-                    ? `${status.currentLocation.latitude.toFixed(6)}, ${status.currentLocation.longitude.toFixed(6)}`
-                    : 'Not available'}
-                </Text>
-              </View>
-
-              <View style={styles.debugItem}>
-                <Text style={[styles.debugLabel, { color: theme.colors.textSecondary }]}>
-                  Batch Size:
-                </Text>
-                <Text style={[styles.debugValue, { color: theme.colors.text }]}>
-                  {status.batchSize} locations
-                </Text>
-              </View>
-
-              <View style={styles.debugItem}>
-                <Text style={[styles.debugLabel, { color: theme.colors.textSecondary }]}>
-                  Errors:
-                </Text>
-                <Text style={[styles.debugValue, { color: theme.colors.text }]}>
-                  {status.errorCount} total
-                </Text>
-              </View>
-
-              {errors.length > 0 && (
-                <>
-                  <Text style={[styles.debugSectionTitle, { color: theme.colors.text, marginTop: 16 }]}>
-                    Recent Errors
-                  </Text>
-                  {errors.slice(-5).map((error, i) => (
-                    <View key={i} style={styles.debugError}>
-                      <Text style={[styles.debugErrorCode, { color: '#EF4444' }]}>
-                        [{error.code}]
-                      </Text>
-                      <Text style={[styles.debugErrorMessage, { color: theme.colors.textSecondary }]}>
-                        {error.message}
-                      </Text>
-                    </View>
-                  ))}
-                </>
-              )}
-
-              <View style={styles.debugConfigSection}>
-                <Text style={[styles.debugSectionTitle, { color: theme.colors.text }]}>
-                  Configuration
-                </Text>
-                <Text style={[styles.debugConfigText, { color: theme.colors.textSecondary }]}>
-                  {JSON.stringify(status.config, null, 2)}
-                </Text>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-    );
-  }, [showDebugPanel, theme, getServiceStatus, getErrorLog]);
 
   if (loading) {
     return (
@@ -869,16 +756,30 @@ export default function MapScreen({ navigation, route }: Props) {
               coordinate={{ latitude: lat, longitude: lng }}
               onPress={() => onRestaurantPress(restaurant)}
             >
-              <View
-                style={[
-                  styles.marker,
-                  styles.restaurantMarker,
-                  {
-                    backgroundColor: restaurant.isOpen ? '#10B981' : '#6B7280',
-                  },
-                ]}
-              >
-                <Ionicons name="restaurant" size={18} color="#FFFFFF" />
+              <View style={styles.restaurantMarkerContainer}>
+                <View
+                  style={[
+                    styles.marker,
+                    styles.restaurantMarker,
+                    {
+                      backgroundColor: '#3B82F6', // Blue color as requested
+                      borderWidth: 2,
+                      borderColor: '#FFFFFF',
+                    },
+                  ]}
+                >
+                  <Ionicons name="restaurant" size={16} color="#FFFFFF" />
+                </View>
+                <View style={[styles.restaurantLabel, { backgroundColor: theme.colors.surface }]}>
+                  <Text style={[styles.restaurantName, { color: theme.colors.text }]} numberOfLines={1}>
+                    {restaurant.name}
+                  </Text>
+                  {restaurant.distanceKm && (
+                    <Text style={[styles.restaurantDistance, { color: theme.colors.textSecondary }]}>
+                      {restaurant.distanceKm.toFixed(1)}km
+                    </Text>
+                  )}
+                </View>
               </View>
             </Marker>
           );
@@ -937,15 +838,9 @@ export default function MapScreen({ navigation, route }: Props) {
             </Text>
             {renderLocationStatus()}
           </View>
-        </View>
 
-        <TouchableOpacity
-          onPress={() => setShowDebugPanel(true)}
-          style={styles.debugButton}
-        >
-          <Ionicons name="bug" size={20} color={theme.colors.primary} />
-        </TouchableOpacity>
-      </View>
+        </View>
+        </View>
 
       {/* Location Error Banner */}
       {locationError && !locationError.includes('default') && (
@@ -1301,7 +1196,38 @@ export default function MapScreen({ navigation, route }: Props) {
                       {selectedRestaurant.isOpen ? '🟢 Open' : '🔴 Closed'}
                     </Text>
 
-                    {selectedRestaurant.rating && (
+                    {selectedRestaurant.verificationStatus && (
+                      <Text
+                        style={[
+                          styles.detailText,
+                          {
+                            color: selectedRestaurant.verificationStatus === 'APPROVED'
+                              ? '#10B981'
+                              : selectedRestaurant.verificationStatus === 'PENDING_VERIFICATION'
+                              ? '#F59E0B'
+                              : '#EF4444',
+                          },
+                        ]}
+                      >
+                        {selectedRestaurant.verificationStatus === 'APPROVED' && '✅ Verified'}
+                        {selectedRestaurant.verificationStatus === 'PENDING_VERIFICATION' && '⏳ Pending Verification'}
+                        {selectedRestaurant.verificationStatus === 'REJECTED' && '❌ Not Verified'}
+                      </Text>
+                    )}
+
+                    {selectedRestaurant.deliveryPrice && (
+                      <Text style={[styles.detailText, { color: theme.colors.textSecondary }]}>
+                        🚚 Delivery: {selectedRestaurant.deliveryPrice} FCFA
+                      </Text>
+                    )}
+
+                    {selectedRestaurant.estimatedDeliveryTime && (
+                      <Text style={[styles.detailText, { color: theme.colors.textSecondary }]}>
+                        ⏱️ Estimated: {selectedRestaurant.estimatedDeliveryTime}
+                      </Text>
+                    )}
+
+                    {selectedRestaurant.rating ? (
                       <Text
                         style={[
                           styles.detailText,
@@ -1311,6 +1237,21 @@ export default function MapScreen({ navigation, route }: Props) {
                         ⭐ {selectedRestaurant.rating}/5 (
                         {selectedRestaurant.ratingCount || 0} reviews)
                       </Text>
+                    ) : (
+                      <Text
+                        style={[
+                          styles.detailText,
+                          { color: theme.colors.textSecondary },
+                        ]}
+                      >
+                        ⭐ No ratings yet
+                      </Text>
+                    )}
+
+                    {selectedRestaurant.menuMode && (
+                      <Text style={[styles.detailText, { color: theme.colors.textSecondary }]}>
+                        📋 Menu: {selectedRestaurant.menuMode === 'FIXED' ? 'Fixed Menu' : 'Daily Menu'}
+                      </Text>
                     )}
                   </View>
                 </ScrollView>
@@ -1319,9 +1260,6 @@ export default function MapScreen({ navigation, route }: Props) {
           </View>
         </View>
       </Modal>
-
-      {/* Debug Panel */}
-      {renderDebugPanel()}
       </View>
     </CommonView>
   );
@@ -1406,9 +1344,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-  debugButton: {
-    padding: 8,
-  },
+
   errorBanner: {
     position: 'absolute',
     top: 130,
@@ -1456,7 +1392,34 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
   },
   restaurantMarker: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#3B82F6',
+  },
+  restaurantMarkerContainer: {
+    alignItems: 'center',
+  },
+  restaurantLabel: {
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    minWidth: 80,
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  restaurantName: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  restaurantDistance: {
+    fontSize: 9,
+    fontWeight: '500',
+    marginTop: 1,
+    textAlign: 'center',
   },
   customerMarker: {
     backgroundColor: '#EF4444',
@@ -1656,78 +1619,5 @@ const styles = StyleSheet.create({
   detailText: {
     fontSize: 13,
     fontWeight: '500',
-  },
-  debugOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  debugPanel: {
-    flex: 1,
-    marginTop: 60,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
-  },
-  debugHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  debugTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  debugContent: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  debugSectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 20,
-    marginBottom: 12,
-  },
-  debugItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  debugLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  debugValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'right',
-  },
-  debugError: {
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  debugErrorCode: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  debugErrorMessage: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  debugConfigSection: {
-    marginVertical: 16,
-    paddingBottom: 40,
-  },
-  debugConfigText: {
-    fontSize: 10,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    lineHeight: 14,
   },
 });
