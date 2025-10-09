@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { authApi } from '../services/authApi';
+import { authService } from '../services/authService';
 import { User } from '../types/api';
-import { cacheConfig } from '../lib/queryClient';
 
 // Query Keys
 export const authKeys = {
@@ -16,8 +15,8 @@ export const authKeys = {
 export const useUserProfile = () => {
   return useQuery({
     queryKey: authKeys.profile(),
-    queryFn: () => authApi.getProfile(),
-    ...cacheConfig.userData, // 10 minute stale time
+    queryFn: authService.getProfile,
+    staleTime: 10 * 60 * 1000, // 10 minutes
     retry: (failureCount, error: any) => {
       // Don't retry on 401 (unauthorized)
       if (error?.response?.status === 401) {
@@ -34,26 +33,25 @@ export const useUserProfile = () => {
 export const useAuthToken = () => {
   return useQuery({
     queryKey: authKeys.token(),
-    queryFn: () => authApi.getStoredToken(),
+    queryFn: authService.getStoredToken,
     staleTime: Infinity, // Token doesn't become stale
     gcTime: Infinity,    // Keep token in cache
   });
 };
 
 /**
- * Hook to login
+ * Hook to sign in with Google
  */
-export const useLogin = () => {
+export const useGoogleSignIn = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ email, password }: { email: string; password: string }) =>
-      authApi.login(email, password),
+    mutationFn: (idToken: string) => authService.googleSignIn(idToken),
     
     onSuccess: (data) => {
       // Update auth cache
       queryClient.setQueryData(authKeys.profile(), data.user);
-      queryClient.setQueryData(authKeys.token(), data.token);
+      queryClient.setQueryData(authKeys.token(), data.accessToken);
       
       // Invalidate all queries to refetch with new auth
       queryClient.invalidateQueries();
@@ -62,40 +60,16 @@ export const useLogin = () => {
 };
 
 /**
- * Hook to register
+ * Hook to refresh token
  */
-export const useRegister = () => {
+export const useRefreshToken = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (userData: {
-      fullName: string;
-      email: string;
-      password: string;
-      phoneNumber: string;
-    }) => authApi.register(userData),
+    mutationFn: authService.refreshToken,
     
     onSuccess: (data) => {
-      queryClient.setQueryData(authKeys.profile(), data.user);
-      queryClient.setQueryData(authKeys.token(), data.token);
-      queryClient.invalidateQueries();
-    },
-  });
-};
-
-/**
- * Hook to register and apply
- */
-export const useRegisterAndApply = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (formData: FormData) => authApi.registerAndApply(formData),
-    
-    onSuccess: (data) => {
-      queryClient.setQueryData(authKeys.profile(), data.user);
-      queryClient.setQueryData(authKeys.token(), data.token);
-      queryClient.invalidateQueries();
+      queryClient.setQueryData(authKeys.token(), data.accessToken);
     },
   });
 };
@@ -107,12 +81,31 @@ export const useUpdateProfile = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (userData: Partial<User>) => authApi.updateProfile(userData),
+    mutationFn: (userData: Partial<User>) => authService.updateProfile(userData),
     
     onSuccess: (updatedUser) => {
       // Update profile cache immediately
       queryClient.setQueryData(authKeys.profile(), updatedUser);
     },
+  });
+};
+
+/**
+ * Hook to request password reset
+ */
+export const useForgotPassword = () => {
+  return useMutation({
+    mutationFn: (email: string) => authService.forgotPassword(email),
+  });
+};
+
+/**
+ * Hook to reset password
+ */
+export const useResetPassword = () => {
+  return useMutation({
+    mutationFn: ({ token, newPassword }: { token: string; newPassword: string }) =>
+      authService.resetPassword(token, newPassword),
   });
 };
 
@@ -123,7 +116,7 @@ export const useLogout = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => authApi.logout(),
+    mutationFn: authService.logout,
     
     onSuccess: () => {
       // Clear all cached data

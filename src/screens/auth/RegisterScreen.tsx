@@ -39,7 +39,7 @@ export default function RegisterScreen({ navigation, route }: Props) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [vehicleTypeOpen, setVehicleTypeOpen] = useState(false);
-  const VEHICLE_TYPES = ['BICYCLE','MOTORCYCLE','CAR','VAN','TRUCK','WALKER'];
+  const VEHICLE_TYPES = ['BICYCLE','MOTORBIKE','CAR','VAN','TRUCK','WALKER'];
   
   // UI states
   const [showPassword, setShowPassword] = useState(false);
@@ -148,51 +148,23 @@ export default function RegisterScreen({ navigation, route }: Props) {
         vehiclePhotoUri
       );
 
-      const userState = response?.user?.state?.toLowerCase();
-
       if (response?.success) {
-        console.log('🎯 Registration successful, user state:', userState);
+        console.log('🎯 Registration successful, user state:', response?.user?.state);
         
-        // Handle navigation based on user state
-        if (userState === 'pending' || userState === 'pending_verification') {
-          Alert.alert(
-            t('success') || 'Success',
-            t('accountPending') || 'Your account has been created and is pending approval. Please check your email for verification.',
-            [
-              {
-                text: t('ok') || 'OK',
-                onPress: () => navigation.replace('Waiting', {
-                  reason: 'Your account is pending approval. Please wait for admin review.'
-                }),
+        // Show success message and let the navigation system handle routing
+        Alert.alert(
+          t('success') || 'Success',
+          'Account created successfully! Your application is being reviewed.',
+          [
+            {
+              text: t('ok') || 'OK',
+              onPress: () => {
+                // The AuthStack and RootNavigator will handle navigation based on user state automatically
+                console.log('✅ Registration complete, navigation will be handled automatically');
               },
-            ]
-          );
-        } else if (userState === 'active' || userState === 'approved') {
-          Alert.alert(
-            t('success') || 'Success',
-            'Account created successfully! Welcome to Food Rush.',
-            [
-              {
-                text: t('getStarted') || 'Get Started',
-                onPress: () => navigation.replace('Login'),
-              },
-            ]
-          );
-        } else if (userState === 'rejected') {
-          navigation.replace('Rejected');
-        } else {
-          // Default case - go to login
-          Alert.alert(
-            t('success') || 'Success',
-            'Account created successfully! Please log in to continue.',
-            [
-              {
-                text: 'Go to Login',
-                onPress: () => navigation.navigate('Login'),
-              },
-            ]
-          );
-        }
+            },
+          ]
+        );
       } else {
         // Registration failed
         Alert.alert(

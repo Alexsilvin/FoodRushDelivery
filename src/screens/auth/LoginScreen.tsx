@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { authAPI } from '../../services/api';
+import { authService } from '../../services';
 import { AuthScreenProps } from '../../types/navigation.types';
 import CommonView from '../../components/CommonView';
 
@@ -72,33 +72,14 @@ export default function LoginScreen({ navigation, route }: Props) {
       ]);
       return;
     }
-// Log everything for debugging
-    console.log('=== LOGIN DEBUG ===');
+    // Log for debugging
+    console.log('=== LOGIN SUCCESS ===');
     console.log('Response state:', response.state);
     console.log('User state:', response.user.state);
     console.log('User status:', response.user.status);
-
-    // Normalize backend state
-    const normalizeState = (state: string | undefined) => {
-      if (!state) return '';
-      return state.replace(/\s+/g, '_').replace(/-/g, '_').replace(/\W/g, '').toUpperCase();
-    };
-
-    const riderState = normalizeState(response.state);
-    console.log('Normalized state:', riderState);
-
-    // Navigation logic based on normalized state
-    if (riderState === 'ACTIVE' || riderState === 'READY' || riderState === 'APPROVED') {
-      console.log('✅ User approved - app will handle navigation to main stack');
-      // Don't navigate here - let the app handle the navigation based on auth state
-    } else if (riderState === 'REJECTED') {
-      console.log('❌ Navigating to Rejected screen for state:', riderState);
-      navigation.replace('Rejected');
-    } else {
-      // All other states (PENDING, PENDING_VERIFICATION, etc.) go to waiting
-      console.log('⏳ Navigating to Waiting screen for state:', riderState);
-      navigation.replace('Waiting');
-    }
+    
+    // The AuthStack and RootNavigator will handle navigation based on user state automatically
+    // No manual navigation needed here
 
   } catch (error: any) {
     const errorMsg = error.message || t('somethingWentWrong');
@@ -117,15 +98,11 @@ export default function LoginScreen({ navigation, route }: Props) {
             onPress: async () => {
               try {
                 setLoading(true);
-                const result = await authAPI.resendVerificationEmail(email);
-                if (result.success) {
-                  Alert.alert(
-                    t('verificationSent') || 'Verification Sent',
-                    t('verificationEmailResent') || 'A new verification email has been sent. Please check your inbox and click the verification link.'
-                  );
-                } else {
-                  Alert.alert(t('error') || 'Error', result.message || t('somethingWentWrong'));
-                }
+                // Note: This function needs to be implemented in authService
+                Alert.alert(
+                  t('featureNotAvailable') || 'Feature Not Available',
+                  'Email verification resend is not yet implemented. Please check your email for the original verification link.'
+                );
               } catch (resendError: any) {
                 Alert.alert(t('error') || 'Error', resendError.message || t('somethingWentWrong'));
               } finally {
@@ -138,24 +115,11 @@ export default function LoginScreen({ navigation, route }: Props) {
             onPress: async () => {
               try {
                 setLoading(true);
-                const result = await authAPI.activateAccount(email);
-                if (result.success) {
-                  Alert.alert(
-                    t('accountActivated') || 'Account Activated',
-                    t('accountActivationSuccess') || 'Your account has been activated! You can now log in.',
-                    [
-                      {
-                        text: t('login') || 'Log In',
-                        onPress: () => handleLogin(),
-                      },
-                    ]
-                  );
-                } else {
-                  Alert.alert(
-                    t('activationFailed') || 'Activation Failed',
-                    result.message || t('activationNotSupported') || 'Account activation through the app is not supported. Please check your email for a verification link.'
-                  );
-                }
+                // Note: This function needs to be implemented in authService
+                Alert.alert(
+                  t('featureNotAvailable') || 'Feature Not Available',
+                  'Account activation through the app is not yet implemented. Please check your email for the verification link.'
+                );
               } catch (activateError: any) {
                 Alert.alert(t('error') || 'Error', activateError.message || t('somethingWentWrong'));
               } finally {

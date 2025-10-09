@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Switch } f
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { Ionicons } from '@expo/vector-icons';
-import { riderAPI } from '../../services/api';
+import { riderService } from '../../services';
 
 interface DaySchedule { day: string; enabled: boolean; start: string; end: string; }
 
@@ -52,7 +52,7 @@ export default function AvailabilityScheduleScreen({ navigation }: any) {
     setSaving(true);
     try {
       const payload = schedule.map(d => ({ day: d.day, enabled: d.enabled, start: d.start, end: d.end }));
-      await riderAPI.updateAvailability(true, payload); // keep available flag true when saving schedule
+      await riderService.updateAvailability({ available: true, schedule: payload }); // keep available flag true when saving schedule
       Alert.alert(t('success'), t('availabilitySaved') || 'Availability saved');
       navigation.goBack();
     } catch (e: any) {

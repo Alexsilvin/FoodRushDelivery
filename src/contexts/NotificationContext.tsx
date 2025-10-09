@@ -1,320 +1,155 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { Alert } from 'react-native';
-import notificationService, { InAppNotification, NotificationPermissions } from '../services/notificationService';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Alert, Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import { InAppNotification } from '../types/api';
 import { useAuth } from './AuthContext';
-import { useUnreadCount, useRegisterDevice } from '../hooks/useNotifications';
+import { useUnreadCount, useRegisterDevice, useNotifications as useNotificationsQuery } from '../hooks/useNotifications';
 
 interface NotificationContextType {
-  // State
   notifications: InAppNotification[];
   unreadCount: number;
   isLoading: boolean;
-  permissions: NotificationPermissions | null;
   pushToken: string | null;
-  
-  // Actions
   refreshNotifications: () => Promise<void>;
-  markAsRead: (notificationId: string) => Promise<void>;
-  markAllAsRead: () => Promise<void>;
   requestPermissions: () => Promise<boolean>;
-  loadMoreNotifications: () => Promise<void>;
-  
-  // Settings
-  notificationsEnabled: boolean;
-  setNotificationsEnabled: (enabled: boolean) => void;
-  soundEnabled: boolean;
-  setSoundEnabled: (enabled: boolean) => void;
-  vibrationEnabled: boolean;
-  setVibrationEnabled: (enabled: boolean) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export const useNotifications = () => {
   const context = useContext(NotificationContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useNotifications must be used within a NotificationProvider');
   }
   return context;
 };
 
-interface NotificationProviderProps {
-  children: React.ReactNode;
-}
+// Configure notification handler once, outside component
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldShowList: true,
+    shouldShowBanner: true,
+    shouldSetBadge: true,
+  }),
+});
 
-export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
+export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const isActive = user?.state === 'ACTIVE';
   
   // React Query hooks
-  const { data: unreadCount = 0, refetch: refetchUnreadCount } = useUnreadCount();
+  const { data: unreadCount = 0 } = useUnreadCount({ enabled: isActive });
+  const { data: notificationsData = [], refetch: refetchNotifications } = useNotificationsQuery(
+    { page: 1, limit: 20 },
+    { enabled: isActive }
+  );
   const registerDeviceMutation = useRegisterDevice();
   
-  // State
-  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [permissions, setPermissions] = useState<NotificationPermissions | null>(null);
+  // Local state
   const [pushToken, setPushToken] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  
-  // Settings
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [vibrationEnabled, setVibrationEnabled] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  /**
-   * Initialize notification service when user is authenticated
-   */
+  // Register for push notifications on mount (once)
   useEffect(() => {
-    if (user) {
-      initializeNotifications();
-    } else {
-      // Clean up when user logs out
-      cleanup();
-    }
+    let mounted = true;
+
+    const registerPush = async () => {
+      if (!isActive || !Device.isDevice) return;
+
+      try {
+        const { status } = await Notifications.getPermissionsAsync();
+        if (status !== 'granted') return;
+
+        const token = (await Notifications.getExpoPushTokenAsync()).data;
+        
+        if (mounted) {
+          setPushToken(token);
+        }
+
+        await registerDeviceMutation.mutateAsync({
+          expoToken: token,
+          platform: Platform.OS,
+          role: 'rider'
+        });
+
+        console.log('✅ Push notifications registered');
+      } catch (error) {
+        console.error('❌ Push registration failed:', error);
+      }
+    };
+
+    registerPush();
 
     return () => {
-      cleanup();
+      mounted = false;
     };
-  }, [user]);
+  }, [isActive]); // Only depend on isActive
 
-  /**
-   * Initialize notifications
-   */
-  const initializeNotifications = async () => {
+  // Request permissions
+  const requestPermissions = async (): Promise<boolean> => {
     try {
-      console.log('🔔 Initializing notifications for user:', user?.email);
+      const { status } = await Notifications.requestPermissionsAsync();
       
-      // Initialize notification service
-      await notificationService.initialize();
-      
-      // Get current permissions
-      const perms = await notificationService.checkPermissions();
-      setPermissions(perms);
-      
-      // Get push token
-      const token = notificationService.getCurrentPushToken();
-      setPushToken(token);
-      
-      // Load initial notifications
-      await refreshNotifications();
-      
-      // Trigger unread count refetch
-      refetchUnreadCount();
-      
-      console.log('✅ Notifications initialized successfully');
+      if (status === 'granted') {
+        if (!Device.isDevice) {
+          console.warn('⚠️ Push notifications only work on physical devices');
+          return true;
+        }
+
+        const token = (await Notifications.getExpoPushTokenAsync()).data;
+        setPushToken(token);
+
+        await registerDeviceMutation.mutateAsync({
+          expoToken: token,
+          platform: Platform.OS,
+          role: 'rider'
+        });
+
+        return true;
+      }
+
+      Alert.alert(
+        'Permissions Required',
+        'Please enable notifications in settings to receive delivery updates.'
+      );
+      return false;
     } catch (error) {
-      console.error('❌ Failed to initialize notifications:', error);
+      console.error('❌ Permission request failed:', error);
+      Alert.alert('Error', 'Failed to request notification permissions');
+      return false;
     }
   };
 
-  /**
-   * Refresh notifications from server
-   */
-  const refreshNotifications = useCallback(async () => {
-    if (!user) return;
+  // Refresh notifications
+  const refreshNotifications = async () => {
+    if (!isActive) return;
     
     try {
       setIsLoading(true);
-      setCurrentPage(1);
-      
-      const result = await notificationService.getInAppNotifications(1, 20);
-      
-      setNotifications(result.notifications);
-      setHasMore(result.hasMore);
-      setCurrentPage(1);
-      
-      console.log(`📨 Loaded ${result.notifications.length} notifications`);
+      await refetchNotifications();
     } catch (error) {
-      console.error('❌ Failed to refresh notifications:', error);
+      console.error('❌ Refresh failed:', error);
       Alert.alert('Error', 'Failed to load notifications');
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
-
-  /**
-   * Load more notifications (pagination)
-   */
-  const loadMoreNotifications = useCallback(async () => {
-    if (!user || !hasMore || isLoading) return;
-    
-    try {
-      setIsLoading(true);
-      const nextPage = currentPage + 1;
-      
-      const result = await notificationService.getInAppNotifications(nextPage, 20);
-      
-      setNotifications(prev => [...prev, ...result.notifications]);
-      setHasMore(result.hasMore);
-      setCurrentPage(nextPage);
-      
-      console.log(`📨 Loaded ${result.notifications.length} more notifications (page ${nextPage})`);
-    } catch (error) {
-      console.error('❌ Failed to load more notifications:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user, hasMore, isLoading, currentPage]);
-
-  // Remove loadUnreadCount as it's now handled by React Query
-
-  /**
-   * Mark notification as read
-   */
-  const markAsRead = useCallback(async (notificationId: string) => {
-    try {
-      await notificationService.markNotificationAsRead(notificationId);
-      
-      // Update local state
-      setNotifications(prev => 
-        prev.map(notification => 
-          notification.id === notificationId 
-            ? { ...notification, isRead: true }
-            : notification
-        )
-      );
-      
-      // Refetch unread count
-      refetchUnreadCount();
-      
-      console.log('✅ Notification marked as read:', notificationId);
-    } catch (error) {
-      console.error('❌ Failed to mark notification as read:', error);
-      Alert.alert('Error', 'Failed to mark notification as read');
-    }
-  }, []);
-
-  /**
-   * Mark all notifications as read
-   */
-  const markAllAsRead = useCallback(async () => {
-    try {
-      await notificationService.markAllNotificationsAsRead();
-      
-      // Update local state
-      setNotifications(prev => 
-        prev.map(notification => ({ ...notification, isRead: true }))
-      );
-      
-      // Refetch unread count
-      refetchUnreadCount();
-      
-      console.log('✅ All notifications marked as read');
-    } catch (error) {
-      console.error('❌ Failed to mark all notifications as read:', error);
-      Alert.alert('Error', 'Failed to mark all notifications as read');
-    }
-  }, []);
-
-  /**
-   * Request notification permissions
-   */
-  const requestPermissions = useCallback(async (): Promise<boolean> => {
-    try {
-      const perms = await notificationService.requestPermissions();
-      setPermissions(perms);
-      
-      if (perms.granted) {
-        // Re-initialize to register token
-        await notificationService.registerForPushNotifications();
-        const token = notificationService.getCurrentPushToken();
-        setPushToken(token);
-        
-        console.log('✅ Notification permissions granted');
-        return true;
-      } else {
-        console.warn('⚠️ Notification permissions denied');
-        Alert.alert(
-          'Permissions Required',
-          'Please enable notifications in your device settings to receive delivery updates.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Settings', onPress: () => {
-              // You could open device settings here
-              console.log('Open device settings');
-            }}
-          ]
-        );
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ Failed to request permissions:', error);
-      Alert.alert('Error', 'Failed to request notification permissions');
-      return false;
-    }
-  }, []);
-
-  /**
-   * Handle notification settings changes
-   */
-  const handleNotificationsEnabledChange = useCallback(async (enabled: boolean) => {
-    setNotificationsEnabled(enabled);
-    
-    if (!enabled) {
-      // Unregister device when notifications are disabled
-      try {
-        await notificationService.unregisterDevice();
-        setPushToken(null);
-        console.log('📱 Device unregistered from notifications');
-      } catch (error) {
-        console.error('❌ Failed to unregister device:', error);
-      }
-    } else {
-      // Re-register device when notifications are enabled
-      try {
-        const token = await notificationService.registerForPushNotifications();
-        setPushToken(token);
-        console.log('📱 Device re-registered for notifications');
-      } catch (error) {
-        console.error('❌ Failed to re-register device:', error);
-      }
-    }
-  }, []);
-
-  /**
-   * Cleanup function
-   */
-  const cleanup = () => {
-    notificationService.cleanup();
-    setNotifications([]);
-    setPermissions(null);
-    setPushToken(null);
-    setCurrentPage(1);
-    setHasMore(true);
-  };
-
-  // Periodic refresh is now handled by React Query's refetchInterval
-
-  const value: NotificationContextType = {
-    // State
-    notifications,
-    unreadCount,
-    isLoading,
-    permissions,
-    pushToken,
-    
-    // Actions
-    refreshNotifications,
-    markAsRead,
-    markAllAsRead,
-    requestPermissions,
-    loadMoreNotifications,
-    
-    // Settings
-    notificationsEnabled,
-    setNotificationsEnabled: handleNotificationsEnabledChange,
-    soundEnabled,
-    setSoundEnabled,
-    vibrationEnabled,
-    setVibrationEnabled,
   };
 
   return (
-    <NotificationContext.Provider value={value}>
+    <NotificationContext.Provider
+      value={{
+        notifications: notificationsData,
+        unreadCount: isActive ? unreadCount : 0,
+        isLoading,
+        pushToken,
+        refreshNotifications,
+        requestPermissions,
+      }}
+    >
       {children}
     </NotificationContext.Provider>
   );
 };
-
-export default NotificationProvider;

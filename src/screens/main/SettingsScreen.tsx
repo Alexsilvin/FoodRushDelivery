@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { riderAPI, riderAuthAPI } from '../../services/api';
+import { riderService } from '../../services';
 import LanguageSelector from '../../components/LanguageSelector';
 import CommonView from '../../components/CommonView';
 import { StackScreenProps } from '../../types/navigation.types';
@@ -83,7 +83,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
 
   React.useEffect(() => {
     let mounted = true;
-    riderAPI.getStatus()
+    riderService.getStatus()
       .then(res => {
         if (!mounted) return;
         const status = (res as any)?.data?.status;
@@ -99,7 +99,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
     setOnline(next); // optimistic
     setUpdatingStatus(true);
     try {
-      const res = await riderAPI.updateStatus(next ? 'online' : 'offline');
+      const res = await riderService.updateStatus(next);
       const confirmed = (res as any)?.data?.status;
       if (confirmed && confirmed !== (next ? 'online' : 'offline')) {
         setOnline(confirmed === 'online');
@@ -127,7 +127,7 @@ export default function SettingsScreen({ navigation, route }: Props) {
     if (applying) return;
     setApplying(true);
     try {
-      const res = await riderAuthAPI.apply();
+      const res = await riderService.apply();
       Alert.alert(t('success'), res?.message || t('applicationSubmitted') || 'Application submitted.');
     } catch (e: any) {
       Alert.alert(t('error'), e?.response?.data?.message || 'Failed to submit application');

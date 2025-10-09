@@ -1,36 +1,43 @@
 // Centralized API exports
-// This file organizes all API services in one place
+// Production-ready service organization
 
 // Core API client
 export { default as apiClient } from './apiClient';
 
-// Authentication APIs
-export { authApi } from './authApi';
+// ====================== SERVICES ======================
 
-// Rider APIs
-export { riderApi } from './riderApi';
+// Authentication Service
+export { authService } from './authService';
 
-// Delivery APIs
-export { deliveryApi } from './deliveryApi';
+// Rider Service
+export { riderService } from './riderService';
 
-// Restaurant APIs
-export { restaurantApi } from './restaurantApi';
+// Delivery Service
+export { deliveryService } from './deliveryService';
 
-// Notification APIs
-export { notificationApi } from './notificationApi';
+// Analytics Service
+export { analyticsService } from './analyticsService';
 
-// Analytics (can be added later)
-// export { analyticsApi } from './analyticsApi';
+// Restaurant Service
+export { restaurantApi as restaurantService } from './restaurantApi';
 
-// Legacy API (to be phased out)
-export { 
-  authAPI, 
-  riderAuthAPI, 
-  riderAPI, 
-  analyticsAPI, 
-  restaurantAPI, 
-  notificationAPI 
-} from './api';
+// Notification Service
+export { notificationService } from './notificationService';
+
+// Location Service (utility)
+export { default as locationService } from './locationService';
+
+// ====================== TYPES ======================
 
 // Re-export types
-export type { ApiResponse, User, Delivery, RiderStatus } from '../types/api';
+export type { 
+  ApiResponse, 
+  User, 
+  Delivery, 
+  RiderStatus, 
+  Restaurant,
+  RegisterAndApplyResponse,
+  RegisterAndApplyRequest
+} from '../types/api';
+
+// Legacy API file has been removed - all functionality migrated to new services

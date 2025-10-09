@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI, riderAPI, riderAuthAPI } from '../services/api';
+import { authService, riderService } from '../services';
 import { User as ApiUser } from '../types/api';
 
 // Local User extends API user ensuring required fields while tolerating optional backend omissions
@@ -53,17 +53,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             // Get the user profile from the API
             // Prefer rider account endpoint then fallback
-            const userData = await riderAuthAPI.getAccount();
-            if (userData.data) {
-              console.log('✅ Profile data loaded on init:', userData.data);
+            const userData = await riderService.getMyAccount();
+            if (userData) {
+              console.log('✅ Profile data loaded on init:', userData);
               
               // The data is already normalized by the API service
               const normalized: User = {
-                ...userData.data,
+                ...userData,
                 // Ensure required fields are present
-                firstName: userData.data.firstName || userData.data.fullName?.split(' ')[0] || '',
-                lastName: userData.data.lastName || userData.data.fullName?.split(' ').slice(1).join(' ') || '',
-                role: userData.data.role || 'rider'
+                firstName: userData.firstName || userData.fullName?.split(' ')[0] || '',
+                lastName: userData.lastName || userData.fullName?.split(' ').slice(1).join(' ') || '',
+                role: userData.role || 'rider'
               };
               
               // Store the normalized user data
@@ -74,11 +74,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               await AsyncStorage.removeItem('auth_token');
               setUser(null);
             }
-          } catch (error) {
-            console.error('Error fetching user profile:', error);
-            // If there's an error fetching the profile, remove the token
-            await AsyncStorage.removeItem('auth_token');
-            setUser(null);
+          } catch (error: any) {
+            // Handle 403 errors gracefully - this means user is not approved yet
+            if (error?.response?.status === 403) {
+              console.log('📍 User not approved yet, keeping token but profile unavailable');
+              // Keep the token but don't set user profile
+              // This allows the app to show appropriate waiting/pending screens
+              setUser(null);
+            } else {
+              console.error('Error fetching user profile:', error);
+              // For other errors, remove the token
+              await AsyncStorage.removeItem('auth_token');
+              setUser(null);
+            }
           }
         } else {
           setUser(null);
@@ -99,30 +107,34 @@ const login = async (
   password: string
 ): Promise<{ success: boolean; user?: User; token?: string; state?: string }> => {
   try {
-    const response = await riderAuthAPI.login(email, password);
+    const response = await riderService.login(email, password);
 
-    const { token, user, state } = response;
+    const { accessToken, user } = response;
 
-    if (!token || !user) {
+    if (!accessToken || !user) {
       return { success: false };
     }
 
-    await AsyncStorage.setItem('auth_token', token);
+    await AsyncStorage.setItem('auth_token', accessToken);
     
     // After successful login, fetch the current rider profile to get the latest state
     let currentUser = user;
     try {
-      const profileResponse = await riderAuthAPI.getAccount();
-      if (profileResponse.data) {
-        currentUser = profileResponse.data;
+      const profileResponse = await riderService.getMyAccount();
+      if (profileResponse) {
+        currentUser = profileResponse;
         console.log('✅ Fetched current rider profile:', {
           state: currentUser.state,
           status: currentUser.status,
           id: currentUser.id
         });
       }
-    } catch (profileError) {
-      console.warn('⚠️ Could not fetch current profile, using login response:', profileError);
+    } catch (profileError: any) {
+      if (profileError?.response?.status === 403) {
+        console.log('📍 User not approved yet, using login response data');
+      } else {
+        console.warn('⚠️ Could not fetch current profile, using login response:', profileError);
+      }
     }
 
     await SecureStore.setItemAsync('user', JSON.stringify(currentUser));
@@ -149,7 +161,7 @@ const login = async (
     return {
       success: true,
       user: normalized,
-      token,
+      token: accessToken,
       state: finalState,
     };
   } catch (error: any) {
@@ -170,20 +182,40 @@ const login = async (
 ): Promise<{ success: boolean; user?: User; state?: string }> => {
   try {
     const fullName = `${firstName} ${lastName}`.trim();
-    const response = await riderAuthAPI.registerAndApply({
-      email,
-      password,
-      phoneNumber,
-      fullName,
-      vehicleType,
-      documentUri: documentUri || undefined,
-      vehiclePhotoUri: vehiclePhotoUri || undefined,
-    });
+    const formData = new FormData();
+    formData.append('fullName', fullName);
+    formData.append('email', email);
+    formData.append('password', password);
+    formData.append('phoneNumber', phoneNumber);
+    formData.append('vehicleType', vehicleType);
+    
+    if (documentUri) {
+      formData.append('document', {
+        uri: documentUri,
+        type: 'image/jpeg',
+        name: 'document.jpg',
+      } as any);
+    }
+    
+    if (vehiclePhotoUri) {
+      formData.append('vehiclePhoto', {
+        uri: vehiclePhotoUri,
+        type: 'image/jpeg',
+        name: 'vehicle.jpg',
+      } as any);
+    }
+    
+    const response = await riderService.registerAndApply(formData);
 
-    if (response.success && response.data) {
-      const { token, user } = response.data;
+    if (response) {
+      const { user, accessToken } = response;
 
-      await AsyncStorage.setItem('auth_token', token);
+      // Store tokens
+      await AsyncStorage.setItem('auth_token', accessToken);
+      if (response.refreshToken) {
+        await AsyncStorage.setItem('refresh_token', response.refreshToken);
+      }
+      
       await SecureStore.setItemAsync('user', JSON.stringify(user));
 
       const normalized: User = {
@@ -254,8 +286,8 @@ const login = async (
 
   const forgotPassword = async (email: string): Promise<boolean> => {
     try {
-      const response = await authAPI.forgotPassword(email);
-      return response.success || false;
+      const response = await authService.forgotPassword(email);
+      return !!response;
     } catch (error) {
       console.error('Forgot password error:', error);
       return false;
@@ -264,8 +296,8 @@ const login = async (
 
   const resetPassword = async (token: string, newPassword: string): Promise<boolean> => {
     try {
-      const response = await authAPI.resetPassword(token, newPassword);
-      return response.success || false;
+      const response = await authService.resetPassword(token, newPassword);
+      return !!response;
     } catch (error) {
       console.error('Reset password error:', error);
       return false;
@@ -283,20 +315,20 @@ const login = async (
         fullName: `${data.firstName} ${data.lastName}`.trim()
       };
       
-      const response = await authAPI.updateProfileJWT(profileData);
+      const response = await authService.updateProfile(profileData);
       
-      if (response.success && response.data) {
-        console.log('✅ Profile updated successfully:', response.data);
+      if (response) {
+        console.log('✅ Profile updated successfully:', response);
         
         // Parse fullName back to firstName/lastName for local storage
-        const fullName = response.data.fullName || `${data.firstName} ${data.lastName}`.trim();
+        const fullName = response.fullName || `${data.firstName} ${data.lastName}`.trim();
         const nameParts = fullName.split(' ');
         const firstName = nameParts[0] || data.firstName;
         const lastName = nameParts.slice(1).join(' ') || data.lastName;
         
         const updatedUser = {
           ...user,
-          ...response.data,
+          ...response,
           firstName: firstName,
           lastName: lastName,
           fullName: fullName,
@@ -310,7 +342,7 @@ const login = async (
         
         return true;
       } else {
-        console.warn('⚠️ Profile update failed:', response.message);
+        console.warn('⚠️ Profile update failed');
         return false;
       }
     } catch (error: any) {
@@ -335,14 +367,14 @@ const login = async (
       
       console.log('🔄 Updating phone number:', phoneNumber);
       
-      const response = await authAPI.updateProfileJWT({ phoneNumber });
+      const response = await authService.updateProfile({ phoneNumber });
       
-      if (response.success && response.data) {
-        console.log('✅ Phone number updated successfully:', response.data);
+      if (response) {
+        console.log('✅ Phone number updated successfully:', response);
         
         const updatedUser = {
           ...user,
-          ...response.data,
+          ...response,
           phoneNumber: phoneNumber
         };
         
@@ -351,7 +383,7 @@ const login = async (
         
         return true;
       } else {
-        console.warn('⚠️ Phone number update failed:', response.message);
+        console.warn('⚠️ Phone number update failed');
         return false;
       }
     } catch (error: any) {
@@ -369,7 +401,7 @@ const login = async (
       
       try {
         // Send only default + list meta (simplified) - adjust to backend contract when available
-        await riderAPI.updateVehicle({ vehicles, defaultVehicle });
+        await riderService.updateVehicle({ vehicles, defaultVehicle });
       } catch (e) {
         console.warn('Vehicle API update failed, persisting locally only');
       }
@@ -413,17 +445,17 @@ const login = async (
       
       console.log('🔄 Refreshing user profile from backend...');
       
-      const userData = await riderAuthAPI.getAccount();
-      if (userData.data) {
-        console.log('✅ Profile data refreshed:', userData.data);
+      const userData = await riderService.getMyAccount();
+      if (userData) {
+        console.log('✅ Profile data refreshed:', userData);
         
         // The data is already normalized by the API service
         const normalized: User = {
-          ...userData.data,
+          ...userData,
           // Ensure required fields are present
-          firstName: userData.data.firstName || userData.data.fullName?.split(' ')[0] || '',
-          lastName: userData.data.lastName || userData.data.fullName?.split(' ').slice(1).join(' ') || '',
-          role: userData.data.role || 'rider'
+          firstName: userData.firstName || userData.fullName?.split(' ')[0] || '',
+          lastName: userData.lastName || userData.fullName?.split(' ').slice(1).join(' ') || '',
+          role: userData.role || 'rider'
         };
         
         // Store the updated user data
@@ -436,6 +468,11 @@ const login = async (
         return false;
       }
     } catch (error: any) {
+      // Handle 403 errors gracefully - user not approved yet
+      if (error?.response?.status === 403) {
+        console.log('📍 User not approved yet, profile refresh skipped');
+        return false;
+      }
       console.error('❌ Profile refresh error:', error?.response?.data || error.message);
       return false;
     }

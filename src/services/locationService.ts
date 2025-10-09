@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { riderAPI } from './api';
+import { riderService } from './riderService';
 import PermissionHelper from '../utils/permissionHelper';
 
 export interface LocationCoordinates {
@@ -308,7 +308,7 @@ class LocationService {
     attempt: number
   ): Promise<void> {
     try {
-      await riderAPI.updateLocation(coordinates.latitude, coordinates.longitude);
+      await riderService.updateLocation(coordinates.latitude, coordinates.longitude);
       this.retryCount = 0;
     } catch (error: any) {
       const errorInfo = {

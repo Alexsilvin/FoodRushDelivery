@@ -226,7 +226,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
         setCurrentLocation(null);
       }
     };
-  }, [user, locationService, config]);
+  }, [user, locationService, config, onLocationError, onLocationSuccess]);
 
   // Handle app state changes
   useEffect(() => {
@@ -238,7 +238,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
     return () => {
       subscription.remove();
     };
-  }, [isLocationTracking]);
+  }, [handleAppStateChange]);
 
   const handleAppStateChange = useCallback(
     async (state: AppStateStatus) => {
@@ -342,7 +342,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
         return false;
       }
     },
-    [locationService, startTrackingVerification, startFrequencyMonitoring]
+    [locationService, startTrackingVerification, startFrequencyMonitoring, onLocationSuccess, onLocationError]
   );
 
   const stopLocationTracking = useCallback(async (): Promise<void> => {
@@ -382,7 +382,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
         return null;
       }
     },
-    [locationService]
+    [locationService, onLocationSuccess, onLocationError]
   );
 
   const forceLocationUpdate = useCallback(
@@ -412,7 +412,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
         return false;
       }
     },
-    [locationService]
+    [locationService, onLocationSuccess, onLocationError]
   );
 
   const updateLocationConfig = useCallback(

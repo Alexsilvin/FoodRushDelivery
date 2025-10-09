@@ -161,3 +161,48 @@ export interface UnreadCountResponse {
     count: number;
   };
 }
+
+// Register and Apply Response Types
+export interface RegisterAndApplyResponse {
+  status_code: number;
+  message: string;
+  data: {
+    accessToken: string;
+    refreshToken: string;
+    user: {
+      id: string;
+      fullName: string;
+      email: string;
+      phoneNumber: string;
+      role: string;
+    };
+    riderId: string;
+    riderAccount: {
+      id: string;
+      user: {
+        id: string;
+        fullName: string;
+        email: string;
+        phoneNumber: string;
+      };
+      state: string;
+      vehicleType: string;
+      isAvailable: boolean;
+      vehiclePhotoUrl?: string;
+      idDocumentUrl?: string;
+      createdAt: string;
+      updatedAt: string;
+    };
+    nextAction: string;
+  };
+}
+
+export interface RegisterAndApplyRequest {
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+  password: string;
+  vehicleType: string;
+  document?: string;
+  vehiclePhoto?: string;
+}

@@ -21,7 +21,7 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { riderAPI, restaurantAPI } from '../../services/api';
+import { riderService, restaurantService } from '../../services';
 import { mapApiDeliveries } from '../../utils/mappers';
 import { useLocation } from '../../contexts/LocationContext';
 import { Restaurant, Delivery } from '../../types/api';
@@ -335,9 +335,9 @@ export default function MapScreen({ navigation, route }: Props) {
     const fetchDeliveries = async () => {
       setFetchingDeliveries(true);
       try {
-        const res = await riderAPI.getCurrentDeliveries().catch(() => ({ success: false, data: [] }));
-        if (res?.data) {
-          const mapped = mapApiDeliveries(res.data);
+        const res = await riderService.getCurrentDeliveries().catch(() => []);
+        if (res) {
+          const mapped = mapApiDeliveries(res);
           setDeliveries(convertToDeliveryLocations(mapped));
         } else {
           setDeliveries([]);
@@ -362,7 +362,7 @@ export default function MapScreen({ navigation, route }: Props) {
 
     setFetchingRestaurants(true);
     try {
-      const response = await restaurantAPI.browseRestaurants({
+      const response = await restaurantService.getNearbyRestaurants({
         nearLat: currentLocation.latitude,
         nearLng: currentLocation.longitude,
         radiusKm: 10,

@@ -1,256 +1,139 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { deliveryApi } from '../services/deliveryApi';
-import { DeliveryItem, DeliveryFilters } from '../types/deliveries';
-import { cacheConfig } from '../lib/queryClient';
+import { deliveryService } from '../services/deliveryService';
+import { Delivery } from '../types/api';
 
 // Query Keys
 export const deliveryKeys = {
   all: ['deliveries'] as const,
-  my: (filters?: DeliveryFilters) => [...deliveryKeys.all, 'my', filters] as const,
-  detail: (id: string) => [...deliveryKeys.all, 'detail', id] as const,
+  my: (params?: any) => [...deliveryKeys.all, 'my', params] as const,
+  byId: (id: string) => [...deliveryKeys.all, 'byId', id] as const,
+  byOrderId: (orderId: string) => [...deliveryKeys.all, 'byOrderId', orderId] as const,
 };
 
 /**
- * Hook to fetch rider's deliveries
- * Uses the new /api/v1/deliveries/my endpoint
+ * Hook to get my deliveries
  */
-export const useMyDeliveries = (filters?: DeliveryFilters) => {
+export const useMyDeliveries = (params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+}) => {
   return useQuery({
-    queryKey: deliveryKeys.my(filters),
-    queryFn: () => deliveryApi.getMyDeliveries(filters),
-    ...cacheConfig.realTime, // 30 second stale time, refetch every minute
-    enabled: true, // Always enabled for authenticated users
+    queryKey: deliveryKeys.my(params),
+    queryFn: () => deliveryService.getMyDeliveries(params),
+    staleTime: 30 * 1000, // 30 seconds
   });
 };
 
 /**
- * Hook to fetch delivery details
+ * Hook to get delivery by ID
  */
-export const useDeliveryDetails = (deliveryId: string) => {
+export const useDeliveryById = (deliveryId: string) => {
   return useQuery({
-    queryKey: deliveryKeys.detail(deliveryId),
-    queryFn: () => deliveryApi.getDeliveryDetails(deliveryId),
-    ...cacheConfig.realTime,
+    queryKey: deliveryKeys.byId(deliveryId),
+    queryFn: () => deliveryService.getDeliveryById(deliveryId),
+    staleTime: 60 * 1000, // 1 minute
     enabled: !!deliveryId,
   });
 };
 
 /**
- * Hook to accept a delivery with optimistic updates
+ * Hook to get delivery by order ID
+ */
+export const useDeliveryByOrderId = (orderId: string) => {
+  return useQuery({
+    queryKey: deliveryKeys.byOrderId(orderId),
+    queryFn: () => deliveryService.getDeliveryByOrderId(orderId),
+    staleTime: 60 * 1000, // 1 minute
+    enabled: !!orderId,
+  });
+};
+
+/**
+ * Hook to accept delivery
  */
 export const useAcceptDelivery = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (deliveryId: string) => deliveryApi.acceptDelivery(deliveryId),
+    mutationFn: (deliveryId: string) => deliveryService.acceptDelivery(deliveryId),
     
-    // Optimistic update
-    onMutate: async (deliveryId) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: deliveryKeys.all });
-
-      // Snapshot the previous value
-      const previousDeliveries = queryClient.getQueryData<DeliveryItem[]>(deliveryKeys.my());
-
-      // Optimistically update the cache
-      queryClient.setQueryData<DeliveryItem[]>(deliveryKeys.my(), (old = []) => {
-        return old.map(delivery =>
-          delivery.id === deliveryId
-            ? { ...delivery, status: 'accepted' as const }
-            : delivery
-        );
-      });
-
-      return { previousDeliveries };
-    },
-    
-    onError: (err, deliveryId, context) => {
-      // Rollback on error
-      if (context?.previousDeliveries) {
-        queryClient.setQueryData(deliveryKeys.my(), context.previousDeliveries);
-      }
-    },
-    
-    onSettled: () => {
-      // Always refetch to ensure consistency
-      queryClient.invalidateQueries({ queryKey: deliveryKeys.all });
+    onSuccess: (updatedDelivery) => {
+      // Update the specific delivery in cache
+      queryClient.setQueryData(
+        deliveryKeys.byId(updatedDelivery.id),
+        updatedDelivery
+      );
+      
+      // Invalidate my deliveries list
+      queryClient.invalidateQueries({ queryKey: deliveryKeys.my() });
     },
   });
 };
 
 /**
  * Hook to mark delivery as picked up
- * Uses the new /api/v1/deliveries/{id}/pickup endpoint
  */
-export const usePickupDelivery = () => {
+export const useMarkPickedUp = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (deliveryId: string) => deliveryApi.pickupDelivery(deliveryId),
+    mutationFn: (deliveryId: string) => deliveryService.markPickedUp(deliveryId),
     
-    onMutate: async (deliveryId) => {
-      await queryClient.cancelQueries({ queryKey: deliveryKeys.all });
-
-      const previousDeliveries = queryClient.getQueryData<DeliveryItem[]>(deliveryKeys.my());
-
-      queryClient.setQueryData<DeliveryItem[]>(deliveryKeys.my(), (old = []) => {
-        return old.map(delivery =>
-          delivery.id === deliveryId
-            ? { ...delivery, status: 'picked_up' as const }
-            : delivery
-        );
-      });
-
-      return { previousDeliveries };
-    },
-    
-    onError: (err, deliveryId, context) => {
-      if (context?.previousDeliveries) {
-        queryClient.setQueryData(deliveryKeys.my(), context.previousDeliveries);
-      }
-    },
-    
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: deliveryKeys.all });
+    onSuccess: (updatedDelivery) => {
+      // Update the specific delivery in cache
+      queryClient.setQueryData(
+        deliveryKeys.byId(updatedDelivery.id),
+        updatedDelivery
+      );
+      
+      // Invalidate my deliveries list
+      queryClient.invalidateQueries({ queryKey: deliveryKeys.my() });
     },
   });
 };
 
 /**
  * Hook to mark delivery as out for delivery
- * Uses the new /api/v1/deliveries/{id}/out-for-delivery endpoint
  */
 export const useMarkOutForDelivery = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (deliveryId: string) => deliveryApi.markOutForDelivery(deliveryId),
+    mutationFn: (deliveryId: string) => deliveryService.markOutForDelivery(deliveryId),
     
-    onMutate: async (deliveryId) => {
-      await queryClient.cancelQueries({ queryKey: deliveryKeys.all });
-
-      const previousDeliveries = queryClient.getQueryData<DeliveryItem[]>(deliveryKeys.my());
-
-      queryClient.setQueryData<DeliveryItem[]>(deliveryKeys.my(), (old = []) => {
-        return old.map(delivery =>
-          delivery.id === deliveryId
-            ? { ...delivery, status: 'out_for_delivery' as const }
-            : delivery
-        );
-      });
-
-      return { previousDeliveries };
-    },
-    
-    onError: (err, deliveryId, context) => {
-      if (context?.previousDeliveries) {
-        queryClient.setQueryData(deliveryKeys.my(), context.previousDeliveries);
-      }
-    },
-    
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: deliveryKeys.all });
+    onSuccess: (updatedDelivery) => {
+      // Update the specific delivery in cache
+      queryClient.setQueryData(
+        deliveryKeys.byId(updatedDelivery.id),
+        updatedDelivery
+      );
+      
+      // Invalidate my deliveries list
+      queryClient.invalidateQueries({ queryKey: deliveryKeys.my() });
     },
   });
 };
 
 /**
- * Hook to start a delivery (mark as picked up) - Legacy method
+ * Hook to mark delivery as delivered
  */
-export const useStartDelivery = () => {
+export const useMarkDelivered = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (deliveryId: string) => deliveryApi.startDelivery(deliveryId),
+    mutationFn: (deliveryId: string) => deliveryService.markDelivered(deliveryId),
     
-    onMutate: async (deliveryId) => {
-      await queryClient.cancelQueries({ queryKey: deliveryKeys.all });
-
-      const previousDeliveries = queryClient.getQueryData<DeliveryItem[]>(deliveryKeys.my());
-
-      queryClient.setQueryData<DeliveryItem[]>(deliveryKeys.my(), (old = []) => {
-        return old.map(delivery =>
-          delivery.id === deliveryId
-            ? { ...delivery, status: 'picked_up' as const }
-            : delivery
-        );
-      });
-
-      return { previousDeliveries };
-    },
-    
-    onError: (err, deliveryId, context) => {
-      if (context?.previousDeliveries) {
-        queryClient.setQueryData(deliveryKeys.my(), context.previousDeliveries);
-      }
-    },
-    
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: deliveryKeys.all });
+    onSuccess: (updatedDelivery) => {
+      // Update the specific delivery in cache
+      queryClient.setQueryData(
+        deliveryKeys.byId(updatedDelivery.id),
+        updatedDelivery
+      );
+      
+      // Invalidate my deliveries list and earnings
+      queryClient.invalidateQueries({ queryKey: deliveryKeys.my() });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
     },
   });
-};
-
-/**
- * Hook to complete a delivery
- */
-export const useCompleteDelivery = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (deliveryId: string) => deliveryApi.completeDelivery(deliveryId),
-    
-    onMutate: async (deliveryId) => {
-      await queryClient.cancelQueries({ queryKey: deliveryKeys.all });
-
-      const previousDeliveries = queryClient.getQueryData<DeliveryItem[]>(deliveryKeys.my());
-
-      queryClient.setQueryData<DeliveryItem[]>(deliveryKeys.my(), (old = []) => {
-        return old.map(delivery =>
-          delivery.id === deliveryId
-            ? { ...delivery, status: 'delivered' as const }
-            : delivery
-        );
-      });
-
-      return { previousDeliveries };
-    },
-    
-    onError: (err, deliveryId, context) => {
-      if (context?.previousDeliveries) {
-        queryClient.setQueryData(deliveryKeys.my(), context.previousDeliveries);
-      }
-    },
-    
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: deliveryKeys.all });
-    },
-  });
-};
-
-/**
- * Hook to update delivery status
- */
-export const useUpdateDeliveryStatus = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ deliveryId, status }: { deliveryId: string; status: string }) => 
-      deliveryApi.updateDeliveryStatus(deliveryId, status),
-    
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: deliveryKeys.all });
-    },
-  });
-};
-
-/**
- * Utility hook to invalidate all delivery queries
- */
-export const useInvalidateDeliveries = () => {
-  const queryClient = useQueryClient();
-  
-  return () => {
-    queryClient.invalidateQueries({ queryKey: deliveryKeys.all });
-  };
 };

@@ -13,15 +13,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { riderAuthAPI, analyticsAPI, riderApi } from '../../services';
-import apiService from '../../services/api';
+import { riderService, analyticsService } from '../../services';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import LanguageSelector from '../../components/LanguageSelector';
 import { useStaggeredFadeIn } from '../../hooks/useStaggeredFadeIn';
 import { useCountUp } from '../../hooks/useCountUp';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { useUpdateRiderStatus, useUpdateRiderAvailability } from '../../hooks/useRiderStatus';
+import { useUpdateRiderStatus, useUpdateAvailability } from '../../hooks';
 import { TabScreenProps } from '../../types/navigation.types';
 import CommonView from '../../components/CommonView';
 import { useFloatingTabBarHeight } from '../../hooks/useFloatingTabBarHeight';
@@ -44,7 +43,7 @@ export default function ProfileScreen({ navigation, route }: Props) {
   
   // Rider status hooks
   const updateStatusMutation = useUpdateRiderStatus();
-  const updateAvailabilityMutation = useUpdateRiderAvailability();
+  const updateAvailabilityMutation = useUpdateAvailability();
   
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -98,7 +97,7 @@ export default function ProfileScreen({ navigation, route }: Props) {
       duration: 800,
       useNativeDriver: true,
     }).start();
-  }, [fadeAnim]);
+  }, []);
 
   const handleLogout = () => {
     Alert.alert(
@@ -333,7 +332,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         console.log('📊 Fetching analytics data...');
         
         // Fetch all stats from analytics summary endpoint
-        const summaryRes = await analyticsAPI.getSummary().catch((error) => {
+        const summaryRes = await analyticsService.getRiderSummary().catch((error) => {
           console.warn('⚠️ Analytics summary failed:', error?.response?.data || error.message);
           return null;
         });
@@ -363,7 +362,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         }
         
         // Fetch balance if needed
-        const balanceRes = await analyticsAPI.getBalance().catch((error) => {
+        const balanceRes = await analyticsService.getRiderBalance().catch((error) => {
           console.warn('⚠️ Balance fetch failed:', error?.response?.data || error.message);
           return null;
         });
@@ -430,7 +429,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
     } catch (e: any) {
       try {
         // Fallback to availability mutation
-        await updateAvailabilityMutation.mutateAsync(value);
+        await updateAvailabilityMutation.mutateAsync({ available: value });
         console.log(`✅ Rider availability updated to: ${value}`);
         
         // Show success alert for fallback
@@ -464,7 +463,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
       // }
       
       // Then refresh analytics data
-      const summaryRes = await analyticsAPI.getSummary().catch((error) => {
+      const summaryRes = await analyticsService.getRiderSummary().catch((error) => {
         console.warn('⚠️ Refresh analytics failed:', error?.response?.data || error.message);
         return null;
       });
@@ -488,7 +487,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         console.log('📊 Refresh: No analytics data, keeping current values');
       }
       
-      const balanceRes = await analyticsAPI.getBalance().catch((error) => {
+      const balanceRes = await analyticsService.getRiderBalance().catch((error) => {
         console.warn('⚠️ Refresh balance failed:', error?.response?.data || error.message);
         return null;
       });
