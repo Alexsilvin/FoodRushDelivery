@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
@@ -10,19 +10,33 @@ import {
   Image,
   TextInput,
   StatusBar,
+  ActivityIndicator,
   Animated,
+  ListRenderItem,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { riderAPI } from '../../services/api';
-import { Delivery, RiderStatus } from '../../types/api';
-import { mapApiDeliveries } from '../../utils/mappers';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import * as Location from 'expo-location';
-import axios from 'axios';
+import NotificationBadge from '../../components/NotificationBadge';
+
+// React Query hooks
+import { 
+  useMyDeliveries, 
+  useAcceptDelivery, 
+  usePickupDelivery, 
+  useMarkOutForDelivery,
+  useCompleteDelivery 
+} from '../../hooks/useDeliveries';
+import { useRiderAnalytics, useRiderBalance } from '../../hooks/useRider';
+
+// Utils
+import { mapDeliveryItemsToLegacy, mapLegacyToDelivery } from '../../utils/deliveryMappers';
+import { Delivery } from '../../types/api';
+import CommonView from '../../components/CommonView';
+import { useFloatingTabBarHeight } from '../../hooks/useFloatingTabBarHeight';
 const driverImg = require('../../../assets/driver.png');
 
 // Local UI fallback formatting helpers
@@ -31,86 +45,71 @@ const formatCurrency = (amount?: number) => {
   try { return `$${amount.toFixed(2)}`; } catch { return `$${amount}`; }
 };
 
-export default function DashboardScreen({ navigation }: any) {
+import { TabScreenProps } from '../../types/navigation.types';
+
+type Props = TabScreenProps<'Dashboard'>;
+
+export default function DashboardScreen({ navigation, route }: Props) {
   const { user } = useAuth();
   const { theme } = useTheme();
   const { t } = useLanguage();
-  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
-  const [filteredDeliveries, setFilteredDeliveries] = useState<Delivery[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const tabBarHeight = useFloatingTabBarHeight();
+  
+  // Local state for UI
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'accepted'>('all');
-  const [stats, setStats] = useState({
-    todayEarnings: 0,
-    completedDeliveries: 0,
-    rating: 0,
-    activeDeliveries: 0,
-    balance: 0,
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  
+  // Animation for collapsible header
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headerHeight = 400; // Height of the header section
 
-  // Animation values
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  // React Query hooks for data fetching
+  const {
+    data: deliveryItems = [],
+    isLoading: deliveriesLoading,
+    error: deliveriesError,
+    refetch: refetchDeliveries,
+  } = useMyDeliveries({ limit: 50, offset: 0 });
 
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    setError(null);
-    try {
-      // Fetch analytics summary and balance
-      const [summaryRes, balanceRes] = await Promise.all([
-        axios.get('/api/v1/analytics/riders/my/summary').catch(() => ({ data: {} })),
-        axios.get('/api/v1/analytics/riders/my/balance').catch(() => ({ data: {} })),
-      ]);
-      const summary = summaryRes?.data || {};
-      const balance = balanceRes?.data?.balance ?? 0;
-      setStats({
-        todayEarnings: summary.todayEarnings ?? 0,
-        completedDeliveries: summary.completedDeliveries ?? 0,
-        rating: summary.rating ?? 0,
-        activeDeliveries: summary.activeDeliveries ?? 0,
-        balance,
-      });
-      // Fetch deliveries separately if needed
-      const currentRes = await riderAPI.getCurrentDeliveries().catch(() => ({ success: false, data: [] }));
-      if (currentRes?.data) {
-        setDeliveries(mapApiDeliveries(currentRes.data));
-      }
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load dashboard');
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+  const {
+    data: analytics,
+    isLoading: analyticsLoading,
+    error: analyticsError,
+  } = useRiderAnalytics();
 
-  useEffect(() => {
-    fetchData();
-    
-    // Entrance animation
-  Animated.parallel([ 
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 50,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, slideAnim, scaleAnim, fetchData]);
+  const {
+    data: balance = 0,
+    isLoading: balanceLoading,
+  } = useRiderBalance();
 
-  const filterDeliveries = useCallback(() => {
+  // Mutations for delivery actions
+  const acceptDeliveryMutation = useAcceptDelivery();
+  const pickupDeliveryMutation = usePickupDelivery();
+  const markOutForDeliveryMutation = useMarkOutForDelivery();
+  const completeDeliveryMutation = useCompleteDelivery();
+
+  // Convert new API format to legacy format for existing UI
+  const deliveries = useMemo(() => {
+    if (!Array.isArray(deliveryItems)) return [];
+    const legacyDeliveries = mapDeliveryItemsToLegacy(deliveryItems);
+    return legacyDeliveries.map(mapLegacyToDelivery);
+  }, [deliveryItems]);
+
+  // Combine stats from analytics and balance
+  const stats = useMemo(() => ({
+    todayEarnings: (analytics as any)?.todayEarnings || 0,
+    completedDeliveries: (analytics as any)?.completedDeliveries || 0,
+    rating: (analytics as any)?.rating || 0,
+    activeDeliveries: (analytics as any)?.activeDeliveries || 0,
+    balance,
+  }), [analytics, balance]);
+
+  // Loading and error states
+  const loading = deliveriesLoading || analyticsLoading || balanceLoading;
+  const error = deliveriesError || analyticsError;
+
+  // Filter deliveries based on search and status
+  const filteredDeliveries = useMemo(() => {
     let filtered = deliveries;
 
     // Filter by status
@@ -130,20 +129,19 @@ export default function DashboardScreen({ navigation }: any) {
       });
     }
 
-    setFilteredDeliveries(filtered);
+    return filtered;
   }, [deliveries, searchQuery, filterStatus]);
 
-  useEffect(() => {
-    filterDeliveries();
-  }, [filterDeliveries]);
 
+  // Refresh function using React Query
+  const onRefresh = useCallback(async () => {
+    await Promise.all([
+      refetchDeliveries(),
+      // Analytics and balance will be refetched automatically due to React Query
+    ]);
+  }, [refetchDeliveries]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchData().finally(() => setRefreshing(false));
-  };
-
-  const handleAcceptDelivery = (deliveryId: string) => {
+  const handleAcceptDelivery = useCallback((deliveryId: string) => {
     Alert.alert(
       t('acceptDelivery'),
       t('acceptDeliveryConfirmation'),
@@ -152,25 +150,29 @@ export default function DashboardScreen({ navigation }: any) {
         {
           text: t('accept'),
           onPress: () => {
-            riderAPI.acceptDelivery(deliveryId)
-              .then(res => {
-                setDeliveries(prev => prev.map(d => d.id === deliveryId ? { ...d, status: res.data?.status || 'accepted' } : d));
+            acceptDeliveryMutation.mutate(deliveryId, {
+              onSuccess: () => {
                 Alert.alert(t('success'), t('deliveryAccepted'));
-              })
-              .catch(err => {
-                console.error('Accept failed', err);
-                Alert.alert(t('error'), err?.response?.data?.message || 'Failed to accept delivery');
-              });
+              },
+              onError: (error: any) => {
+                console.error('Accept failed', error);
+                Alert.alert(t('error'), error?.response?.data?.message || 'Failed to accept delivery');
+              },
+            });
           },
         },
       ]
     );
-  };
+  }, [t, acceptDeliveryMutation]);
 
-  const handleDeclineDelivery = (deliveryId: string) => {
-    // If backend supports decline endpoint integrate here; for now just remove locally
-    setDeliveries(prev => prev.filter(delivery => delivery.id !== deliveryId));
-  };
+  const handleDeclineDelivery = useCallback((deliveryId: string) => {
+    // For now, just show a message since decline endpoint might not be available
+    Alert.alert(
+      'Decline Delivery',
+      'This feature will be available soon.',
+      [{ text: 'OK' }]
+    );
+  }, []);
 
   const handleViewDeliveryDetails = (deliveryId: string) => {
     navigation.navigate('DeliveryDetails', { deliveryId });
@@ -206,24 +208,15 @@ export default function DashboardScreen({ navigation }: any) {
         longitude: delivery.dropoffLng || delivery.lng || -73.9851,
       };
 
-      // Navigate to the MapScreen with proper restaurant and customer locations
-      navigation.navigate('Map', {
-        driverLocation,
-        restaurantLocation: restaurantCoords,
-        customerLocation: customerCoords,
-        deliveryId: delivery.id,
-        deliveryStatus: delivery.status,
-        navigationMode: delivery.status === 'accepted' ? 'toRestaurant' : 'toCustomer',
-        customerName: delivery.customerName,
-        restaurantName: delivery.restaurant,
-      });
+      // Navigate to the MapScreen (it will handle getting location internally)
+      navigation.navigate('Map');
     } catch (error) {
       console.error('Error fetching location:', error);
       Alert.alert('Error', 'Unable to fetch your current location. Please try again.');
     }
   };
 
-  const handleMarkAsPickedUp = async (delivery: Delivery) => {
+  const handleMarkAsPickedUp = useCallback(async (delivery: Delivery) => {
     Alert.alert(
       'Mark as Picked Up',
       'Are you sure you want to mark this delivery as picked up?',
@@ -232,52 +225,229 @@ export default function DashboardScreen({ navigation }: any) {
         {
           text: 'Confirm',
           onPress: async () => {
-            // Update delivery status locally
-            setDeliveries(prev => prev.map(d => 
-              d.id === delivery.id ? { ...d, status: 'picked_up' } : d
-            ));
-            
-            // Navigate to customer location after pickup
-            try {
-              const { status } = await Location.requestForegroundPermissionsAsync();
-              if (status === 'granted') {
-                const location = await Location.getCurrentPositionAsync({
-                  accuracy: Location.Accuracy.High,
-                });
-
-                const driverLocation = {
-                  latitude: location.coords.latitude,
-                  longitude: location.coords.longitude,
-                };
-
-                // Mock customer coordinates
-                const customerCoords = {
-                  latitude: delivery.dropoffLat || delivery.lat || 40.7589,
-                  longitude: delivery.dropoffLng || delivery.lng || -73.9851,
-                };
-
-                // Navigate to customer location
-                navigation.navigate('Map', {
-                  driverLocation,
-                  customerLocation: customerCoords,
-                  deliveryId: delivery.id,
-                  deliveryStatus: 'picked_up',
-                  navigationMode: 'toCustomer', // Now going to customer
-                  customerName: delivery.customerName,
-                  restaurantName: delivery.restaurant,
-                });
-              }
-            } catch (error) {
-              console.error('Error getting location for customer navigation:', error);
-              Alert.alert('Success', 'Delivery marked as picked up!');
-            }
+            pickupDeliveryMutation.mutate(delivery.id, {
+              onSuccess: () => {
+                Alert.alert('Success', 'Delivery marked as picked up!');
+                
+                // Navigate to customer location after pickup
+                handleNavigateToCustomer(delivery);
+              },
+              onError: (error: any) => {
+                console.error('Pickup delivery failed', error);
+                Alert.alert('Error', error?.response?.data?.message || 'Failed to mark as picked up');
+              },
+            });
           },
         },
       ]
     );
-  };
+  }, [pickupDeliveryMutation]);
 
-  const renderDeliveryCard = (delivery: Delivery) => (
+  const handleNavigateToCustomer = useCallback(async (delivery: Delivery) => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+
+        const driverLocation = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        };
+
+        const customerCoords = {
+          latitude: delivery.dropoffLat || delivery.lat || 40.7589,
+          longitude: delivery.dropoffLng || delivery.lng || -73.9851,
+        };
+
+        navigation.navigate('Map');
+      }
+    } catch (error) {
+      console.error('Error getting location for customer navigation:', error);
+    }
+  }, [navigation]);
+
+  const handleMarkOutForDelivery = useCallback(async (delivery: Delivery) => {
+    Alert.alert(
+      'Mark as Out for Delivery',
+      'Are you sure you want to mark this delivery as out for delivery?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            markOutForDeliveryMutation.mutate(delivery.id, {
+              onSuccess: () => {
+                Alert.alert('Success', 'Delivery marked as out for delivery!');
+              },
+              onError: (error: any) => {
+                console.error('Mark out for delivery failed', error);
+                Alert.alert('Error', error?.response?.data?.message || 'Failed to mark as out for delivery');
+              },
+            });
+          },
+        },
+      ]
+    );
+  }, [markOutForDeliveryMutation]);
+
+  const handleCompleteDelivery = useCallback(async (delivery: Delivery) => {
+    Alert.alert(
+      'Complete Delivery',
+      'Are you sure you want to mark this delivery as completed?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete',
+          onPress: async () => {
+            completeDeliveryMutation.mutate(delivery.id, {
+              onSuccess: () => {
+                Alert.alert('Success', 'Delivery completed successfully!');
+              },
+              onError: (error: any) => {
+                console.error('Complete delivery failed', error);
+                Alert.alert('Error', error?.response?.data?.message || 'Failed to complete delivery');
+              },
+            });
+          },
+        },
+      ]
+    );
+  }, [completeDeliveryMutation]);
+
+  // Header component for FlatList
+  const renderHeader = () => (
+    <Animated.View
+      style={[
+        styles.headerContainer,
+        {
+          transform: [
+            {
+              translateY: scrollY.interpolate({
+                inputRange: [0, headerHeight],
+                outputRange: [0, -headerHeight / 2],
+                extrapolate: 'clamp',
+              }),
+            },
+          ],
+          opacity: scrollY.interpolate({
+            inputRange: [0, headerHeight / 2, headerHeight],
+            outputRange: [1, 0.8, 0.3],
+            extrapolate: 'clamp',
+          }),
+        },
+      ]}
+    >
+      <LinearGradient 
+        colors={theme.isDark 
+          ? [theme.colors.primary, theme.colors.secondary] 
+          : ['#1E40AF', '#3B82F6']} 
+        style={[styles.header, { paddingTop: 60 }]}
+      >
+        <View style={styles.headerTop}>
+          <View style={styles.greetingContainer}>
+            <Text style={styles.greeting}>{t('welcomeBack') || 'Welcome back'}, {user?.firstName || 'User'}!</Text>
+            <Text style={styles.subGreeting}>{t('readyToDeliver')}</Text>
+          </View>
+          <View style={styles.notificationContainer}>
+            <NotificationBadge size="medium" navigation={navigation} />
+          </View>
+        </View>
+
+        {/* Driver image with reduced opacity */}
+        <View style={styles.driverImageContainer}>
+          <Image source={driverImg} style={styles.driverImage} resizeMode="contain" alt="" />
+        </View>
+
+        <View style={styles.statsContainer}>
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}> 
+            <Text style={[styles.statValue, { color: theme.colors.text }]}>XAF {stats.todayEarnings}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('todayEarnings')}</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.completedDeliveries}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('completed')}</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.rating}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('rating')}</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.statValue, { color: theme.colors.text }]}>XAF {typeof stats.balance === 'number' ? stats.balance : 0}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('balance')}</Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* Search and Filter Section */}
+      <View style={[styles.content, { backgroundColor: 'transparent', paddingBottom: 0 }]}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{t('availableDeliveries')}</Text>
+          <TouchableOpacity onPress={onRefresh}>
+            <Ionicons name="refresh-outline" size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchFilterContainer}>
+          <View style={[styles.searchContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.colors.text }]}
+              placeholder={t('searchDeliveries')}
+              placeholderTextColor={theme.colors.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+          
+          <View style={styles.filterContainer}>
+            <TouchableOpacity
+              style={[
+                styles.filterButton, 
+                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                filterStatus === 'all' && { backgroundColor: theme.colors.primary }
+              ]}
+              onPress={() => setFilterStatus('all')}
+            >
+              <Text style={[
+                styles.filterButtonText, 
+                { color: filterStatus === 'all' ? '#FFFFFF' : theme.colors.text }
+              ]}>{t('all')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterButton, 
+                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                filterStatus === 'pending' && { backgroundColor: theme.colors.primary }
+              ]}
+              onPress={() => setFilterStatus('pending')}
+            >
+              <Text style={[
+                styles.filterButtonText, 
+                { color: filterStatus === 'pending' ? '#FFFFFF' : theme.colors.text }
+              ]}>{t('pending')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterButton, 
+                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                filterStatus === 'accepted' && { backgroundColor: theme.colors.primary }
+              ]}
+              onPress={() => setFilterStatus('accepted')}
+            >
+              <Text style={[
+                styles.filterButtonText, 
+                { color: filterStatus === 'accepted' ? '#FFFFFF' : theme.colors.text }
+              ]}>{t('accepted')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+
+  const renderDeliveryCard: ListRenderItem<Delivery> = ({ item: delivery }) => (
     <TouchableOpacity 
       key={delivery.id} 
       style={[styles.deliveryCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
@@ -344,22 +514,78 @@ export default function DashboardScreen({ navigation }: any) {
       )}
 
       {delivery.status === 'picked_up' && (
+        <View style={styles.deliveryActions}>
+          <TouchableOpacity
+            style={[styles.outForDeliveryButton, { backgroundColor: '#F59E0B' }]}
+            onPress={() => handleMarkOutForDelivery(delivery)}
+          >
+            <Ionicons name="car" size={16} color="#FFFFFF" />
+            <Text style={styles.outForDeliveryButtonText}>{t('markOutForDelivery') || 'Out for Delivery'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {delivery.status === 'delivering' && (
+        <View style={styles.deliveryActions}>
+          <TouchableOpacity
+            style={[styles.completeButton, { backgroundColor: '#10B981' }]}
+            onPress={() => handleCompleteDelivery(delivery)}
+          >
+            <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+            <Text style={styles.completeButtonText}>{t('completeDelivery') || 'Complete Delivery'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {(delivery.status === 'delivered' || delivery.status === 'completed') && (
         <View style={styles.statusContainer}>
-          <View style={[styles.statusBadge, { backgroundColor: '#8B5CF6' + '20' }]}>
-            <Text style={[styles.statusText, { color: '#8B5CF6' }]}>{t('pickedUpDelivering') || 'Picked Up - Delivering'}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: '#10B981' + '20' }]}>
+            <Text style={[styles.statusText, { color: '#10B981' }]}>{t('deliveryCompleted') || 'Delivery Completed'}</Text>
           </View>
         </View>
       )}
     </TouchableOpacity>
   );
 
+  // Empty state component
+  const renderEmptyState = () => {
+    if (loading) {
+      return (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary, marginTop: 16 }]}>
+            {t('loading') || 'Loading...'}
+          </Text>
+        </View>
+      );
+    }
+    
+    if (error) {
+      return (
+        <View style={styles.emptyState}>
+          <Ionicons name="warning-outline" size={48} color={theme.colors.error} />
+          <Text style={[styles.emptyTitle, { color: theme.colors.error }]}>{t('error')}</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
+            {error?.message || 'Failed to load data'}
+          </Text>
+          <TouchableOpacity onPress={onRefresh} style={{ marginTop: 12 }}>
+            <Text style={{ color: theme.colors.primary }}>{t('retry') || 'Retry'}</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.emptyState}>
+        <Ionicons name="car-outline" size={64} color={theme.colors.textSecondary} />
+        <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>{t('noDeliveries')}</Text>
+        <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{t('checkBackLater')}</Text>
+      </View>
+    );
+  };
+
   return (
-    <View style={[styles.wrapper, { backgroundColor: theme.colors.background }]}>
-      <StatusBar 
-        barStyle="light-content"
-        backgroundColor="transparent"
-        translucent={true}
-      />
+    <CommonView showStatusBar={true} paddingHorizontal={0}>
       {/* Conditional background - image for light mode, dark color for dark mode */}
       {!theme.isDark ? (
         <Image 
@@ -372,137 +598,34 @@ export default function DashboardScreen({ navigation }: any) {
         <View style={[styles.darkBackground, { backgroundColor: theme.colors.background }]} />
       )}
       
-      <ScrollView
+      <FlatList
+        data={filteredDeliveries}
+        renderItem={renderDeliveryCard}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyState}
         style={[styles.container, { backgroundColor: 'transparent' }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
+        contentContainerStyle={{
+          flexGrow: 1,
 
-        <LinearGradient 
-          colors={theme.isDark 
-            ? [theme.colors.primary, theme.colors.secondary] 
-            : ['#1E40AF', '#3B82F6']} 
-          style={[styles.header, { paddingTop: 60 }]}
-        >
-          <Text style={styles.greeting}>{t('welcomeBack') || 'Welcome back'}, {user?.firstName || 'User'}!</Text>
-          <Text style={styles.subGreeting}>{t('readyToDeliver')}</Text>
-
-          {/* Driver image with reduced opacity */}
-          <View style={styles.driverImageContainer}>
-            <Image source={driverImg} style={styles.driverImage} resizeMode="contain" alt="" />
-          </View>
-
-          <View style={styles.statsContainer}>
-            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}> 
-              <Text style={[styles.statValue, { color: theme.colors.text }]}>XAF {stats.todayEarnings}</Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('todayEarnings')}</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-              <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.completedDeliveries}</Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('completed')}</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-              <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.rating}</Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('rating')}</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-              <Text style={[styles.statValue, { color: theme.colors.text }]}>XAF {stats.balance ?? 0}</Text>
-              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('balance')}</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-      <View style={[styles.content, { backgroundColor: 'transparent' }]}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{t('availableDeliveries')}</Text>
-          <TouchableOpacity onPress={onRefresh}>
-            <Ionicons name="refresh-outline" size={24} color={theme.colors.primary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Search and Filter Section */}
-        <View style={styles.searchFilterContainer}>
-          <View style={[styles.searchContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} style={styles.searchIcon} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
-              placeholder={t('searchDeliveries')}
-              placeholderTextColor={theme.colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-          
-          <View style={styles.filterContainer}>
-            <TouchableOpacity
-              style={[
-                styles.filterButton, 
-                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-                filterStatus === 'all' && { backgroundColor: theme.colors.primary }
-              ]}
-              onPress={() => setFilterStatus('all')}
-            >
-              <Text style={[
-                styles.filterButtonText, 
-                { color: filterStatus === 'all' ? '#FFFFFF' : theme.colors.text }
-              ]}>{t('all')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton, 
-                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-                filterStatus === 'pending' && { backgroundColor: theme.colors.primary }
-              ]}
-              onPress={() => setFilterStatus('pending')}
-            >
-              <Text style={[
-                styles.filterButtonText, 
-                { color: filterStatus === 'pending' ? '#FFFFFF' : theme.colors.text }
-              ]}>{t('pending')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton, 
-                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-                filterStatus === 'accepted' && { backgroundColor: theme.colors.primary }
-              ]}
-              onPress={() => setFilterStatus('accepted')}
-            >
-              <Text style={[
-                styles.filterButtonText, 
-                { color: filterStatus === 'accepted' ? '#FFFFFF' : theme.colors.text }
-              ]}>{t('accepted')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {loading && (
-          <View style={styles.emptyState}>
-            <Ionicons name="refresh" size={48} color={theme.colors.textSecondary} />
-            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{t('loading') || 'Loading...'}</Text>
-          </View>
+          paddingBottom: tabBarHeight, // Use calculated tab bar height
+        }}
+        refreshControl={
+          <RefreshControl 
+            refreshing={deliveriesLoading || analyticsLoading || balanceLoading} 
+            onRefresh={onRefresh}
+            colors={[theme.colors.primary]}
+            tintColor={theme.colors.primary}
+          />
+        }
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
         )}
-        {!!error && !loading && (
-          <View style={styles.emptyState}>
-            <Ionicons name="warning-outline" size={48} color={theme.colors.error} />
-            <Text style={[styles.emptyTitle, { color: theme.colors.error }]}>{t('error')}</Text>
-            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{error}</Text>
-            <TouchableOpacity onPress={fetchData} style={{ marginTop: 12 }}>
-              <Text style={{ color: theme.colors.primary }}>{t('retry') || 'Retry'}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {!loading && !error && (filteredDeliveries.length > 0 ? (
-          filteredDeliveries.map(renderDeliveryCard)
-        ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="car-outline" size={64} color={theme.colors.textSecondary} />
-            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>{t('noDeliveries')}</Text>
-            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>{t('checkBackLater')}</Text>
-          </View>
-        ))}
-      </View>
-    </ScrollView>
-    </View>
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+      />
+    </CommonView>
   );
 }
 
@@ -510,6 +633,9 @@ const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
     backgroundColor: '#F9FAFB',
+  },
+  headerContainer: {
+    zIndex: 1,
   },
   backgroundImage: {
     position: 'absolute',
@@ -552,39 +678,65 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 30,
   },
-  greeting: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  subGreeting: {
-    fontSize: 16,
-    color: '#DBEAFE',
-    marginBottom: 30,
-  },
-  statsContainer: {
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 20,
   },
-  statCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
+  greetingContainer: {
     flex: 1,
-    marginHorizontal: 4,
+    paddingRight: 16,
   },
-  statValue: {
+  greeting: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 4,
+    lineHeight: 30,
+  },
+  subGreeting: {
+    fontSize: 14,
+    color: '#DBEAFE',
+    lineHeight: 20,
+  },
+  notificationContainer: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 48,
+    minHeight: 48,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 70,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 4,
+    textAlign: 'center',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#DBEAFE',
     textAlign: 'center',
+    lineHeight: 14,
   },
   content: {
     padding: 20,
@@ -651,14 +803,17 @@ const styles = StyleSheet.create({
   },
   deliveryCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    marginHorizontal: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
   },
   deliveryHeader: {
     flexDirection: 'row',
@@ -693,16 +848,18 @@ const styles = StyleSheet.create({
   deliveryActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 8,
   },
   declineButton: {
     backgroundColor: '#FEF2F2',
     borderColor: '#F87171',
     borderWidth: 1,
     borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     flex: 1,
-    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   declineButtonText: {
     color: '#DC2626',
@@ -712,10 +869,11 @@ const styles = StyleSheet.create({
   acceptButton: {
     backgroundColor: '#1E40AF',
     borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     flex: 1,
-    marginLeft: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   acceptButtonText: {
     color: '#FFFFFF',
@@ -756,34 +914,64 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E40AF',
     borderRadius: 8,
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     flex: 1,
-    marginRight: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
   },
   navigateButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
-    fontSize: 14,
-    marginLeft: 6,
+    fontSize: 13,
   },
   pickupButton: {
     backgroundColor: '#8B5CF6',
     borderRadius: 8,
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     flex: 1,
-    marginLeft: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
   },
   pickupButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
-    fontSize: 14,
-    marginLeft: 6,
+    fontSize: 13,
+  },
+  outForDeliveryButton: {
+    backgroundColor: '#F59E0B',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  outForDeliveryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  completeButton: {
+    backgroundColor: '#10B981',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  completeButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 13,
   },
 });

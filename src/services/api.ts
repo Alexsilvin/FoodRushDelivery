@@ -1,27 +1,61 @@
-import axios from 'axios';
+import axios, { AxiosInstance, AxiosConfig, AxiosError } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ApiResponse, Delivery, EarningsSummary, RiderStatus, User } from '../types/api';
+import { ApiResponse, Delivery, EarningsSummary, RiderStatus, User, Restaurant } from '../types/api';
 
-// Base URL for the API
+// ====================== TYPES & INTERFACES ======================
+
+interface RequestConfig extends AxiosConfig {
+  cache?: boolean;
+  cacheDuration?: number;
+  retries?: number;
+  timeout?: number;
+}
+
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
+interface ApiError {
+  code: string;
+  message: string;
+  status: number;
+  details?: any;
+}
+
+enum ErrorCode {
+  NETWORK_ERROR = 'NETWORK_ERROR',
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  FORBIDDEN = 'FORBIDDEN',
+  NOT_FOUND = 'NOT_FOUND',
+  VALIDATION_ERROR = 'VALIDATION_ERROR',
+  SERVER_ERROR = 'SERVER_ERROR',
+  TIMEOUT = 'TIMEOUT',
+  UNKNOWN = 'UNKNOWN',
+}
+
+// ====================== CONSTANTS ======================
+
 export const API_URL = 'https://foodrush-be.onrender.com/api/v1';
+const REQUEST_TIMEOUT = 30000; // 30 seconds
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes default
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
 
-// Centralized endpoint fragments (easy to adjust if backend changes)
 export const ENDPOINTS = {
-  // Legacy generic auth (kept for backward compatibility / fallback)
   auth: {
     register: '/auth/register',
     login: '/auth/login',
     forgotPassword: '/auth/forgot-password',
     resetPassword: '/auth/reset-password',
     me: '/auth/me',
-    updateProfile: '/auth/update-profile', // legacy endpoint
-    profile: '/auth/profile', // correct JWT endpoint
+    updateProfile: '/auth/update-profile',
+    profile: '/auth/profile',
     verifyEmail: '/auth/verify-email',
-    resendVerification: '/auth/resend-verification', // speculative
-    activateAccount: '/auth/activate-account', // speculative
+    resendVerification: '/auth/resend-verification',
+    activateAccount: '/auth/activate-account',
     changePassword: '/auth/change-password',
   },
-  // Rider-scoped auth & account endpoints (from provided API spec image)
   riderAuth: {
     register: '/riders/auth/register',
     registerAndApply: '/riders/auth/register-and-apply',
@@ -32,123 +66,431 @@ export const ENDPOINTS = {
     location: '/riders/my/location',
   },
   rider: {
-    status: '/riders/status', // GET current status
-    updateStatus: '/riders/status', // PATCH to update
+    status: '/riders/status',
+    updateStatus: '/riders/status',
     currentDeliveries: '/riders/deliveries/current',
+    myDeliveries: '/deliveries/my',
     deliveryHistory: '/riders/deliveries/history',
     deliveries: (id: string) => `/riders/deliveries/${id}`,
     accept: (id: string) => `/riders/deliveries/${id}/accept`,
     start: (id: string) => `/riders/deliveries/${id}/start`,
     complete: (id: string) => `/riders/deliveries/${id}/complete`,
     earnings: '/riders/earnings',
-    // Two variants seen in spec: /riders/my/location and /riders/location (alias)
     location: '/riders/location',
     locationMy: '/riders/my/location',
     vehicle: '/riders/vehicle',
-    availability: '/riders/my/availability',
-  }
+  },
+  analytics: {
+    summary: '/analytics/riders/my/summary',
+    balance: '/analytics/riders/my/balance',
+  },
+  restaurants: {
+    nearby: '/restaurants/nearby',
+  },
+  notifications: {
+    devices: '/notifications/devices',
+    register: '/notifications/devices',
+    unregister: (token: string) => `/notifications/devices/${token}`,
+    list: '/notifications',
+    unreadCount: '/notifications/unread-count',
+    markAsRead: (id: string) => `/notifications/${id}/read`,
+    markAllAsRead: '/notifications/mark-all-read',
+  },
 } as const;
 
-// Create axios instance with default config
-const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+// ====================== LOGGING SERVICE ======================
 
-// Request interceptor for adding auth token to requests
-const isExpired = (jwt?: string | null) => {
-  if (!jwt) return true;
-  const parts = jwt.split('.');
-  if (parts.length !== 3) return false; // not a standard JWT => assume not expired
-  try {
-    const b64 = parts[1].replace(/-/g,'+').replace(/_/g,'/');
-    // Provide fallback if atob is not defined (React Native)
-    const decode = (data: string) => {
-      if (typeof atob === 'function') return atob(data);
-      // Minimal polyfill using Buffer if available
-      const Buf: any = (global as any).Buffer;
-      if (Buf) return Buf.from(data, 'base64').toString('binary');
-      // As a last resort, return empty string to avoid throwing
-      return '';
+class Logger {
+  static info(message: string, data?: any) {
+    console.log(`[INFO] ${new Date().toISOString()} - ${message}`, data || '');
+  }
+
+  static warn(message: string, data?: any) {
+    console.warn(`[WARN] ${new Date().toISOString()} - ${message}`, data || '');
+  }
+
+  static error(message: string, error?: any) {
+    console.error(`[ERROR] ${new Date().toISOString()} - ${message}`, error || '');
+  }
+
+  static debug(message: string, data?: any) {
+    if (__DEV__) console.log(`[DEBUG] ${message}`, data || '');
+  }
+}
+
+// ====================== CACHE SERVICE ======================
+
+class CacheManager {
+  private cache = new Map<string, CacheEntry>();
+
+  set(key: string, data: any, duration = CACHE_DURATION) {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now() + duration,
+    });
+  }
+
+  get(key: string) {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.timestamp) {
+      this.cache.delete(key);
+      return null;
+    }
+    return entry.data;
+  }
+
+  clear(pattern?: string) {
+    if (!pattern) {
+      this.cache.clear();
+      return;
+    }
+    Array.from(this.cache.keys()).forEach((key) => {
+      if (key.includes(pattern)) this.cache.delete(key);
+    });
+  }
+
+  getCacheKey(url: string, params?: any): string {
+    return `${url}:${JSON.stringify(params || {})}`;
+  }
+}
+
+// ====================== JWT SERVICE ======================
+
+class JWTService {
+  static isExpired(jwt?: string | null, skewSeconds = 30): boolean {
+    if (!jwt) return true;
+    const parts = jwt.split('.');
+    if (parts.length !== 3) return false;
+
+    try {
+      const decoded = this.decode(jwt);
+      if (!decoded?.exp) return false;
+      const now = Math.floor(Date.now() / 1000) - skewSeconds;
+      return decoded.exp < now;
+    } catch (error) {
+      Logger.error('JWT parsing error', error);
+      return true;
+    }
+  }
+
+  static decode(jwt: string): { exp?: number } | null {
+    try {
+      const parts = jwt.split('.');
+      if (parts.length !== 3) return null;
+
+      const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const json = this.atobPolyfill(b64);
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  private static atobPolyfill(data: string): string {
+    if (typeof atob === 'function') return atob(data);
+    const Buf: any = (global as any).Buffer;
+    if (Buf) return Buf.from(data, 'base64').toString('binary');
+    throw new Error('Unable to decode JWT');
+  }
+}
+
+// ====================== ERROR HANDLER ======================
+
+class ErrorHandler {
+  static handle(error: any): ApiError {
+    if (error.response) {
+      return this.handleResponseError(error);
+    } else if (error.code === 'ECONNABORTED') {
+      return {
+        code: ErrorCode.TIMEOUT,
+        message: 'Request timeout',
+        status: 0,
+      };
+    } else if (!error.response) {
+      return {
+        code: ErrorCode.NETWORK_ERROR,
+        message: 'Network error. Please check your connection.',
+        status: 0,
+      };
+    }
+
+    return {
+      code: ErrorCode.UNKNOWN,
+      message: error.message || 'An unexpected error occurred',
+      status: 0,
     };
-    const json = decode(b64);
-    if (!json) return false;
-    const payload = JSON.parse(json);
-    if (!payload.exp) return false;
-    const now = Math.floor(Date.now()/1000) - 30; // 30s skew
-    return payload.exp < now;
-  } catch {
-    return false;
   }
-};
 
-api.interceptors.request.use(
-  async (config) => {
-    const token = await AsyncStorage.getItem('auth_token');
-    if (token) {
-      if (isExpired(token)) {
-        console.warn('Stored token appears expired; removing.');
-        await AsyncStorage.removeItem('auth_token');
-      } else {
-        config.headers.Authorization = `Bearer ${token}`;
-        // Some backends accept x-access-token
-        (config.headers as any)['x-access-token'] = token;
+  private static handleResponseError(error: AxiosError): ApiError {
+    const status = error.response?.status || 0;
+    const data: any = error.response?.data;
+
+    let code = ErrorCode.SERVER_ERROR;
+    let message = data?.message || 'Server error';
+
+    switch (status) {
+      case 400:
+        code = ErrorCode.VALIDATION_ERROR;
+        message = this.extractValidationMessage(data);
+        break;
+      case 401:
+        code = ErrorCode.UNAUTHORIZED;
+        message = 'Unauthorized. Please login again.';
+        break;
+      case 403:
+        code = ErrorCode.FORBIDDEN;
+        message = 'Access denied.';
+        break;
+      case 404:
+        code = ErrorCode.NOT_FOUND;
+        message = 'Resource not found.';
+        break;
+    }
+
+    return { code, message, status, details: data };
+  }
+
+  private static extractValidationMessage(data: any): string {
+    if (data?.errors) {
+      if (Array.isArray(data.errors)) {
+        return data.errors.join(', ');
       }
-    } else if (!config.url?.includes('login')) {
-      console.debug('Auth token missing for request', config.url);
+      if (typeof data.errors === 'object') {
+        return Object.entries(data.errors)
+          .map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg.join(', ') : msg}`)
+          .join('; ');
+      }
     }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Response interceptor for handling common errors
-api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  async (error) => {
-    const originalRequest = error.config;
-    
-    // Log error details for debugging
-    console.error(`API Error: ${error?.response?.status} - ${error?.response?.data?.message || error.message}`);
-    
-    // Handle 401 errors (unauthorized - token expired)
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      console.warn('401 received for', originalRequest.url);
-      // Clear invalid token so UI can force re-login
-      await AsyncStorage.removeItem('auth_token');
-    }
-    
-    // Handle 409 conflicts (duplicate resources)
-    if (error.response?.status === 409) {
-      console.warn('Resource conflict detected:', error.response.data);
-    }
-    
-    // Handle 404 errors (resource not found)
-    if (error.response?.status === 404) {
-      console.warn(`Endpoint not found: ${originalRequest.url}`);
-      // We'll just log this and let the caller handle it
-    }
-    
-    return Promise.reject(error);
+    return data?.message || 'Validation failed';
   }
-);
+}
 
-// API endpoints for generic authentication (non rider-specific; kept for fallback)
+// ====================== API SERVICE ======================
+
+class ApiService {
+  private api: AxiosInstance;
+  private cache: CacheManager;
+  private requestQueue: Map<string, Promise<any>> = new Map();
+
+  constructor() {
+    this.cache = new CacheManager();
+    this.api = axios.create({
+      baseURL: API_URL,
+      timeout: REQUEST_TIMEOUT,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    this.setupInterceptors();
+  }
+
+  private setupInterceptors() {
+    // Request interceptor
+    this.api.interceptors.request.use(
+      async (config) => {
+        const token = await AsyncStorage.getItem('auth_token');
+
+        if (token) {
+          if (JWTService.isExpired(token)) {
+            Logger.warn('Token expired, clearing storage');
+            await AsyncStorage.removeItem('auth_token');
+          } else {
+            config.headers.Authorization = `Bearer ${token}`;
+            (config.headers as any)['x-access-token'] = token;
+          }
+        }
+
+        Logger.debug(`Request: ${config.method?.toUpperCase()} ${config.url}`);
+        return config;
+      },
+      (error) => {
+        Logger.error('Request interceptor error', error);
+        return Promise.reject(error);
+      }
+    );
+
+    // Response interceptor
+    this.api.interceptors.response.use(
+      (response) => {
+        Logger.debug(`Response: ${response.status} ${response.config.url}`);
+        return response;
+      },
+      async (error) => {
+        const originalRequest = error.config;
+
+        // Handle 401 - Try token refresh first
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          originalRequest._retry = true;
+          
+          try {
+            Logger.warn('Received 401, attempting token refresh...');
+            const refreshToken = await AsyncStorage.getItem('refresh_token');
+            
+            if (refreshToken) {
+              // Try to refresh the token
+              const refreshResponse = await this.api.post('/auth/refresh', {
+                refreshToken: refreshToken
+              });
+              
+              const newAccessToken = refreshResponse.data?.data?.accessToken;
+              const newRefreshToken = refreshResponse.data?.data?.refreshToken;
+              
+              if (newAccessToken) {
+                await AsyncStorage.setItem('auth_token', newAccessToken);
+                if (newRefreshToken) {
+                  await AsyncStorage.setItem('refresh_token', newRefreshToken);
+                }
+                
+                // Update the original request with new token
+                originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                originalRequest.headers['x-access-token'] = newAccessToken;
+                
+                Logger.info('✅ Token refreshed successfully, retrying original request');
+                
+                // Retry the original request
+                return this.api(originalRequest);
+              }
+            }
+          } catch (refreshError) {
+            Logger.warn('⚠️ Token refresh failed:', refreshError);
+          }
+          
+          // If refresh fails, clear tokens and let the error propagate
+          Logger.warn('Token refresh failed, clearing auth tokens');
+          await AsyncStorage.removeItem('auth_token');
+          await AsyncStorage.removeItem('refresh_token');
+          this.cache.clear('auth');
+        }
+
+        Logger.error(
+          `API Error: ${error.response?.status} ${originalRequest.url}`,
+          error.response?.data?.message || error.message
+        );
+
+        return Promise.reject(error);
+      }
+    );
+  }
+
+  async request<T = any>(
+    method: string,
+    url: string,
+    data?: any,
+    config?: RequestConfig
+  ): Promise<ApiResponse<T>> {
+    const cacheKey = this.cache.getCacheKey(url, config?.params);
+    const cfg: RequestConfig = {
+      ...config,
+      cache: config?.cache ?? false,
+      cacheDuration: config?.cacheDuration ?? CACHE_DURATION,
+      retries: config?.retries ?? MAX_RETRIES,
+    };
+
+    // Check cache for GET requests
+    if (method.toUpperCase() === 'GET' && cfg.cache) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        Logger.debug(`Cache hit: ${url}`);
+        return cached;
+      }
+    }
+
+    // Prevent duplicate requests
+    if (this.requestQueue.has(cacheKey) && method.toUpperCase() === 'GET') {
+      return this.requestQueue.get(cacheKey);
+    }
+
+    const promise = this.executeRequest<T>(method, url, data, cfg);
+    this.requestQueue.set(cacheKey, promise);
+
+    try {
+      const response = await promise;
+      if (cfg.cache && method.toUpperCase() === 'GET') {
+        this.cache.set(cacheKey, response, cfg.cacheDuration);
+      }
+      return response;
+    } finally {
+      this.requestQueue.delete(cacheKey);
+    }
+  }
+
+  private async executeRequest<T = any>(
+    method: string,
+    url: string,
+    data?: any,
+    config?: RequestConfig
+  ): Promise<ApiResponse<T>> {
+    let lastError: any;
+
+    for (let attempt = 0; attempt <= (config?.retries || MAX_RETRIES); attempt++) {
+      try {
+        const response = await this.api({
+          method,
+          url,
+          data,
+          ...config,
+        });
+
+        return response.data;
+      } catch (error: any) {
+        lastError = error;
+
+        // Don't retry on 4xx errors (except 408, 429)
+        const status = error.response?.status;
+        if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+          throw ErrorHandler.handle(error);
+        }
+
+        // Retry logic
+        if (attempt < (config?.retries || MAX_RETRIES)) {
+          const delay = RETRY_DELAY * Math.pow(2, attempt); // Exponential backoff
+          Logger.warn(`Retry attempt ${attempt + 1}/${config?.retries} after ${delay}ms`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw ErrorHandler.handle(lastError);
+  }
+
+  get<T = any>(url: string, config?: RequestConfig) {
+    return this.request<T>('GET', url, undefined, config);
+  }
+
+  post<T = any>(url: string, data?: any, config?: RequestConfig) {
+    return this.request<T>('POST', url, data, config);
+  }
+
+  patch<T = any>(url: string, data?: any, config?: RequestConfig) {
+    return this.request<T>('PATCH', url, data, config);
+  }
+
+  put<T = any>(url: string, data?: any, config?: RequestConfig) {
+    return this.request<T>('PUT', url, data, config);
+  }
+
+  delete<T = any>(url: string, config?: RequestConfig) {
+    return this.request<T>('DELETE', url, undefined, config);
+  }
+
+  clearCache(pattern?: string) {
+    this.cache.clear(pattern);
+  }
+}
+
+// ====================== SINGLETON INSTANCE ======================
+
+const apiService = new ApiService();
+
+// ====================== AUTHENTICATION API ======================
+
 export const authAPI = {
-  // Register a new rider
   register: async (userData: {
     firstName: string;
     lastName: string;
     email: string;
     password: string;
     phoneNumber: string;
-    role?: string;
-    vehicleName?: string;
   }) => {
     try {
       const payload = {
@@ -159,418 +501,508 @@ export const authAPI = {
         role: 'rider',
       };
 
-      const response = await api.post<ApiResponse<{ token: string; user: User }>>(ENDPOINTS.auth.register, payload);
-      return response.data;
-    } catch (error: any) {
-      console.error(`Registration failed with status: ${error?.response?.status}`);
-      console.error(`Error details: ${JSON.stringify(error?.response?.data || {})}`);
+      const response = await apiService.post<{ token: string; user: User }>(
+        ENDPOINTS.auth.register,
+        payload
+      );
+
+      if (response.data?.token) {
+        await AsyncStorage.setItem('auth_token', response.data.token);
+        apiService.clearCache('auth');
+      }
+
+      return response;
+    } catch (error) {
+      Logger.error('Registration failed', error);
       throw error;
     }
   },
 
-  // Login with email and password
   login: async (email: string, password: string) => {
-    const response = await api.post<ApiResponse<{ token: string; user: User }>>(ENDPOINTS.auth.login, {
-      email,
-      password,
-    });
-    return response.data;
-  },
-
-  // ✅ Get rider state by email
-  getRiderState: async (email: string) => {
     try {
-      const response = await api.get<ApiResponse<{ state: string }>>(`/Api/V1/Riders?email=${encodeURIComponent(email)}`);
-      return response.data;
-    } catch (error: any) {
-      console.error(`Failed to fetch rider state: ${error?.response?.status}`);
+      const response = await apiService.post<{ token: string; user: User }>(
+        ENDPOINTS.auth.login,
+        { email, password }
+      );
+
+      if (response.data?.token) {
+        await AsyncStorage.setItem('auth_token', response.data.token);
+        apiService.clearCache('auth');
+      }
+
+      return response;
+    } catch (error) {
+      Logger.error('Login failed', error);
       throw error;
     }
   },
 
-  // Forgot password request
-  forgotPassword: async (email: string) => {
-    const response = await api.post<ApiResponse>(ENDPOINTS.auth.forgotPassword, { email });
-    return response.data;
+  logout: async () => {
+    await AsyncStorage.removeItem('auth_token');
+    await AsyncStorage.removeItem('refresh_token');
+    apiService.clearCache('auth');
+    Logger.info('User logged out');
   },
 
-  // Reset password with token
-  resetPassword: async (token: string, newPassword: string) => {
-    const response = await api.post<ApiResponse>(ENDPOINTS.auth.resetPassword, {
-      token,
-      newPassword,
-    });
-    return response.data;
-  },
-
-  // Get current user profile
   getProfile: async () => {
-    const response = await api.get<ApiResponse<User>>(ENDPOINTS.auth.me);
-    return response.data;
+    return apiService.get<User>(ENDPOINTS.auth.me, { cache: true, cacheDuration: 10 * 60 * 1000 });
   },
 
-  // Update user profile (legacy)
   updateProfile: async (userData: Partial<User>) => {
-    const response = await api.put<ApiResponse<User>>(ENDPOINTS.auth.updateProfile, userData);
-    return response.data;
+    const response = await apiService.patch<User>(ENDPOINTS.auth.profile, userData);
+    apiService.clearCache('auth');
+    return response;
   },
 
-  // Update profile using the correct endpoint with JWT
-  updateProfileJWT: async (userData: { firstName?: string; lastName?: string; email?: string; fullName?: string }) => {
-    try {
-      console.log('🔄 Making PATCH request to /api/v1/auth/profile with data:', userData);
-      const response = await api.patch<ApiResponse<User>>(ENDPOINTS.auth.profile, userData);
-      console.log('✅ Profile update response:', response.data);
-      return response.data;
-    } catch (error: any) {
-      console.error('❌ Profile update error:', error?.response?.data || error.message);
-      throw error;
-    }
-  },
-
-  // Verify email address
-  verifyEmail: async (token: string) => {
-    const response = await api.post<ApiResponse>(ENDPOINTS.auth.verifyEmail, { token });
-    return response.data;
-  },
-
-  // Resend verification email
-  resendVerificationEmail: async (email: string) => {
-    try {
-      const response = await api.post<ApiResponse>(ENDPOINTS.auth.resendVerification, { email });
-      return response.data;
-    } catch (error: any) {
-      if (error?.response?.status === 404) {
-        console.warn('Resend verification endpoint not found. Simulating success.');
-        return { success: true, message: 'Verification email sent' };
-      }
-      throw error;
-    }
-  },
-
-  // Activate account directly (if the API supports this)
-  activateAccount: async (email: string) => {
-    try {
-      const response = await api.post<ApiResponse>(ENDPOINTS.auth.activateAccount, { email });
-      return response.data;
-    } catch (error: any) {
-      if (error?.response?.status === 404) {
-        console.warn('Activate account endpoint not found. Simulating failure.');
-        return {
-          success: false,
-          message: 'Account activation through the app is not supported. Please check your email for a verification link.',
-        };
-      }
-      throw error;
-    }
-  },
-
-  // Change password when logged in
   changePassword: async (currentPassword: string, newPassword: string) => {
-    const response = await api.post<ApiResponse>(ENDPOINTS.auth.changePassword, {
+    return apiService.post(ENDPOINTS.auth.changePassword, {
       currentPassword,
       newPassword,
     });
-    return response.data;
   },
 };
 
-// Rider-scoped authentication & account endpoints
+// ====================== RIDER AUTH API ======================
+
 export const riderAuthAPI = {
-  // Register a rider (independent)
   register: async (payload: {
-    firstName?: string; lastName?: string; fullName?: string; email: string; password: string; phoneNumber: string; vehicleName?: string;
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    email: string;
+    password: string;
+    phoneNumber: string;
   }) => {
-    const body = {
-      email: payload.email,
-      password: payload.password,
-      fullName: payload.fullName || `${payload.firstName || ''} ${payload.lastName || ''}`.trim(),
-      phoneNumber: payload.phoneNumber,
-  // NOTE: Backend rejects unknown properties with 400 ("property vehicleName should not exist").
-  // vehicleName intentionally excluded here; capture locally then send via /riders/vehicle after registration when supported.
-    };
     try {
-      const response = await api.post<ApiResponse<{ token: string; user: User }>>(ENDPOINTS.riderAuth.register, body);
-      return response.data;
-    } catch (e: any) {
-      if (e?.response?.status === 400) {
-        // Capture backend validation structure if present
-        const data = e.response.data || {};
-        console.warn('riderAuth.register validation failed payload:', body);
-        console.warn('riderAuth.register validation error response:', JSON.stringify(data, null, 2));
-        // Normalize field error messages if available
-        if (data.errors && typeof data.errors === 'object') {
-          const fieldMessages: string[] = [];
-            Object.entries(data.errors).forEach(([field, msg]) => {
-              if (Array.isArray(msg)) fieldMessages.push(`${field}: ${msg.join(', ')}`);
-              else if (msg) fieldMessages.push(`${field}: ${msg}`);
-            });
-          const combined = fieldMessages.join(' | ');
-          e.response.data.message = combined || data.message || 'Validation failed';
-        }
-        // Heuristic suggestions (not shown to user unless thrown)
-        const suggestions: string[] = [];
-        if (!body.fullName) suggestions.push('Full name required');
-        if (!/^[+]?\d[\d\s-]{6,}$/.test(body.phoneNumber)) suggestions.push('Use full international phone format, e.g. +15551234567');
-        if (body.password.length < 6) suggestions.push('Password must be at least 6 characters');
-        if (suggestions.length) {
-          e.response.data.message = `${e.response.data.message} (${suggestions.join('; ')})`;
-        }
-      }
-      // Fallback to legacy /auth/register if new path not found
-      if (e?.response?.status === 404) {
-        console.warn('riderAuth.register 404, falling back to legacy /auth/register');
-        return authAPI.register({
-          firstName: payload.firstName || body.fullName?.split(' ')[0] || '',
-          lastName: payload.lastName || body.fullName?.split(' ').slice(1).join(' ') || '',
-          email: payload.email,
-          password: payload.password,
-          phoneNumber: payload.phoneNumber,
-          role: 'rider',
-          vehicleName: payload.vehicleName,
-        } as any);
-      }
-      throw e;
-    }
-  },
-  // Combined register & apply
-  registerAndApply: async (payload: {
-    email: string; password: string; phoneNumber: string; fullName: string; vehicleType: string; documentUri?: string; vehiclePhotoUri?: string;
-  }) => {
-    // Build multipart form-data
-    const form = new FormData();
-    form.append('fullName', payload.fullName);
-    form.append('email', payload.email);
-    form.append('phoneNumber', payload.phoneNumber);
-    form.append('password', payload.password);
-    form.append('vehicleType', payload.vehicleType);
-    if (payload.documentUri) {
-      form.append('document', { uri: payload.documentUri, name: 'document.jpg', type: 'image/jpeg' } as any);
-    }
-    if (payload.vehiclePhotoUri) {
-      form.append('vehiclePhoto', { uri: payload.vehiclePhotoUri, name: 'vehicle.jpg', type: 'image/jpeg' } as any);
-    }
-    try {
-      const response = await api.post<ApiResponse<{ token: string; user: User }>>(ENDPOINTS.riderAuth.registerAndApply, form, { headers: { 'Content-Type': 'multipart/form-data' } });
-      return response.data;
-    } catch (e: any) {
-      if (e?.response) {
-        console.warn('registerAndApply error status:', e.response.status);
-        console.warn('registerAndApply error data:', JSON.stringify(e.response.data, null, 2));
-        // Normalize message if backend returns array in errors
-        const data = e.response.data || {};
-        if (Array.isArray(data.errors)) {
-            e.response.data.message = data.errors.join(' | ');
-        }
-        // Provide hints
-        if (e.response.status === 400) {
-          const hints: string[] = [];
-          if (!/^[+]?\d[\d\s-]{6,}$/.test(payload.phoneNumber)) hints.push('Use international phone format e.g. +15551234567');
-          if (!payload.vehicleType) hints.push('vehicleType required');
-          if (payload.vehicleType === 'MOTORCYCLE' || payload.vehicleType === 'CAR' || payload.vehicleType === 'VAN' || payload.vehicleType === 'TRUCK') {
-            if (!payload.vehiclePhotoUri) hints.push('vehiclePhoto required for motorized vehicles');
-          }
-          if (hints.length) {
-            e.response.data.message = (e.response.data.message ? e.response.data.message + ' - ' : '') + hints.join('; ');
-          }
-        }
-      }
-      throw e;
-    }
-  },
-  // Rider login
-  login: async (
-  email: string,
-  password: string
-): Promise<{ success: boolean; user?: User; token?: string; state?: string }> => {
-  try {
-    const response = await api.post(ENDPOINTS.riderAuth.login, { email, password });
-    const raw = response.data;
-
-    let token: string | undefined;
-    let user: User | undefined;
-
-    if (raw?.data) {
-      token = raw.data.accessToken || raw.data.token || raw.data.jwt || raw.data.access_token;
-      user = raw.data.user || raw.data.rider || raw.data.account || raw.data.profile;
-    } else if (raw?.token) {
-      token = raw.token;
-      user = raw.user;
-    }
-
-    if (!token) {
-      console.warn('riderAuthAPI.login: token missing in response, raw:', JSON.stringify(raw).slice(0, 500));
-    }
-
-    return {
-      success: true,
-      token,
-      user,
-      state: user?.state || 'pending',
-    };
-  } catch (e: any) {
-    if (e?.response?.status === 404) {
-      console.warn('riderAuth.login 404, falling back to legacy /auth/login');
-      const fallback = await authAPI.login(email, password);
-      return {
-        success: fallback.success,
-        token: fallback.data?.token,
-        user: fallback.data?.user,
-        state: fallback.data?.user?.state || 'pending',
+      const body = {
+        email: payload.email,
+        password: payload.password,
+        fullName: payload.fullName || `${payload.firstName || ''} ${payload.lastName || ''}`.trim(),
+        phoneNumber: payload.phoneNumber,
       };
+
+      const response = await apiService.post<{ token: string; user: User }>(
+        ENDPOINTS.riderAuth.register,
+        body
+      );
+
+      if (response.data?.token) {
+        await AsyncStorage.setItem('auth_token', response.data.token);
+      }
+
+      return response;
+    } catch (error) {
+      Logger.error('Rider registration failed', error);
+      throw error;
     }
-    throw e;
-  }
-},
-  // Apply to become a rider (for existing user)
-  apply: async (extraData?: any) => {
-    const response = await api.post<ApiResponse>(ENDPOINTS.riderAuth.apply, extraData || {});
-    return response.data;
   },
-  // Update availability (approved riders)
-  updateAvailability: async (availability: { available: boolean }) => {
-    const response = await api.patch<ApiResponse>(ENDPOINTS.riderAuth.availability, availability);
-    return response.data;
+
+  login: async (email: string, password: string) => {
+    try {
+      const response = await apiService.post(ENDPOINTS.riderAuth.login, { email, password });
+
+      console.log('🔑 Login response received:', {
+        hasAccessToken: !!response.data?.accessToken,
+        hasRefreshToken: !!response.data?.refreshToken,
+        userStatus: response.data?.user?.status,
+        userRole: response.data?.user?.role
+      });
+
+      const accessToken = response.data?.accessToken;
+      const refreshToken = response.data?.refreshToken;
+      const user = response.data?.user;
+
+      if (accessToken) {
+        await AsyncStorage.setItem('auth_token', accessToken);
+        console.log('✅ Access token stored');
+      }
+      
+      if (refreshToken) {
+        await AsyncStorage.setItem('refresh_token', refreshToken);
+        console.log('✅ Refresh token stored');
+      }
+
+      return {
+        success: true,
+        token: accessToken,
+        refreshToken: refreshToken,
+        user: user,
+        state: user?.status || 'pending',
+      };
+    } catch (error) {
+      Logger.error('Rider login failed', error);
+      throw error;
+    }
   },
-  // Get rider account (profile)
+
   getAccount: async () => {
     try {
-      const response = await api.get<ApiResponse<User>>(ENDPOINTS.riderAuth.account);
-      return response.data;
-    } catch (e: any) {
-      if (e?.response?.status === 404) {
-        console.warn('riderAuth.getAccount 404, falling back to legacy /auth/me');
-        return authAPI.getProfile();
+      const response = await apiService.get(ENDPOINTS.riderAuth.account, { cache: true });
+      
+      // Handle the backend response format: { status_code, message, data: RiderProfile }
+      if (response.data) {
+        const riderProfile = response.data;
+        
+        // Transform the nested structure to a flat User object
+        const user: User = {
+          id: riderProfile.user.id,
+          email: riderProfile.user.email,
+          fullName: riderProfile.user.fullName,
+          phoneNumber: riderProfile.user.phoneNumber,
+          firstName: riderProfile.user.fullName?.split(' ')[0] || '',
+          lastName: riderProfile.user.fullName?.split(' ').slice(1).join(' ') || '',
+          role: 'rider',
+          state: riderProfile.state,
+          vehicleType: riderProfile.vehicleType,
+          isAvailable: riderProfile.isAvailable,
+          vehiclePhotoUrl: riderProfile.vehiclePhotoUrl,
+          idDocumentUrl: riderProfile.idDocumentUrl,
+          isVerified: riderProfile.state === 'ACTIVE',
+          createdAt: riderProfile.createdAt,
+          updatedAt: riderProfile.updatedAt,
+          // Add vehicle info if available
+          vehicles: riderProfile.vehicleType ? [{
+            id: '1',
+            name: riderProfile.vehicleType,
+            type: riderProfile.vehicleType,
+            default: true
+          }] : undefined
+        };
+        
+        return {
+          ...response,
+          data: user
+        };
       }
-      throw e;
-    }
-  },
-  // Update location via /riders/my/location
-  updateMyLocation: async (latitude: number, longitude: number) => {
-    const response = await api.patch<ApiResponse>(ENDPOINTS.riderAuth.location, { latitude, longitude });
-    return response.data;
-  },
-};
-
-// API endpoints for rider-specific operations
-export const riderAPI = {
-  // Get rider's current status
-  getStatus: async () => {
-    const response = await api.get<ApiResponse<RiderStatus>>(ENDPOINTS.rider.status);
-    return response.data;
-  },
-
-  // Update rider's status (online/offline)
-  updateStatus: async (status: 'online' | 'offline') => {
-    try {
-      const response = await api.patch<ApiResponse<RiderStatus>>(ENDPOINTS.rider.updateStatus, { isOnline: status === 'online' });
-      return response.data;
-    } catch (e: any) {
-      const code = e?.response?.status;
-      if (code === 400) {
-        console.warn('updateStatus 400 payload error:', JSON.stringify(e?.response?.data, null, 2));
-      }
-      if (code === 404 || code === 400) {
-        // Fallback: some backends only expose /riders/my/availability { available: boolean }
-        try {
-          const alt = await api.patch<ApiResponse>(ENDPOINTS.rider.availability, { isAvailable: status === 'online' });
-          return { ...(alt.data as any), data: { status, ...(alt.data?.data || {}) } } as ApiResponse<RiderStatus>;
-        } catch (altErr) {
-          throw altErr;
-        }
-      }
-      throw e;
+      
+      return response;
+    } catch (error) {
+      Logger.error('Failed to get rider account', error);
+      throw error;
     }
   },
 
-  // Get rider's current deliveries
-  getCurrentDeliveries: async () => {
-    const response = await api.get<ApiResponse<Delivery[]>>(ENDPOINTS.rider.currentDeliveries);
-    return response.data;
+  updateAvailability: async (isAvailable: boolean) => {
+    const response = await apiService.patch(ENDPOINTS.riderAuth.availability, {
+      available: isAvailable,
+    });
+    apiService.clearCache('rider');
+    return response;
   },
 
-  // Get rider's delivery history
-  getDeliveryHistory: async (page = 1, limit = 10) => {
-    const response = await api.get<ApiResponse<Delivery[]>>(`${ENDPOINTS.rider.deliveryHistory}?page=${page}&limit=${limit}`);
-    return response.data;
-  },
-
-  // Accept a delivery
-  acceptDelivery: async (deliveryId: string) => {
-    const response = await api.post<ApiResponse<Delivery>>(ENDPOINTS.rider.accept(deliveryId));
-    return response.data;
-  },
-
-  // Start a delivery (picked up from restaurant)
-  startDelivery: async (deliveryId: string) => {
-    const response = await api.post<ApiResponse<Delivery>>(ENDPOINTS.rider.start(deliveryId));
-    return response.data;
-  },
-
-  // Complete a delivery
-  completeDelivery: async (deliveryId: string) => {
-    const response = await api.post<ApiResponse<Delivery>>(ENDPOINTS.rider.complete(deliveryId));
-    return response.data;
-  },
-
-  // Get rider's earnings
-  getEarnings: async (period: 'today' | 'week' | 'month' | 'day' | 'all' = 'today') => {
-    try {
-      // Map legacy/placeholder periods to backend-supported values
-      const mapped = (period === 'day' || period === 'all') ? 'today' : period;
-      const response = await api.get<ApiResponse<EarningsSummary>>(`${ENDPOINTS.rider.earnings}?period=${mapped}`);
-      return response.data;
-    } catch (e: any) {
-      if (e?.response?.status === 400) {
-        console.warn('Earnings 400 response:', JSON.stringify(e.response.data, null, 2));
-        // Try alternative param name 'range' using mapped value
-        try {
-          const mapped = (period === 'day' || period === 'all') ? 'today' : period;
-          const alt = await api.get<ApiResponse<EarningsSummary>>(`${ENDPOINTS.rider.earnings}?range=${mapped}`);
-          return alt.data;
-        } catch {}
-        // Try no query at all
-        try {
-          const bare = await api.get<ApiResponse<EarningsSummary>>(ENDPOINTS.rider.earnings);
-          return bare.data;
-        } catch {}
-        // Return normalized empty summary
-        return { success: false, message: 'Earnings validation failed', data: { period: (period as any), total: 0 } };
-      }
-      throw e;
-    }
-  },
-
-  // Update rider's location
   updateLocation: async (latitude: number, longitude: number) => {
-    // Prefer /riders/my/location then fallback to /riders/location
+    return apiService.patch(ENDPOINTS.riderAuth.location, { latitude, longitude });
+  },
+
+  refreshToken: async () => {
     try {
-      const response = await api.patch<ApiResponse>(ENDPOINTS.rider.locationMy, { latitude, longitude });
-      return response.data;
-    } catch (e: any) {
-      if (e?.response?.status === 404) {
-        console.warn('PATCH /riders/my/location not found, attempting /riders/location');
-        const alt = await api.patch<ApiResponse>(ENDPOINTS.rider.location, { latitude, longitude });
-        return alt.data;
+      const refreshToken = await AsyncStorage.getItem('refresh_token');
+      if (!refreshToken) {
+        throw new Error('No refresh token available');
       }
-      throw e;
+
+      const response = await apiService.post('/auth/refresh', {
+        refreshToken: refreshToken
+      });
+
+      const newAccessToken = response.data?.accessToken;
+      const newRefreshToken = response.data?.refreshToken;
+
+      if (newAccessToken) {
+        await AsyncStorage.setItem('auth_token', newAccessToken);
+        console.log('✅ Access token refreshed');
+      }
+
+      if (newRefreshToken) {
+        await AsyncStorage.setItem('refresh_token', newRefreshToken);
+        console.log('✅ Refresh token updated');
+      }
+
+      return {
+        success: true,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken
+      };
+    } catch (error) {
+      Logger.error('Token refresh failed', error);
+      // Clear tokens if refresh fails
+      await AsyncStorage.removeItem('auth_token');
+      await AsyncStorage.removeItem('refresh_token');
+      throw error;
+    }
+  },
+};
+
+// ====================== RIDER API ======================
+
+export const riderAPI = {
+  getStatus: async () => {
+    return apiService.get<RiderStatus>(ENDPOINTS.rider.status, { cache: true, cacheDuration: 30 * 1000 });
+  },
+
+  updateStatus: async (status: 'online' | 'offline') => {
+    const response = await apiService.patch<RiderStatus>(ENDPOINTS.rider.updateStatus, {
+      isOnline: status === 'online',
+    });
+    apiService.clearCache('rider');
+    return response;
+  },
+
+  getCurrentDeliveries: async () => {
+    return apiService.get<Delivery[]>(ENDPOINTS.rider.currentDeliveries, { cache: true, cacheDuration: 30 * 1000 });
+  },
+
+  getDeliveryHistory: async (page = 1, limit = 10) => {
+    return apiService.get<Delivery[]>(
+      `${ENDPOINTS.rider.deliveryHistory}?page=${page}&limit=${limit}`,
+      { cache: true }
+    );
+  },
+
+  acceptDelivery: async (deliveryId: string) => {
+    const response = await apiService.post<Delivery>(ENDPOINTS.rider.accept(deliveryId));
+    apiService.clearCache('delivery');
+    return response;
+  },
+
+  startDelivery: async (deliveryId: string) => {
+    const response = await apiService.post<Delivery>(ENDPOINTS.rider.start(deliveryId));
+    apiService.clearCache('delivery');
+    return response;
+  },
+
+  completeDelivery: async (deliveryId: string) => {
+    const response = await apiService.post<Delivery>(ENDPOINTS.rider.complete(deliveryId));
+    apiService.clearCache('delivery');
+    return response;
+  },
+
+  getEarnings: async (period: 'today' | 'week' | 'month' = 'today') => {
+    return apiService.get<EarningsSummary>(`${ENDPOINTS.rider.earnings}?period=${period}`, {
+      cache: true,
+    });
+  },
+
+  updateLocation: async (latitude: number, longitude: number) => {
+    return apiService.patch(ENDPOINTS.rider.location, { latitude, longitude });
+  },
+
+  updateVehicle: async (vehicleData: any) => {
+    const response = await apiService.patch(ENDPOINTS.rider.vehicle, vehicleData);
+    apiService.clearCache('rider');
+    return response;
+  },
+
+  getMyDeliveries: async (limit: number = 50, offset: number = 0) => {
+    return apiService.get<Delivery[]>(
+      `${ENDPOINTS.rider.myDeliveries}?limit=${limit}&offset=${offset}`,
+      { cache: true, cacheDuration: 30 * 1000 }
+    );
+  },
+};
+
+// ====================== ANALYTICS API ======================
+
+export const analyticsAPI = {
+  getSummary: async () => {
+    try {
+      const response = await apiService.get(ENDPOINTS.analytics.summary, {
+        cache: true,
+        cacheDuration: 60 * 1000, // 1 minute cache
+        retries: 1 // Reduce retries for analytics to avoid long waits
+      });
+      
+      // Handle different response structures
+      if (response?.data) {
+        return response;
+      }
+      
+      // Return mock data if API fails
+      console.warn('⚠️ Analytics API returned empty data, using fallback');
+      return {
+        success: true,
+        data: {
+          todayEarnings: 0,
+          completedDeliveries: 0,
+          rating: 0,
+          completionRate: 0
+        }
+      };
+    } catch (error: any) {
+      console.warn('⚠️ Analytics summary failed, using fallback data:', error?.message);
+      // Return fallback data instead of throwing
+      return {
+        success: false,
+        data: {
+          todayEarnings: 0,
+          completedDeliveries: 0,
+          rating: 0,
+          completionRate: 0
+        }
+      };
     }
   },
 
-  // Update rider's vehicle information
-  updateVehicle: async (vehicleData: any) => {
-    const response = await api.patch<ApiResponse>(ENDPOINTS.rider.vehicle, vehicleData);
-    return response.data;
+  getBalance: async () => {
+    try {
+      const response = await apiService.get(ENDPOINTS.analytics.balance, {
+        cache: true,
+        cacheDuration: 30 * 1000, // 30 seconds cache
+        retries: 1 // Reduce retries for analytics
+      });
+      
+      // Handle different response structures
+      if (response?.data) {
+        return response;
+      }
+      
+      // Return mock data if API fails
+      console.warn('⚠️ Balance API returned empty data, using fallback');
+      return {
+        success: true,
+        data: {
+          balance: 0
+        }
+      };
+    } catch (error: any) {
+      console.warn('⚠️ Balance fetch failed, using fallback data:', error?.message);
+      // Return fallback data instead of throwing
+      return {
+        success: false,
+        data: {
+          balance: 0
+        }
+      };
+    }
   },
-  // Availability update (alias to riderAuth)
-  updateAvailability: async (isAvailable: boolean, schedule?: any) => {
-    const body: any = { isAvailable };
-    if (schedule) body.schedule = schedule; // optimistic, backend may ignore
-    const response = await api.patch<ApiResponse>(ENDPOINTS.rider.availability, body);
-    return response.data;
-  },
-  // Get full account (alias convenience)
-  getAccount: async () => riderAuthAPI.getAccount(),
 };
 
-export default api;
+// ====================== RESTAURANT API ======================
+
+export const restaurantAPI = {
+  browseRestaurants: async (params: {
+    nearLat: number;
+    nearLng: number;
+    radiusKm?: number;
+    limit?: number;
+    offset?: number;
+    isOpen?: boolean;
+  }) => {
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('nearLat', params.nearLat.toString());
+      queryParams.append('nearLng', params.nearLng.toString());
+
+      if (params.radiusKm !== undefined) queryParams.append('radiusKm', params.radiusKm.toString());
+      if (params.limit !== undefined) queryParams.append('limit', params.limit.toString());
+      if (params.offset !== undefined) queryParams.append('offset', params.offset.toString());
+      if (params.isOpen !== undefined) queryParams.append('isOpen', params.isOpen.toString());
+
+      const url = `${ENDPOINTS.restaurants.nearby}?${queryParams.toString()}`;
+      const response = await apiService.get<Restaurant[]>(url, { cache: true });
+
+      // Normalize coordinates
+      if (response.data) {
+        response.data = response.data.map((r) => ({
+          ...r,
+          latitude: typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude,
+          longitude: typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude,
+        }));
+      }
+
+      return response;
+    } catch (error) {
+      Logger.error('Failed to fetch restaurants', error);
+      throw error;
+    }
+  },
+};
+
+// ====================== NOTIFICATION API ======================
+
+export const notificationAPI = {
+  registerDevice: async (expoToken: string, platform: string, role: string) => {
+    try {
+      const response = await apiService.post(ENDPOINTS.notifications.register, {
+        expoToken,
+        platform,
+        role,
+      });
+      return response;
+    } catch (error) {
+      Logger.error('Failed to register device', error);
+      throw error;
+    }
+  },
+
+  unregisterDevice: async (expoToken: string) => {
+    try {
+      const response = await apiService.delete(ENDPOINTS.notifications.unregister(expoToken));
+      return response;
+    } catch (error) {
+      Logger.error('Failed to unregister device', error);
+      throw error;
+    }
+  },
+
+  getDevices: async () => {
+    try {
+      const response = await apiService.get(ENDPOINTS.notifications.devices, { cache: true });
+      return response;
+    } catch (error) {
+      Logger.error('Failed to get devices', error);
+      throw error;
+    }
+  },
+
+  getNotifications: async (page: number = 1, limit: number = 20) => {
+    try {
+      const response = await apiService.get(
+        `${ENDPOINTS.notifications.list}?page=${page}&limit=${limit}`,
+        { cache: true, cacheDuration: 60 * 1000 } // 1 minute cache
+      );
+      return response;
+    } catch (error) {
+      Logger.error('Failed to get notifications', error);
+      throw error;
+    }
+  },
+
+  getUnreadCount: async () => {
+    try {
+      const response = await apiService.get(ENDPOINTS.notifications.unreadCount, {
+        cache: true,
+        cacheDuration: 30 * 1000, // 30 seconds cache
+      });
+      return response;
+    } catch (error) {
+      Logger.error('Failed to get unread count', error);
+      throw error;
+    }
+  },
+
+  markAsRead: async (notificationId: string) => {
+    try {
+      const response = await apiService.post(ENDPOINTS.notifications.markAsRead(notificationId));
+      apiService.clearCache('notifications');
+      return response;
+    } catch (error) {
+      Logger.error('Failed to mark notification as read', error);
+      throw error;
+    }
+  },
+
+  markAllAsRead: async () => {
+    try {
+      const response = await apiService.post(ENDPOINTS.notifications.markAllAsRead);
+      apiService.clearCache('notifications');
+      return response;
+    } catch (error) {
+      Logger.error('Failed to mark all notifications as read', error);
+      throw error;
+    }
+  },
+};
+
+export { ApiService, Logger, ErrorHandler, ErrorCode };
+export default apiService;

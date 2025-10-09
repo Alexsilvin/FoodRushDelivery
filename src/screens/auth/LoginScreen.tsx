@@ -19,10 +19,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { authAPI } from '../../services/api';
+import { AuthScreenProps } from '../../types/navigation.types';
+import CommonView from '../../components/CommonView';
 
 const { width } = Dimensions.get('window');
 
-export default function LoginScreen({ navigation }: any) {
+type Props = AuthScreenProps<'Login'>;
+
+export default function LoginScreen({ navigation, route }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -85,17 +89,15 @@ export default function LoginScreen({ navigation }: any) {
 
     // Navigation logic based on normalized state
     if (riderState === 'ACTIVE' || riderState === 'READY' || riderState === 'APPROVED') {
-      console.log('✅ Navigating to dashboard for state:', riderState);
-      navigation.replace('Main');
+      console.log('✅ User approved - app will handle navigation to main stack');
+      // Don't navigate here - let the app handle the navigation based on auth state
     } else if (riderState === 'REJECTED') {
       console.log('❌ Navigating to Rejected screen for state:', riderState);
       navigation.replace('Rejected');
     } else {
       // All other states (PENDING, PENDING_VERIFICATION, etc.) go to waiting
       console.log('⏳ Navigating to Waiting screen for state:', riderState);
-      navigation.replace('Waiting', {
-        reason: `Your account is currently "${response.state}". Please wait for approval.`,
-      });
+      navigation.replace('Waiting');
     }
 
   } catch (error: any) {
@@ -172,17 +174,18 @@ export default function LoginScreen({ navigation }: any) {
 };
 
   return (
-    <LinearGradient 
-      colors={theme.isDark 
-        ? [theme.colors.background, theme.colors.surface, theme.colors.primary + '40'] 
-        : ['#0f1419', '#1a2332', '#2a3441']} 
-      style={styles.container}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+    <CommonView showStatusBar={true} paddingHorizontal={0}>
+      <LinearGradient 
+        colors={theme.isDark 
+          ? [theme.colors.background, theme.colors.surface, theme.colors.primary + '40'] 
+          : ['#0f1419', '#1a2332', '#2a3441']} 
+        style={styles.container}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <ScrollView contentContainerStyle={styles.scrollContent}>
           {/* Logo Header - positioned where splash screen logo transitions to */}
           <Animated.View style={[styles.logoHeader, { opacity: logoOpacity }]}>
             <Image
@@ -262,9 +265,10 @@ export default function LoginScreen({ navigation }: any) {
               <Text style={[styles.signUpText, { color: theme.colors.primary }]}>Sign Up</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </LinearGradient>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </LinearGradient>
+    </CommonView>
   );
 }
 

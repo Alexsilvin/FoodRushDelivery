@@ -1,32 +1,51 @@
 import React from 'react';
-import { createStackNavigator } from '@react-navigation/stack';
-import DeliveryDetailsScreen from '../screens/main/DeliveryDetailsScreen';
-import MapScreen from '../screens/main/MapScreen';
-import RejectedScreen from '../screens/auth/RejectedScreen';
-// ...existing imports...
-
-const Stack = createStackNavigator();
+import { NavigationContainer } from '@react-navigation/native';
+import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import RootNavigator from './RootNavigator';
 
 export default function AppNavigator() {
+  const { user, loading } = useAuth();
+  const { theme } = useTheme();
+  
+  const isAuthenticated = !!user;
+
+  const navigationTheme = {
+    dark: theme.isDark,
+    colors: {
+      primary: theme.colors.primary,
+      background: theme.colors.background,
+      card: theme.colors.card,
+      text: theme.colors.text,
+      border: theme.colors.border,
+      notification: theme.colors.primary,
+    },
+    fonts: {
+      regular: {
+        fontFamily: 'System',
+        fontWeight: 'normal' as const,
+      },
+      medium: {
+        fontFamily: 'System',
+        fontWeight: '500' as const,
+      },
+      bold: {
+        fontFamily: 'System',
+        fontWeight: 'bold' as const,
+      },
+      heavy: {
+        fontFamily: 'System',
+        fontWeight: '900' as const,
+      },
+    },
+  };
+
   return (
-    <Stack.Navigator>
-      {/* ...existing screens... */}
-      <Stack.Screen
-        name="DeliveryDetails"
-        component={DeliveryDetailsScreen}
-        options={{ title: 'Delivery Details' }}
+    <NavigationContainer theme={navigationTheme}>
+      <RootNavigator 
+        isAuthenticated={isAuthenticated} 
+        isLoading={loading} 
       />
-      <Stack.Screen
-        name="Map"
-        component={MapScreen}
-        options={{ title: 'Map' }}
-      />
-      <Stack.Screen
-        name="Rejected"
-        component={RejectedScreen}
-        options={{ title: 'Account Rejected' }}
-      />
-      {/* ...existing screens... */}
-    </Stack.Navigator>
+    </NavigationContainer>
   );
 }

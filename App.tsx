@@ -1,26 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet } from 'react-native';
-import { AuthProvider } from './src/contexts/AuthContext';
-import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
-import { LanguageProvider } from './src/contexts/LanguageContext';
-import { CallProvider } from './src/contexts/CallContext';
+import { useTheme } from './src/contexts/ThemeContext';
+import { useAuth } from './src/contexts/AuthContext';
 import AuthStack from './src/navigation/AuthStack';
 import MainStack from './src/navigation/MainStack';
-import { useAuth } from './src/contexts/AuthContext';
-import LoadingScreen from './src/components/LoadingScreen';
 import SplashScreen from './src/components/SplashScreen';
+import { AppProviders } from './src/providers';
+import { ActivityIndicator } from 'react-native';
 
-const Stack = createStackNavigator();
-
-function AppContent() {
+// Memoized AppContent to prevent unnecessary re-renders
+// This component MUST be inside the AppProviders to access contexts
+const AppContent = memo(() => {
   const { user, loading } = useAuth();
   const { theme } = useTheme();
 
   if (loading) {
-    return <LoadingScreen />;
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
   }
 
   // Helper function to normalize state strings
@@ -52,8 +53,11 @@ function AppContent() {
       {canAccessMainApp() ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );
-}
+});
 
+AppContent.displayName = 'AppContent';
+
+// Main App component that wraps everything with providers
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -68,30 +72,24 @@ export default function App() {
   };
 
   return (
-    <LanguageProvider>
-      <ThemeProvider>
-        <View style={styles.container}>
-          {/* Show splash screen */}
-          {showSplash && (
-            <SplashScreen 
-              onAnimationComplete={handleSplashComplete}
-              onTransitionStart={handleTransitionStart}
-            />
-          )}
-          
-          {/* Show auth/main content (always rendered but behind splash initially) */}
-          {(isTransitioning || !showSplash) && (
-            <View style={[styles.mainContent, showSplash && styles.behindSplash]}>
-              <CallProvider>
-                <AuthProvider>
-                  <AppContent />
-                </AuthProvider>
-              </CallProvider>
-            </View>
-          )}
-        </View>
-      </ThemeProvider>
-    </LanguageProvider>
+    <AppProviders>
+      <View style={styles.container}>
+        {/* Show splash screen */}
+        {showSplash && (
+          <SplashScreen 
+            onAnimationComplete={handleSplashComplete}
+            onTransitionStart={handleTransitionStart}
+          />
+        )}
+        
+        {/* Show auth/main content (always rendered but behind splash initially) */}
+        {(isTransitioning || !showSplash) && (
+          <View style={[styles.mainContent, showSplash && styles.behindSplash]}>
+            <AppContent />
+          </View>
+        )}
+      </View>
+    </AppProviders>
   );
 }
 

@@ -20,8 +20,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import CommonView from '../../components/CommonView';
+import { AuthScreenProps } from '../../types/navigation.types';
 
-export default function RegisterScreen({ navigation }: any) {
+type Props = AuthScreenProps<'Register'>;
+
+export default function RegisterScreen({ navigation, route }: Props) {
   // Step management
   const [currentStep, setCurrentStep] = useState(1);
   const [stepProgress] = useState(new Animated.Value(0));
@@ -499,7 +503,8 @@ export default function RegisterScreen({ navigation }: any) {
   );
 
   return (
-    <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.container}>
+    <CommonView showStatusBar={true} paddingHorizontal={0}>
+      <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.container}>
       {/* License Verification Modal */}
       <Modal
         visible={verifyingLicense}
@@ -564,7 +569,8 @@ export default function RegisterScreen({ navigation }: any) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </LinearGradient>
+      </LinearGradient>
+    </CommonView>
   );
 }
 

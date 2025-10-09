@@ -3,22 +3,26 @@ import { RouteProp } from '@react-navigation/native';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import CommonView from '../../components/CommonView';
+import { AuthScreenProps } from '../../types/navigation.types';
 
 import { TouchableOpacity } from 'react-native';
 
-export default function WaitingScreen({ route, navigation }: any) {
+type Props = AuthScreenProps<'Waiting'>;
+
+export default function WaitingScreen({ route, navigation }: Props) {
     const { theme } = useTheme();
     const { t } = useLanguage();
-    const {reason } = route.params;
 
      return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}> 
+    <CommonView>
+      <View style={styles.container}> 
       <ActivityIndicator size="large" color={theme.colors.primary} />
       <Text style={[styles.title, { color: theme.colors.text }]}> 
         {t('accountPending') || 'Account Pending'}
       </Text>
       <Text style={[styles.reason, { color: theme.colors.textSecondary }]}> 
-        {reason || t('accountNotActive')}
+        {t('accountNotActive') || 'Your account is pending approval. Please wait for admin review.'}
       </Text>
       <TouchableOpacity
         style={styles.goBackButton}
@@ -28,7 +32,8 @@ export default function WaitingScreen({ route, navigation }: any) {
           {t('goBack') || 'Go Back'}
         </Text>
       </TouchableOpacity>
-    </View>
+      </View>
+    </CommonView>
   );
 }
 

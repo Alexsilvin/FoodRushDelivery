@@ -31,6 +31,26 @@ export interface User {
   [key: string]: any;
 }
 
+// Rider profile response from backend
+export interface RiderProfile {
+  id: string;
+  user: {
+    id: string;
+    fullName: string;
+    email: string;
+    phoneNumber: string;
+  };
+  state: string;
+  vehicleType: string;
+  isAvailable: boolean;
+  vehiclePhotoUrl?: string;
+  idDocumentUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
+
 export interface PhoneNumber {
   id: string;
   number: string;
@@ -106,4 +126,38 @@ export interface Restaurant {
   ratingCount?: number;
   pictureUrl?: string | null;
   [key: string]: any;
+}
+
+export interface NotificationDevice {
+  id: string;
+  expoToken: string;
+  platform: string;
+  role: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InAppNotification {
+  id: string;
+  title: string;
+  body: string;
+  data?: any;
+  isRead: boolean;
+  type?: string;
+  createdAt: string;
+  updatedAt?: string;
+  userId?: string;
+}
+
+export interface NotificationResponse {
+  success: boolean;
+  message?: string;
+  data?: any;
+}
+
+export interface UnreadCountResponse {
+  success: boolean;
+  data: {
+    count: number;
+  };
 }

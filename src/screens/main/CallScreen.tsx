@@ -10,14 +10,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
+import { StackScreenProps } from '../../types/navigation.types';
 
-interface CallScreenProps {
-  customerName: string;
-  callType: 'voice' | 'video';
-  onEndCall: () => void;
-}
+type Props = StackScreenProps<'CallScreen'>;
 
-export default function CallScreen({ customerName, callType, onEndCall }: CallScreenProps) {
+export default function CallScreen({ navigation, route }: Props) {
+  const { customerName, customerPhone, deliveryId } = route.params;
   const { theme } = useTheme();
   const [callDuration, setCallDuration] = useState(0);
   const [isCallActive, setIsCallActive] = useState(false);
@@ -55,7 +53,7 @@ export default function CallScreen({ customerName, callType, onEndCall }: CallSc
       'Are you sure you want to end this call?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'End Call', style: 'destructive', onPress: onEndCall }
+        { text: 'End Call', style: 'destructive', onPress: () => navigation.goBack() }
       ]
     );
   };
@@ -93,7 +91,7 @@ export default function CallScreen({ customerName, callType, onEndCall }: CallSc
           </Text>
           
           <Text style={styles.callType}>
-            {callType === 'video' ? 'Video Call' : 'Voice Call'}
+            Voice Call
           </Text>
         </View>
 
@@ -112,14 +110,6 @@ export default function CallScreen({ customerName, callType, onEndCall }: CallSc
           >
             <Ionicons name="volume-high" size={30} color="#FFFFFF" />
           </TouchableOpacity>
-
-          {callType === 'video' && (
-            <TouchableOpacity 
-              style={[styles.controlButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
-            >
-              <Ionicons name="videocam" size={30} color="#FFFFFF" />
-            </TouchableOpacity>
-          )}
 
           <TouchableOpacity 
             style={[styles.controlButton, styles.endCallButton]}

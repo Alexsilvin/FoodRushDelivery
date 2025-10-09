@@ -13,38 +13,46 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { riderAPI, riderAuthAPI } from '../../services/api';
+import { riderAuthAPI, analyticsAPI, riderApi } from '../../services';
+import apiService from '../../services/api';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { useNavigation } from '@react-navigation/native';
 import LanguageSelector from '../../components/LanguageSelector';
 import { useStaggeredFadeIn } from '../../hooks/useStaggeredFadeIn';
 import { useCountUp } from '../../hooks/useCountUp';
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import axios from 'axios';
+import { useNotifications } from '../../contexts/NotificationContext';
+import { useUpdateRiderStatus, useUpdateRiderAvailability } from '../../hooks/useRiderStatus';
+import { TabScreenProps } from '../../types/navigation.types';
+import CommonView from '../../components/CommonView';
+import { useFloatingTabBarHeight } from '../../hooks/useFloatingTabBarHeight';
 
-// Define the notification type
-interface Notification {
-  title: string;
-  body: string;
-}
+type Props = TabScreenProps<'Profile'>;
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation, route }: Props) {
   const { user, logout } = useAuth();
   const { theme } = useTheme();
   const { t } = useLanguage();
-  const navigation = useNavigation();
+  const tabBarHeight = useFloatingTabBarHeight();
+  const {
+    notifications: notificationList,
+    unreadCount,
+    notificationsEnabled,
+    setNotificationsEnabled,
+    permissions,
+    requestPermissions,
+  } = useNotifications();
+  
+  // Rider status hooks
+  const updateStatusMutation = useUpdateRiderStatus();
+  const updateAvailabilityMutation = useUpdateRiderAvailability();
+  
   const [isOnline, setIsOnline] = useState<boolean>(false);
-  const [notifications, setNotifications] = useState(true);
-  const [loadingStatus, setLoadingStatus] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [todayEarnings, setTodayEarnings] = useState<number | null>(null);
   const [rating, setRating] = useState<number | null>(null);
   const [completedDeliveries, setCompletedDeliveries] = useState<number | null>(null);
   const [completionRate, setCompletionRate] = useState<string | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
-  const [notificationList, setNotificationList] = useState<Notification[]>([]);
 
   // Debug user data
   useEffect(() => {
@@ -305,10 +313,14 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
   const countUps = rawCounts.map((val, idx) => {
     const stat = profileStats[idx];
     if (stat.value == null) return '—';
+    
+    // Ensure val is always a string or number, never an object
+    const safeVal = typeof val === 'object' ? '0' : String(val);
+    
     switch (stat.type) {
-      case 'currency': return `$${val}`;
-      case 'percent': return `${val}%`;
-      default: return val;
+      case 'currency': return `${safeVal}`;
+      case 'percent': return `${safeVal}%`;
+      default: return safeVal;
     }
   });
 
@@ -321,17 +333,26 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         console.log('📊 Fetching analytics data...');
         
         // Fetch all stats from analytics summary endpoint
-        const summaryRes = await axios.get('/api/v1/analytics/riders/my/summary').catch((error) => {
+        const summaryRes = await analyticsAPI.getSummary().catch((error) => {
           console.warn('⚠️ Analytics summary failed:', error?.response?.data || error.message);
           return null;
         });
         
-        if (mounted && summaryRes?.data) {
-          console.log('✅ Analytics data received:', summaryRes.data);
-          setTodayEarnings(summaryRes.data.todayEarnings ?? null);
-          setCompletedDeliveries(summaryRes.data.completedDeliveries ?? null);
-          setRating(summaryRes.data.rating ?? null);
-          setCompletionRate(summaryRes.data.completionRate != null ? `${summaryRes.data.completionRate}%` : null);
+        if (mounted && summaryRes) {
+          // Handle the API response structure: {status_code, message, data}
+          const analyticsData = summaryRes.data || summaryRes;
+          console.log('✅ Analytics data received:', analyticsData);
+          
+          // Safely extract values with proper type checking
+          const earnings = typeof analyticsData.todayEarnings === 'number' ? analyticsData.todayEarnings : null;
+          const deliveries = typeof analyticsData.completedDeliveries === 'number' ? analyticsData.completedDeliveries : null;
+          const ratingValue = typeof analyticsData.rating === 'number' ? analyticsData.rating : null;
+          const completionValue = typeof analyticsData.completionRate === 'number' ? analyticsData.completionRate : null;
+          
+          setTodayEarnings(earnings);
+          setCompletedDeliveries(deliveries);
+          setRating(ratingValue);
+          setCompletionRate(completionValue != null ? `${completionValue}%` : null);
         } else {
           console.log('📊 No analytics data available, using mock data for demo');
           // Set some demo data for testing
@@ -342,14 +363,19 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         }
         
         // Fetch balance if needed
-        const balanceRes = await axios.get('/api/v1/analytics/riders/my/balance').catch((error) => {
+        const balanceRes = await analyticsAPI.getBalance().catch((error) => {
           console.warn('⚠️ Balance fetch failed:', error?.response?.data || error.message);
           return null;
         });
         
-        if (mounted && balanceRes?.data) {
-          console.log('💰 Balance data received:', balanceRes.data);
-          setBalance(balanceRes.data.balance ?? null);
+        if (mounted && balanceRes) {
+          // Handle the API response structure: {status_code, message, data}
+          const balanceData = balanceRes.data || balanceRes;
+          console.log('💰 Balance data received:', balanceData);
+          
+          // Safely extract balance value
+          const balanceValue = typeof balanceData.balance === 'number' ? balanceData.balance : null;
+          setBalance(balanceValue);
         } else {
           console.log('💰 No balance data available');
           setBalance(125.75); // Demo data
@@ -362,64 +388,67 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
     return () => { mounted = false; };
   }, []);
 
-  useEffect(() => {
-    const registerForPushNotifications = async () => {
-      if (Device.isDevice) {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-        if (finalStatus !== 'granted') {
-          Alert.alert('Failed to get push token for notifications!');
-          return;
-        }
-        const token = (await Notifications.getExpoPushTokenAsync()).data;
-        console.log('Push token:', token);
-
-        // Register the token with the backend
-        try {
-          await axios.post('/api/v1/notifications/device', { token });
-        } catch (error) {
-          console.error('Failed to register push token:', error);
-        }
-      } else {
-        Alert.alert('Must use physical device for Push Notifications');
+  // Handle notification permission requests
+  const handleNotificationToggle = async (enabled: boolean) => {
+    if (enabled && permissions && !permissions.granted) {
+      const granted = await requestPermissions();
+      if (!granted) {
+        Alert.alert(
+          '⚠️ Permission Required',
+          'Notification permissions are required to receive delivery updates. Please enable them in your device settings.',
+          [{ text: 'OK', style: 'default' }]
+        );
+        return; // Don't enable if permissions not granted
       }
-    };
-
-    const fetchNotifications = async () => {
-      try {
-        const response = await axios.get('/api/v1/notifications/my');
-        setNotificationList(response.data || []);
-      } catch (error) {
-        console.error('Failed to fetch notifications:', error);
-      }
-    };
-
-    registerForPushNotifications();
-    fetchNotifications();
-  }, []);
+    }
+    
+    setNotificationsEnabled(enabled);
+    
+    // Show success message
+    Alert.alert(
+      '✅ Notifications Updated',
+      `Push notifications have been ${enabled ? 'enabled' : 'disabled'}.`,
+      [{ text: 'OK', style: 'default' }]
+    );
+  };
 
   const toggleOnline = async (value: boolean) => {
-    const previous = isOnline;
+    const previousValue = isOnline;
     setIsOnline(value);
-    setLoadingStatus(true);
+    
     try {
-      const res = await riderAPI.updateAvailability(value);
-      if (!res?.success) throw new Error(res?.message || 'Availability not accepted');
+      // Use the new rider status mutation
+      await updateStatusMutation.mutateAsync(value);
+      console.log(`✅ Rider status updated to: ${value ? 'online' : 'offline'}`);
+      
+      // Show success alert
+      Alert.alert(
+        '✅ Status Updated',
+        `You are now ${value ? 'online and available' : 'offline'} for deliveries.`,
+        [{ text: 'OK', style: 'default' }]
+      );
     } catch (e: any) {
       try {
-        await riderAPI.updateStatus(value ? 'online' : 'offline');
+        // Fallback to availability mutation
+        await updateAvailabilityMutation.mutateAsync(value);
+        console.log(`✅ Rider availability updated to: ${value}`);
+        
+        // Show success alert for fallback
+        Alert.alert(
+          '✅ Availability Updated',
+          `You are now ${value ? 'available' : 'unavailable'} for deliveries.`,
+          [{ text: 'OK', style: 'default' }]
+        );
       } catch (finalErr: any) {
-        console.warn('Availability toggle failed:', finalErr?.response?.data || finalErr?.message);
-        setIsOnline(previous);
-        const message = finalErr?.response?.data?.message || 'Could not change availability';
-        Alert.alert('Status Update Failed', message);
+        console.warn('Status toggle failed:', finalErr?.response?.data || finalErr?.message);
+        setIsOnline(previousValue); // Revert to previous state
+        const message = finalErr?.response?.data?.message || 'Could not change status';
+        Alert.alert(
+          '❌ Status Update Failed', 
+          message,
+          [{ text: 'Try Again', style: 'default' }]
+        );
       }
-    } finally {
-      setLoadingStatus(false);
     }
   };
 
@@ -428,32 +457,67 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
     try {
       console.log('🔄 Refreshing profile data...');
       
-      const summaryRes = await axios.get('/api/v1/analytics/riders/my/summary').catch((error) => {
+      // First refresh the user profile from backend
+      // const profileRefreshed = await refreshUserProfile();
+      // if (profileRefreshed) {
+      //   console.log('✅ User profile refreshed successfully');
+      // }
+      
+      // Then refresh analytics data
+      const summaryRes = await analyticsAPI.getSummary().catch((error) => {
         console.warn('⚠️ Refresh analytics failed:', error?.response?.data || error.message);
         return null;
       });
       
-      if (summaryRes?.data) {
-        console.log('✅ Refresh analytics data received:', summaryRes.data);
-        setTodayEarnings(summaryRes.data.todayEarnings ?? null);
-        setCompletedDeliveries(summaryRes.data.completedDeliveries ?? null);
-        setRating(summaryRes.data.rating ?? null);
-        setCompletionRate(summaryRes.data.completionRate != null ? `${summaryRes.data.completionRate}%` : null);
+      if (summaryRes) {
+        // Handle the API response structure: {status_code, message, data}
+        const analyticsData = summaryRes.data || summaryRes;
+        console.log('✅ Refresh analytics data received:', analyticsData);
+        
+        // Safely extract values with proper type checking
+        const earnings = typeof analyticsData.todayEarnings === 'number' ? analyticsData.todayEarnings : null;
+        const deliveries = typeof analyticsData.completedDeliveries === 'number' ? analyticsData.completedDeliveries : null;
+        const ratingValue = typeof analyticsData.rating === 'number' ? analyticsData.rating : null;
+        const completionValue = typeof analyticsData.completionRate === 'number' ? analyticsData.completionRate : null;
+        
+        setTodayEarnings(earnings);
+        setCompletedDeliveries(deliveries);
+        setRating(ratingValue);
+        setCompletionRate(completionValue != null ? `${completionValue}%` : null);
       } else {
         console.log('📊 Refresh: No analytics data, keeping current values');
       }
       
-      const balanceRes = await axios.get('/api/v1/analytics/riders/my/balance').catch((error) => {
+      const balanceRes = await analyticsAPI.getBalance().catch((error) => {
         console.warn('⚠️ Refresh balance failed:', error?.response?.data || error.message);
         return null;
       });
       
-      if (balanceRes?.data) {
-        console.log('💰 Refresh balance data received:', balanceRes.data);
-        setBalance(balanceRes.data.balance ?? null);
+      if (balanceRes) {
+        // Handle the API response structure: {status_code, message, data}
+        const balanceData = balanceRes.data || balanceRes;
+        console.log('💰 Refresh balance data received:', balanceData);
+        
+        // Safely extract balance value
+        const balanceValue = typeof balanceData.balance === 'number' ? balanceData.balance : null;
+        setBalance(balanceValue);
       } else {
         console.log('💰 Refresh: No balance data, keeping current value');
       }
+      
+      // Show success message
+      Alert.alert(
+        '✅ Profile Refreshed',
+        'Your profile data has been updated successfully.',
+        [{ text: 'OK', style: 'default' }]
+      );
+    } catch (error: any) {
+      console.error('❌ Profile refresh failed:', error);
+      Alert.alert(
+        '❌ Refresh Failed',
+        'Unable to refresh profile data. Please try again.',
+        [{ text: 'OK', style: 'default' }]
+      );
     } finally {
       setProfileLoading(false);
     }
@@ -462,16 +526,26 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
   const renderNotifications = () => {
     return notificationList.map((notification, index) => (
       <View key={index} style={[styles.notificationItem, { backgroundColor: theme.colors.card }]}>
-        <Text style={[styles.notificationTitle, { color: theme.colors.text }]}>{notification.title}</Text>
-        <Text style={[styles.notificationBody, { color: theme.colors.textSecondary }]}>{notification.body}</Text>
+        <Text style={[styles.notificationTitle, { color: theme.colors.text }]}>
+          {String(notification.title || 'Notification')}
+        </Text>
+        <Text style={[styles.notificationBody, { color: theme.colors.textSecondary }]}>
+          {String(notification.body || 'No content')}
+        </Text>
       </View>
     ));
   };
 
+  // Section separator component
+  const SectionSeparator = () => (
+    <View style={[styles.sectionSeparator, { backgroundColor: theme.colors.border }]} />
+  );
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <CommonView showStatusBar={true} paddingHorizontal={0}>
       <ScrollView 
         style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: tabBarHeight }}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -493,9 +567,9 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
             
             <View style={styles.profileInfo}>
               <Text style={styles.name}>
-                {displayName}
+                {String(displayName || 'User')}
               </Text>
-              <Text style={styles.email}>{displayEmail}</Text>
+              <Text style={styles.email}>{String(displayEmail || 'No email')}</Text>
               
               <View style={styles.badgeContainer}>
                 {user?.isVerified && (
@@ -507,7 +581,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
                 {vehicleType && (
                   <View style={styles.vehicleBadge}>
                     <Ionicons name="car-outline" size={14} color="#3B82F6" />
-                    <Text style={styles.vehicleBadgeText}>{vehicleType}</Text>
+                    <Text style={styles.vehicleBadgeText}>{String(vehicleType || 'Vehicle')}</Text>
                   </View>
                 )}
               </View>
@@ -519,7 +593,8 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
                 value={isOnline}
                 onValueChange={toggleOnline}
                 trackColor={{ false: 'rgba(255,255,255,0.3)', true: 'rgba(255,255,255,0.6)' }}
-                thumbColor={loadingStatus ? '#F59E0B' : (isOnline ? '#FFFFFF' : '#E5E7EB')}
+                thumbColor={(updateStatusMutation.isPending || updateAvailabilityMutation.isPending) ? '#F59E0B' : (isOnline ? '#FFFFFF' : '#E5E7EB')}
+                disabled={updateStatusMutation.isPending || updateAvailabilityMutation.isPending}
               />
             </View>
           </View>
@@ -541,7 +616,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
                   <Ionicons name={stat.icon as any} size={24} color={stat.color} />
                 </View>
                 <Text style={[styles.statValue, { color: theme.colors.text }]}>
-                  {countUps[index]}
+                  {String(countUps[index] || '—')}
                 </Text>
                 <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
                   {stat.label}
@@ -550,6 +625,8 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
             ))}
           </View>
         </View>
+
+        <SectionSeparator />
 
         {/* Account Details Section */}
         <View style={styles.section}>
@@ -563,7 +640,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
                 Full Name
               </Text>
               <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                {displayName}
+                {String(displayName || 'User')}
               </Text>
             </View>
             
@@ -572,7 +649,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
                 Email
               </Text>
               <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                {displayEmail}
+                {String(displayEmail || 'No email')}
               </Text>
             </View>
             
@@ -581,7 +658,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
                 Phone
               </Text>
               <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                {displayPhone}
+                {String(displayPhone || '—')}
               </Text>
             </View>
             
@@ -590,7 +667,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
                 Vehicle Type
               </Text>
               <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                {vehicleType || '—'}
+                {String(vehicleType || '—')}
               </Text>
             </View>
             
@@ -615,6 +692,8 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
             </Text>
           </TouchableOpacity>
         </View>
+
+        <SectionSeparator />
 
         {/* Settings Section */}
         <View style={styles.section}>
@@ -645,10 +724,10 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
                 </Text>
               </View>
               <Switch
-                value={notifications}
-                onValueChange={setNotifications}
+                value={notificationsEnabled}
+                onValueChange={handleNotificationToggle}
                 trackColor={{ false: theme.colors.border, true: '#3B82F640' }}
-                thumbColor={notifications ? '#3B82F6' : theme.colors.textSecondary}
+                thumbColor={notificationsEnabled ? '#3B82F6' : theme.colors.textSecondary}
               />
             </View>
 
@@ -710,6 +789,8 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
           </View>
         </View>
 
+        <SectionSeparator />
+
         {/* Support Section */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
@@ -757,15 +838,20 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
 
         {/* Notifications Section */}
         {notificationList.length > 0 && (
-          <View style={styles.section}>
+          <>
+            <SectionSeparator />
+            <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
               Notifications
             </Text>
             <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
               {renderNotifications()}
             </View>
-          </View>
+            </View>
+          </>
         )}
+
+        <SectionSeparator />
 
         {/* Logout Button */}
         <View style={styles.section}>
@@ -787,7 +873,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
           </Text>
         </View>
       </ScrollView>
-    </View>
+    </CommonView>
   );
 }
 
@@ -917,36 +1003,50 @@ const styles = StyleSheet.create({
   },
   section: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 28,
+    paddingBottom: 4,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     marginBottom: 16,
+    letterSpacing: 0.3,
   },
   card: {
     borderRadius: 16,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 4,
   },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 18,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
+    minHeight: 56,
   },
   lastDetailRow: {
     borderBottomWidth: 0,
   },
   detailLabel: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500',
+    letterSpacing: 0.2,
   },
   detailValue: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
+    letterSpacing: 0.1,
   },
   refreshButton: {
     flexDirection: 'row',
@@ -967,9 +1067,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 18,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
+    minHeight: 60,
   },
   lastMenuItem: {
     borderBottomWidth: 0,
@@ -994,7 +1095,8 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   menuItemSubtext: {
     fontSize: 14,
@@ -1034,5 +1136,11 @@ const styles = StyleSheet.create({
   },
   notificationBody: {
     fontSize: 14,
+  },
+  sectionSeparator: {
+    height: 1,
+    marginHorizontal: 20,
+    marginVertical: 16,
+    opacity: 0.3,
   },
 });

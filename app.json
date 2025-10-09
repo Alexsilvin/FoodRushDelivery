@@ -15,7 +15,26 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-location"
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "This app needs location access to provide accurate delivery tracking and navigation to customers, even when the app is in the background.",
+          "locationAlwaysPermission": "This app needs location access to provide accurate delivery tracking and navigation to customers, even when the app is in the background.",
+          "locationWhenInUsePermission": "This app needs location access to provide accurate delivery tracking and navigation to customers.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#3B82F6",
+          "sounds": [
+            "./assets/notification-sound.wav"
+          ]
+        }
+      ]
     ],
     "extra": {
       "googleMapsApiKey": "AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18",
@@ -24,7 +43,30 @@
       }
     },
     "android": {
-      "package": "food.rush.delivery.driver.app"
+      "package": "food.rush.delivery.driver.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "WAKE_LOCK",
+        "com.google.android.c2dm.permission.RECEIVE"
+      ],
+      "useNextNotificationsApi": true
+    },
+    "ios": {
+      "bundleIdentifier": "food.rush.delivery.driver.app",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "background-processing",
+          "background-fetch",
+          "location"
+        ],
+        "NSLocationWhenInUseUsageDescription": "This app needs location access to provide accurate delivery tracking and navigation to customers.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs location access to provide accurate delivery tracking and navigation to customers, even when the app is in the background.",
+        "NSLocationAlwaysUsageDescription": "This app needs location access to provide accurate delivery tracking and navigation to customers, even when the app is in the background."
+      }
     }
   }
 }

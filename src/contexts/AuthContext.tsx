@@ -35,6 +35,7 @@ interface AuthContextType {
   updateUserPhoneNumber: (phoneNumber: string) => Promise<boolean>;
   updateUserVehicles: (vehicles: { id: string; name: string; type: string; default: boolean }[], defaultVehicle: string) => Promise<boolean>;
   updateUserPhoneNumbers: (phoneNumbers: { id: string; number: string; isPrimary: boolean }[], primaryNumber: string) => Promise<boolean>;
+  refreshUserProfile: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,13 +55,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Prefer rider account endpoint then fallback
             const userData = await riderAuthAPI.getAccount();
             if (userData.data) {
-              // Normalize fields to avoid undefined where UI expects string
+              console.log('✅ Profile data loaded on init:', userData.data);
+              
+              // The data is already normalized by the API service
               const normalized: User = {
                 ...userData.data,
+                // Ensure required fields are present
                 firstName: userData.data.firstName || userData.data.fullName?.split(' ')[0] || '',
                 lastName: userData.data.lastName || userData.data.fullName?.split(' ').slice(1).join(' ') || '',
                 role: userData.data.role || 'rider'
               };
+              
+              // Store the normalized user data
+              await SecureStore.setItemAsync('user', JSON.stringify(normalized));
               setUser(normalized);
             } else {
               // Token exists but profile fetch failed, clear token
@@ -237,6 +244,7 @@ const login = async (
   const logout = async (): Promise<void> => {
     try {
       await AsyncStorage.removeItem('auth_token');
+      await AsyncStorage.removeItem('refresh_token');
       await SecureStore.deleteItemAsync('user');
       setUser(null);
     } catch (error) {
@@ -399,6 +407,40 @@ const login = async (
     }
   };
 
+  const refreshUserProfile = async (): Promise<boolean> => {
+    try {
+      if (!user) return false;
+      
+      console.log('🔄 Refreshing user profile from backend...');
+      
+      const userData = await riderAuthAPI.getAccount();
+      if (userData.data) {
+        console.log('✅ Profile data refreshed:', userData.data);
+        
+        // The data is already normalized by the API service
+        const normalized: User = {
+          ...userData.data,
+          // Ensure required fields are present
+          firstName: userData.data.firstName || userData.data.fullName?.split(' ')[0] || '',
+          lastName: userData.data.lastName || userData.data.fullName?.split(' ').slice(1).join(' ') || '',
+          role: userData.data.role || 'rider'
+        };
+        
+        // Store the updated user data
+        await SecureStore.setItemAsync('user', JSON.stringify(normalized));
+        setUser(normalized);
+        
+        return true;
+      } else {
+        console.warn('⚠️ Profile refresh failed - no data received');
+        return false;
+      }
+    } catch (error: any) {
+      console.error('❌ Profile refresh error:', error?.response?.data || error.message);
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -411,7 +453,8 @@ const login = async (
       updateUserProfile,
       updateUserPhoneNumber,
       updateUserVehicles,
-      updateUserPhoneNumbers
+      updateUserPhoneNumbers,
+      refreshUserProfile
     }}>
       {children}
     </AuthContext.Provider>

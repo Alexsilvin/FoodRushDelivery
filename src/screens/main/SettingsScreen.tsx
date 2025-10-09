@@ -16,6 +16,11 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { riderAPI, riderAuthAPI } from '../../services/api';
 import LanguageSelector from '../../components/LanguageSelector';
+import CommonView from '../../components/CommonView';
+import { StackScreenProps } from '../../types/navigation.types';
+import { useFloatingTabBarHeight } from '../../hooks/useFloatingTabBarHeight';
+
+type Props = StackScreenProps<'Settings'>;
 
 interface SettingItemProps {
   title: string;
@@ -61,10 +66,11 @@ const SettingItem: React.FC<SettingItemProps> = ({
   );
 };
 
-export default function SettingsScreen({ navigation }: { navigation: any }) {
+export default function SettingsScreen({ navigation, route }: Props) {
   const { theme, themeMode, setThemeMode } = useTheme();
   const { t } = useLanguage();
   const { user, logout } = useAuth();
+  const tabBarHeight = useFloatingTabBarHeight();
   
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationTrackingEnabled, setLocationTrackingEnabled] = useState(true);
@@ -518,7 +524,11 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
   );
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <CommonView>
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: tabBarHeight }}
+      >
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
           {t('appearance').toUpperCase()}
@@ -688,7 +698,8 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
       
       {showThemeModal && <ThemeModal />}
       {showNotificationsModal && <NotificationsModal />}
-    </ScrollView>
+      </ScrollView>
+    </CommonView>
   );
 }
 
