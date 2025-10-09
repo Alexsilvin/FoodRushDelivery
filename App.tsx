@@ -1,4 +1,7 @@
 import React, { useState, memo } from 'react';
+import { Modal, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNetwork } from './src/contexts/NetworkContext';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet } from 'react-native';
@@ -59,6 +62,8 @@ AppContent.displayName = 'AppContent';
 
 // Main App component that wraps everything with providers
 export default function App() {
+  // Global network state
+  const { isOffline } = useNetwork();
   const [showSplash, setShowSplash] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -74,6 +79,21 @@ export default function App() {
   return (
     <AppProviders>
       <View style={styles.container}>
+        {/* Global offline notification */}
+        <Modal
+          visible={isOffline}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 32, alignItems: 'center', elevation: 5 }}>
+              <Ionicons name="cloud-offline" size={48} color="#1E40AF" style={{ marginBottom: 12 }} />
+              <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#111827', marginBottom: 8 }}>No Internet Connection</Text>
+              <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center' }}>You are currently offline. Please check your network connection to continue.</Text>
+            </View>
+          </View>
+        </Modal>
+
         {/* Show splash screen */}
         {showSplash && (
           <SplashScreen 

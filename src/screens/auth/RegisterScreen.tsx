@@ -434,9 +434,9 @@ export default function RegisterScreen({ navigation, route }: Props) {
         <Text style={styles.uploadLabel}>ID Document</Text>
         <Text style={styles.uploadSubLabel}>Upload ID card or driver license</Text>
         {documentUri ? (
-          <View style={styles.uploadedImageContainer}>
-            <View style={styles.inlineButtons}>
-              <Image source={{ uri: documentUri }} style={styles.uploadedImage} alt='Uploaded Document'/>
+          <View style={styles.uploadedImageContainerNew}>
+            <Image source={{ uri: documentUri }} style={styles.uploadedImageNew} alt='Uploaded Document'/>
+            <View style={styles.uploadedImageActions}>
               <TouchableOpacity style={styles.smallButton} onPress={() => pickImage('document')}>
                 <Text style={styles.smallButtonText}>Replace</Text>
               </TouchableOpacity>
@@ -467,9 +467,9 @@ export default function RegisterScreen({ navigation, route }: Props) {
         <Text style={styles.uploadLabel}>Vehicle Photo</Text>
         <Text style={styles.uploadSubLabel}>Required for motorized vehicles (plate visible)</Text>
         {vehiclePhotoUri ? (
-          <View style={styles.uploadedImageContainer}>
-            <Image source={{ uri: vehiclePhotoUri }} style={styles.uploadedImage} alt='Uploaded Vehicle Photo'/>
-            <View style={styles.inlineButtons}>
+          <View style={styles.uploadedImageContainerNew}>
+            <Image source={{ uri: vehiclePhotoUri }} style={styles.uploadedImageNew} alt='Uploaded Vehicle Photo'/>
+            <View style={styles.uploadedImageActions}>
               <TouchableOpacity style={styles.smallButton} onPress={() => pickImage('vehicle')}>
                 <Text style={styles.smallButtonText}>Replace</Text>
               </TouchableOpacity>
@@ -803,14 +803,35 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginBottom: 12,
   },
-  uploadedImageContainer: {
+  uploadedImageContainerNew: {
     alignItems: 'center',
-  },
-  uploadedImage: {
-    width: '100%',
-    height: 160,
-    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  uploadedImageNew: {
+    width: 220,
+    height: 140,
+    borderRadius: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFF',
+    resizeMode: 'cover',
+  },
+  uploadedImageActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
   },
   inlineButtons: {
     flexDirection: 'row',
