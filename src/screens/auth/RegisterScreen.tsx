@@ -148,29 +148,30 @@ export default function RegisterScreen({ navigation, route }: Props) {
         vehiclePhotoUri
       );
 
-      const userState = response?.user?.state?.toLowerCase();
+      const userState = response?.user?.state;
+      const normalizedState = userState?.toLowerCase();
 
       if (response?.success) {
         console.log('🎯 Registration successful, user state:', userState);
         
-        // Handle navigation based on user state
-        if (userState === 'pending' || userState === 'pending_verification') {
+        // Handle navigation based on user state from the API response
+        if (normalizedState === 'pending_documents' || normalizedState === 'pending' || normalizedState === 'pending_verification') {
           Alert.alert(
             t('success') || 'Success',
-            t('accountPending') || 'Your account has been created and is pending approval. Please check your email for verification.',
+            'Your account has been created successfully! Your application is now under review.',
             [
               {
                 text: t('ok') || 'OK',
                 onPress: () => navigation.replace('Waiting', {
-                  reason: 'Your account is pending approval. Please wait for admin review.'
+                  reason: 'Your application is being reviewed. You will be notified once approved.'
                 }),
               },
             ]
           );
-        } else if (userState === 'active' || userState === 'approved') {
+        } else if (normalizedState === 'active' || normalizedState === 'approved') {
           Alert.alert(
             t('success') || 'Success',
-            'Account created successfully! Welcome to Food Rush.',
+            'Account created and approved! Welcome to Food Rush.',
             [
               {
                 text: t('getStarted') || 'Get Started',
@@ -178,13 +179,10 @@ export default function RegisterScreen({ navigation, route }: Props) {
               },
             ]
           );
-        } else if (userState === 'rejected') {
-          navigation.replace('Rejected');
-        } else {
-          // Default case - go to login
+        } else if (normalizedState === 'rejected') {
           Alert.alert(
-            t('success') || 'Success',
-            'Account created successfully! Please log in to continue.',
+            'Application Rejected',
+            'Your application has been rejected. Please contact support for more information.',
             [
               {
                 text: 'Go to Login',
@@ -192,12 +190,27 @@ export default function RegisterScreen({ navigation, route }: Props) {
               },
             ]
           );
+        } else {
+          // Default case - go to waiting screen for unknown states
+          Alert.alert(
+            t('success') || 'Success',
+            'Account created successfully! Your application is being processed.',
+            [
+              {
+                text: 'Continue',
+                onPress: () => navigation.replace('Waiting', {
+                  reason: 'Your application is being processed. Please wait for approval.'
+                }),
+              },
+            ]
+          );
         }
       } else {
         // Registration failed
+        const errorMessage = response?.message || 'Registration failed. Please check your information and try again.';
         Alert.alert(
           t('error') || 'Error',
-          'Registration failed. Please check your information and try again.'
+          errorMessage
         );
       }
     } catch (error: any) {

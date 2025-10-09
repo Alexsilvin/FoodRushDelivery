@@ -32,10 +32,8 @@ interface AuthContextType {
   forgotPassword: (email: string) => Promise<boolean>;
   resetPassword: (token: string, newPassword: string) => Promise<boolean>;
   updateUserProfile: (data: { firstName: string; lastName: string; email: string }) => Promise<boolean>;
-  updateUserPhoneNumber: (phoneNumber: string) => Promise<boolean>;
   updateUserVehicles: (vehicles: { id: string; name: string; type: string; default: boolean }[], defaultVehicle: string) => Promise<boolean>;
   updateUserPhoneNumbers: (phoneNumbers: { id: string; number: string; isPrimary: boolean }[], primaryNumber: string) => Promise<boolean>;
-  refreshUserProfile: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -55,19 +53,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Prefer rider account endpoint then fallback
             const userData = await riderAuthAPI.getAccount();
             if (userData.data) {
-              console.log('✅ Profile data loaded on init:', userData.data);
-              
-              // The data is already normalized by the API service
+              // Normalize fields to avoid undefined where UI expects string
               const normalized: User = {
                 ...userData.data,
-                // Ensure required fields are present
                 firstName: userData.data.firstName || userData.data.fullName?.split(' ')[0] || '',
                 lastName: userData.data.lastName || userData.data.fullName?.split(' ').slice(1).join(' ') || '',
                 role: userData.data.role || 'rider'
               };
-              
-              // Store the normalized user data
-              await SecureStore.setItemAsync('user', JSON.stringify(normalized));
               setUser(normalized);
             } else {
               // Token exists but profile fetch failed, clear token
@@ -244,7 +236,6 @@ const login = async (
   const logout = async (): Promise<void> => {
     try {
       await AsyncStorage.removeItem('auth_token');
-      await AsyncStorage.removeItem('refresh_token');
       await SecureStore.deleteItemAsync('user');
       setUser(null);
     } catch (error) {
@@ -278,8 +269,11 @@ const login = async (
       
       console.log('🔄 Updating profile with data:', data);
       
-      // API accepts: fullName, phoneNumber, profilePicture (not firstName, lastName, email)
+      // Use the correct JWT-authenticated profile endpoint
       const profileData = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
         fullName: `${data.firstName} ${data.lastName}`.trim()
       };
       
@@ -288,20 +282,14 @@ const login = async (
       if (response.success && response.data) {
         console.log('✅ Profile updated successfully:', response.data);
         
-        // Parse fullName back to firstName/lastName for local storage
-        const fullName = response.data.fullName || `${data.firstName} ${data.lastName}`.trim();
-        const nameParts = fullName.split(' ');
-        const firstName = nameParts[0] || data.firstName;
-        const lastName = nameParts.slice(1).join(' ') || data.lastName;
-        
+        // Update the user object with the new data
         const updatedUser = {
           ...user,
           ...response.data,
-          firstName: firstName,
-          lastName: lastName,
-          fullName: fullName,
-          // Email is not updatable via this endpoint - keep original
-          email: user.email
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          fullName: `${data.firstName} ${data.lastName}`.trim()
         };
         
         // Save to secure storage and update context
@@ -325,37 +313,6 @@ const login = async (
         console.error('❌ Validation error - check request data format');
       }
       
-      return false;
-    }
-  };
-
-  const updateUserPhoneNumber = async (phoneNumber: string): Promise<boolean> => {
-    try {
-      if (!user) return false;
-      
-      console.log('🔄 Updating phone number:', phoneNumber);
-      
-      const response = await authAPI.updateProfileJWT({ phoneNumber });
-      
-      if (response.success && response.data) {
-        console.log('✅ Phone number updated successfully:', response.data);
-        
-        const updatedUser = {
-          ...user,
-          ...response.data,
-          phoneNumber: phoneNumber
-        };
-        
-        await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
-        setUser(updatedUser);
-        
-        return true;
-      } else {
-        console.warn('⚠️ Phone number update failed:', response.message);
-        return false;
-      }
-    } catch (error: any) {
-      console.error('❌ Phone number update error:', error?.response?.data || error.message);
       return false;
     }
   };
@@ -407,40 +364,6 @@ const login = async (
     }
   };
 
-  const refreshUserProfile = async (): Promise<boolean> => {
-    try {
-      if (!user) return false;
-      
-      console.log('🔄 Refreshing user profile from backend...');
-      
-      const userData = await riderAuthAPI.getAccount();
-      if (userData.data) {
-        console.log('✅ Profile data refreshed:', userData.data);
-        
-        // The data is already normalized by the API service
-        const normalized: User = {
-          ...userData.data,
-          // Ensure required fields are present
-          firstName: userData.data.firstName || userData.data.fullName?.split(' ')[0] || '',
-          lastName: userData.data.lastName || userData.data.fullName?.split(' ').slice(1).join(' ') || '',
-          role: userData.data.role || 'rider'
-        };
-        
-        // Store the updated user data
-        await SecureStore.setItemAsync('user', JSON.stringify(normalized));
-        setUser(normalized);
-        
-        return true;
-      } else {
-        console.warn('⚠️ Profile refresh failed - no data received');
-        return false;
-      }
-    } catch (error: any) {
-      console.error('❌ Profile refresh error:', error?.response?.data || error.message);
-      return false;
-    }
-  };
-
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -451,10 +374,8 @@ const login = async (
       forgotPassword,
       resetPassword,
       updateUserProfile,
-      updateUserPhoneNumber,
       updateUserVehicles,
-      updateUserPhoneNumbers,
-      refreshUserProfile
+      updateUserPhoneNumbers
     }}>
       {children}
     </AuthContext.Provider>
