@@ -43,7 +43,7 @@ export default function ProfileScreen({ navigation, route }: Props) {
   
   // Rider status hooks
   const updateStatusMutation = useUpdateRiderStatus();
-  const updateAvailabilityMutation = useUpdateAvailability();
+  const updateAvailabilityMutatin = useUpdateAvailability();
   
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [profileLoading, setProfileLoading] = useState(false);
