@@ -78,17 +78,17 @@ export const notificationService = {
       type?: string;
       createdAt: string;
       updatedAt?: string;
-    }>>>('/notifications/my');
-    return response.data.data!;
+    }>>>('/notifications/my', { params });
+    return response.data.data || [];
   },
 
   /**
    * Get unread notifications count
    * GET /api/v1/notifications/unread-count
    */
-  getUnreadCount: async (): Promise<{ count: number }> => {
+  getUnreadCount: async (): Promise<number> => {
     const response = await apiClient.get<ApiResponse<{ count: number }>>('/notifications/unread-count');
-    return response.data.data!;
+    return response.data.data?.count || 0;
   },
 
   /**

@@ -12,26 +12,35 @@ export const notificationKeys = {
 /**
  * Hook to get notifications list
  */
-export const useNotifications = (params?: {
-  page?: number;
-  limit?: number;
-}) => {
+export const useNotifications = (
+  params?: {
+    page?: number;
+    limit?: number;
+  },
+  options?: {
+    enabled?: boolean;
+  }
+) => {
   return useQuery({
     queryKey: notificationKeys.list(params),
     queryFn: () => notificationService.getNotifications(params),
     staleTime: 30 * 1000, // 30 seconds
+    enabled: options?.enabled,
   });
 };
 
 /**
  * Hook to get unread notifications count
  */
-export const useUnreadCount = () => {
+export const useUnreadCount = (options?: {
+  enabled?: boolean;
+}) => {
   return useQuery({
     queryKey: notificationKeys.unreadCount(),
     queryFn: notificationService.getUnreadCount,
     staleTime: 30 * 1000, // 30 seconds
     refetchInterval: 60 * 1000, // Refetch every minute
+    enabled: options?.enabled,
   });
 };
 

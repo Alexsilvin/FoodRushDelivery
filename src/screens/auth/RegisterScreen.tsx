@@ -167,7 +167,7 @@ export default function RegisterScreen({ navigation, route }: Props) {
         );
       } else {
         // Registration failed
-        const errorMessage = response?.message || 'Registration failed. Please check your information and try again.';
+        const errorMessage = 'Registration failed. Please check your information and try again.';
         Alert.alert(
           t('error') || 'Error',
           errorMessage

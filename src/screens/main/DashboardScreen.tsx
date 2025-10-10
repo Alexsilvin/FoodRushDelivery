@@ -70,7 +70,7 @@ export default function DashboardScreen({ navigation, route }: Props) {
     isLoading: deliveriesLoading,
     error: deliveriesError,
     refetch: refetchDeliveries,
-  } = useMyDeliveries({ limit: 50, offset: 0 });
+  } = useMyDeliveries({ limit: 50, page: 1 });
 
   const {
     data: analytics,
@@ -108,8 +108,16 @@ export default function DashboardScreen({ navigation, route }: Props) {
   // Convert new API format to legacy format for existing UI
   const deliveries = useMemo(() => {
     if (!Array.isArray(deliveryItems)) return [];
-    const legacyDeliveries = mapDeliveryItemsToLegacy(deliveryItems);
-    return legacyDeliveries.map(mapLegacyToDelivery);
+    // If deliveryItems are already in Delivery format, use them directly
+    // Otherwise, convert from DeliveryItem format
+    if (deliveryItems.length > 0 && 'order' in deliveryItems[0]) {
+      // This is DeliveryItem[] format
+      const legacyDeliveries = mapDeliveryItemsToLegacy(deliveryItems as any);
+      return legacyDeliveries.map(mapLegacyToDelivery);
+    } else {
+      // This is already Delivery[] format
+      return deliveryItems as Delivery[];
+    }
   }, [deliveryItems]);
 
   // Combine stats from analytics and balance
@@ -117,7 +125,6 @@ export default function DashboardScreen({ navigation, route }: Props) {
     todayEarnings: analytics?.todayEarnings || 0,
     completedDeliveries: analytics?.completedDeliveries || 0,
     rating: analytics?.rating || 0,
-    activeDeliveries: analytics?.activeDeliveries || 0,
     balance,
   }), [analytics, balance]);
 

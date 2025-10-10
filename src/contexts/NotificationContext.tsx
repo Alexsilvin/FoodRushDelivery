@@ -4,15 +4,25 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { InAppNotification } from '../types/api';
 import { useAuth } from './AuthContext';
-import { useUnreadCount, useRegisterDevice, useNotifications as useNotificationsQuery } from '../hooks/useNotifications';
+import { useUnreadCount, useRegisterDevice, useNotifications as useNotificationsQuery, useMarkAsRead, useMarkAllAsRead } from '../hooks/useNotifications';
 
 interface NotificationContextType {
   notifications: InAppNotification[];
   unreadCount: number;
   isLoading: boolean;
   pushToken: string | null;
+  notificationsEnabled: boolean;
+  setNotificationsEnabled: (enabled: boolean) => void;
+  soundEnabled: boolean;
+  setSoundEnabled: (enabled: boolean) => void;
+  vibrationEnabled: boolean;
+  setVibrationEnabled: (enabled: boolean) => void;
+  permissions: Notifications.NotificationPermissionsStatus | null;
   refreshNotifications: () => Promise<void>;
   requestPermissions: () => Promise<boolean>;
+  markAsRead: (notificationId: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
+  loadMoreNotifications: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -47,10 +57,40 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     { enabled: isActive }
   );
   const registerDeviceMutation = useRegisterDevice();
+  const markAsReadMutation = useMarkAsRead();
+  const markAllAsReadMutation = useMarkAllAsRead();
   
   // Local state
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [vibrationEnabled, setVibrationEnabled] = useState(true);
+  const [permissions, setPermissions] = useState<Notifications.NotificationPermissionsStatus | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Check permissions and update state on mount
+  useEffect(() => {
+    let mounted = true;
+
+    const checkPermissions = async () => {
+      try {
+        const permissionStatus = await Notifications.getPermissionsAsync();
+        if (mounted) {
+          setPermissions(permissionStatus);
+          setNotificationsEnabled(permissionStatus.status === 'granted');
+        }
+      } catch (error) {
+        console.error('❌ Permission check failed:', error);
+      }
+    };
+
+    checkPermissions();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Register for push notifications on mount (once)
   useEffect(() => {
@@ -91,9 +131,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Request permissions
   const requestPermissions = async (): Promise<boolean> => {
     try {
-      const { status } = await Notifications.requestPermissionsAsync();
+      const permissionStatus = await Notifications.requestPermissionsAsync();
+      setPermissions(permissionStatus);
       
-      if (status === 'granted') {
+      if (permissionStatus.status === 'granted') {
+        setNotificationsEnabled(true);
+        
         if (!Device.isDevice) {
           console.warn('⚠️ Push notifications only work on physical devices');
           return true;
@@ -111,6 +154,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         return true;
       }
 
+      setNotificationsEnabled(false);
       Alert.alert(
         'Permissions Required',
         'Please enable notifications in settings to receive delivery updates.'
@@ -138,6 +182,36 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
+  // Mark notification as read
+  const markAsRead = async (notificationId: string) => {
+    try {
+      await markAsReadMutation.mutateAsync(notificationId);
+    } catch (error) {
+      console.error('❌ Mark as read failed:', error);
+    }
+  };
+
+  // Mark all notifications as read
+  const markAllAsRead = async () => {
+    try {
+      await markAllAsReadMutation.mutateAsync();
+    } catch (error) {
+      console.error('❌ Mark all as read failed:', error);
+    }
+  };
+
+  // Load more notifications
+  const loadMoreNotifications = async () => {
+    try {
+      setCurrentPage(prev => prev + 1);
+      // This would typically trigger a new query with the updated page
+      // For now, just refresh the current notifications
+      await refreshNotifications();
+    } catch (error) {
+      console.error('❌ Load more failed:', error);
+    }
+  };
+
   return (
     <NotificationContext.Provider
       value={{
@@ -145,8 +219,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         unreadCount: isActive ? unreadCount : 0,
         isLoading,
         pushToken,
+        notificationsEnabled,
+        setNotificationsEnabled,
+        soundEnabled,
+        setSoundEnabled,
+        vibrationEnabled,
+        setVibrationEnabled,
+        permissions,
         refreshNotifications,
         requestPermissions,
+        markAsRead,
+        markAllAsRead,
+        loadMoreNotifications,
       }}
     >
       {children}

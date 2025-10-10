@@ -19,7 +19,7 @@ export const useNearbyRestaurants = (params: {
   limit?: number;
   offset?: number;
   isOpen?: boolean;
-  verificationStatus?: string;
+  verificationStatus?: 'PENDING_VERIFICATION' | 'APPROVED' | 'REJECTED';
 }) => {
   return useQuery({
     queryKey: restaurantKeys.nearby(params),

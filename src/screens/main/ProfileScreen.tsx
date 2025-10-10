@@ -43,7 +43,7 @@ export default function ProfileScreen({ navigation, route }: Props) {
   
   // Rider status hooks
   const updateStatusMutation = useUpdateRiderStatus();
-  const updateAvailabilityMutatin = useUpdateAvailability();
+  const updateAvailabilityMutation = useUpdateAvailability();
   
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -327,7 +327,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         
         if (mounted && summaryRes) {
           // Handle the API response structure: {status_code, message, data}
-          const analyticsData = summaryRes.data || summaryRes;
+          const analyticsData = summaryRes;
           console.log('✅ Analytics data received:', analyticsData);
           
           // Safely extract values with proper type checking
@@ -357,7 +357,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         
         if (mounted && balanceRes) {
           // Handle the API response structure: {status_code, message, data}
-          const balanceData = balanceRes.data || balanceRes;
+          const balanceData = balanceRes;
           console.log('💰 Balance data received:', balanceData);
           
           // Safely extract balance value
@@ -458,7 +458,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
       
       if (summaryRes) {
         // Handle the API response structure: {status_code, message, data}
-        const analyticsData = summaryRes.data || summaryRes;
+        const analyticsData = summaryRes;
         console.log('✅ Refresh analytics data received:', analyticsData);
         
         // Safely extract values with proper type checking
@@ -482,7 +482,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
       
       if (balanceRes) {
         // Handle the API response structure: {status_code, message, data}
-        const balanceData = balanceRes.data || balanceRes;
+        const balanceData = balanceRes;
         console.log('💰 Refresh balance data received:', balanceData);
         
         // Safely extract balance value

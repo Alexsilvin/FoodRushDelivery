@@ -68,10 +68,33 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
   );
 
   const appStateRef = useRef<AppStateStatus>('active');
-  const initTimeoutRef = useRef<NodeJS.Timeout>();
-  const trackingCheckIntervalRef = useRef<NodeJS.Timeout>();
+  const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const trackingCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const updateCountRef = useRef(0);
-  const frequencyCheckIntervalRef = useRef<NodeJS.Timeout>();
+  const frequencyCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleAppStateChange = useCallback(
+    async (state: AppStateStatus) => {
+      appStateRef.current = state;
+
+      if (state === 'active') {
+        console.log('📱 App moved to foreground');
+        if (isLocationTracking) {
+          const location = await locationService.getCurrentLocation();
+          if (location) {
+            setCurrentLocation(location);
+            setLastUpdateTime(Date.now());
+          }
+        }
+      } else if (state === 'background') {
+        console.log('📱 App moved to background');
+        if (isLocationTracking && user) {
+          console.log('✅ Background location tracking active');
+        }
+      }
+    },
+    [isLocationTracking, user, locationService]
+  );
 
   // Initialize location service when user is authenticated
   useEffect(() => {
@@ -240,28 +263,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
     };
   }, [handleAppStateChange]);
 
-  const handleAppStateChange = useCallback(
-    async (state: AppStateStatus) => {
-      appStateRef.current = state;
 
-      if (state === 'active') {
-        console.log('📱 App moved to foreground');
-        if (isLocationTracking) {
-          const location = await locationService.getCurrentLocation();
-          if (location) {
-            setCurrentLocation(location);
-            setLastUpdateTime(Date.now());
-          }
-        }
-      } else if (state === 'background') {
-        console.log('📱 App moved to background');
-        if (isLocationTracking && user) {
-          console.log('✅ Background location tracking active');
-        }
-      }
-    },
-    [isLocationTracking, user, locationService]
-  );
 
   const startTrackingVerification = useCallback(() => {
     if (trackingCheckIntervalRef.current) {
