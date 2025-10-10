@@ -165,7 +165,8 @@ export const riderService = {
    */
   getStatus: async (): Promise<RiderStatus> => {
     const response = await apiClient.get<ApiResponse<RiderStatus>>('/riders/status');
-    return response.data.isOnline!;
+    // Response shape: { status_code, message, data: { isOnline: boolean } }
+    return response.data.data!;
   },
 
   /**
@@ -174,7 +175,8 @@ export const riderService = {
    */
   updateStatus: async (isOnline: boolean): Promise<RiderStatus> => {
     const response = await apiClient.patch<ApiResponse<RiderStatus>>('/riders/status', { isOnline });
-    return response.data.isOnline!;
+    // Response shape: { status_code, message, data: { isOnline: boolean } }
+    return response.data.data!;
   },
 
   // ====================== DELIVERIES ======================

@@ -94,12 +94,7 @@ export interface Delivery {
 }
 
 export interface RiderStatus {
-  status: 'online' | 'offline';
-  activeDeliveries?: number;
-  completedToday?: number;
-  rating?: number;
-  todayEarnings?: number;
-  [key: string]: any;
+ isOnline: boolean;
 }
 
 export interface EarningsSummary {
