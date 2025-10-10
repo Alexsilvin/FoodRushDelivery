@@ -445,26 +445,30 @@ const login = async (
   const refreshUserProfile = async (): Promise<boolean> => {
     try {
       if (!user) return false;
-      
+
       console.log('🔄 Refreshing user profile from backend...');
-      
+
       const userData = await riderService.getMyAccount();
       if (userData) {
         console.log('✅ Profile data refreshed:', userData);
-        
-        // The data is already normalized by the API service
+
+        // Normalize nested user fields from backend response
+        const nested = userData.user || {};
         const normalized: User = {
           ...userData,
-          // Ensure required fields are present
-          firstName: userData.firstName || userData.fullName?.split(' ')[0] || '',
-          lastName: userData.lastName || userData.fullName?.split(' ').slice(1).join(' ') || '',
-          role: userData.role || 'rider'
+          ...nested,
+          firstName: nested.firstName || nested.fullName?.split(' ')[0] || userData.firstName || userData.fullName?.split(' ')[0] || '',
+          lastName: nested.lastName || nested.fullName?.split(' ').slice(1).join(' ') || userData.lastName || userData.fullName?.split(' ').slice(1).join(' ') || '',
+          fullName: nested.fullName || userData.fullName || '',
+          email: nested.email || userData.email || '',
+          phoneNumber: nested.phoneNumber || userData.phoneNumber || '',
+          role: userData.role || 'rider',
         };
-        
+
         // Store the updated user data
         await SecureStore.setItemAsync('user', JSON.stringify(normalized));
         setUser(normalized);
-        
+
         return true;
       } else {
         console.warn('⚠️ Profile refresh failed - no data received');
