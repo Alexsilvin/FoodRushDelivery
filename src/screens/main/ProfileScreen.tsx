@@ -28,7 +28,7 @@ import { useFloatingTabBarHeight } from '../../hooks/useFloatingTabBarHeight';
 type Props = TabScreenProps<'Profile'>;
 
 export default function ProfileScreen({ navigation, route }: Props) {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUserProfile } = useAuth();
   const { theme } = useTheme();
   const { t } = useLanguage();
   const tabBarHeight = useFloatingTabBarHeight();
@@ -64,28 +64,16 @@ export default function ProfileScreen({ navigation, route }: Props) {
       phoneNumber: user?.phoneNumber,
       vehicleType: user?.vehicleType,
       vehicles: user?.vehicles,
-      isVerified: user?.isVerified
+      isVerified: user?.isVerified,
+      state: user?.state
     });
   }, [user]);
 
-  // Derive vehicle type (backend may store on vehicle or root)
-  const vehicleType = user?.vehicleType || user?.vehicles?.find(v => v.default)?.type || user?.vehicles?.[0]?.type;
-  
-  // Derive full name with better fallback logic
-  const displayName = user?.fullName || 
-    (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}`.trim() : '') ||
-    user?.firstName || 
-    user?.lastName || 
-    'User';
-    
-  // Derive email with fallback
+  // Use the data directly from the normalized user object
+  const displayName = user?.fullName || 'User';
   const displayEmail = user?.email || 'No email provided';
-  
-  // Derive phone with better fallback logic
-  const displayPhone = user?.phoneNumber || 
-    user?.phoneNumbers?.find(p => p.isPrimary)?.number || 
-    user?.phoneNumbers?.[0]?.number || 
-    '—';
+  const displayPhone = user?.phoneNumber || '—';
+  const vehicleType = user?.vehicleType || '';
 
   // Animation values
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -353,12 +341,12 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
           setRating(ratingValue);
           setCompletionRate(completionValue != null ? `${completionValue}%` : null);
         } else {
-          console.log('📊 No analytics data available, using mock data for demo');
-          // Set some demo data for testing
-          setTodayEarnings(45.50);
-          setCompletedDeliveries(12);
-          setRating(4.8);
-          setCompletionRate('95%');
+          console.log('📊 No analytics data available');
+          // Don't set dummy data - leave as null to show "—"
+          setTodayEarnings(null);
+          setCompletedDeliveries(null);
+          setRating(null);
+          setCompletionRate(null);
         }
         
         // Fetch balance if needed
@@ -377,7 +365,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
           setBalance(balanceValue);
         } else {
           console.log('💰 No balance data available');
-          setBalance(125.75); // Demo data
+          setBalance(null); // No dummy data
         }
       } finally {
         mounted && setProfileLoading(false);
@@ -457,10 +445,10 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
       console.log('🔄 Refreshing profile data...');
       
       // First refresh the user profile from backend
-      // const profileRefreshed = await refreshUserProfile();
-      // if (profileRefreshed) {
-      //   console.log('✅ User profile refreshed successfully');
-      // }
+      const profileRefreshed = await refreshUserProfile();
+      if (profileRefreshed) {
+        console.log('✅ User profile refreshed successfully');
+      }
       
       // Then refresh analytics data
       const summaryRes = await analyticsService.getRiderSummary().catch((error) => {
@@ -560,7 +548,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
           <View style={styles.profileSection}>
             <View style={styles.avatarContainer}>
               <Text style={styles.avatarText}>
-                {(user?.firstName?.[0] || '') + (user?.lastName?.[0] || '') || 'U'}
+                {user?.fullName ? user.fullName.split(' ').map(name => name[0]).join('').substring(0, 2).toUpperCase() : 'U'}
               </Text>
             </View>
             
@@ -758,9 +746,7 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
               </View>
               <View style={styles.menuItemRight}>
                 <Text style={[styles.menuItemSubtext, { color: theme.colors.textSecondary }]}>
-                  {user?.vehicles && user.vehicles.length > 0 
-                    ? user.vehicles.find(v => v.default)?.name || user.vehicles[0].name 
-                    : t('notSet') || 'Not set'}
+                  {vehicleType || t('notSet') || 'Not set'}
                 </Text>
                 <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
               </View>

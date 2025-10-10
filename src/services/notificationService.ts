@@ -15,7 +15,7 @@ export const notificationService = {
     platform: string;
     role: string;
   }): Promise<{ message: string }> => {
-    const response = await apiClient.post<ApiResponse<{ message: string }>>('/notifications/devices', deviceData);
+    const response = await apiClient.post<ApiResponse<{ message: string }>>('/notifications/device', deviceData);
     return response.data.data!;
   },
 
@@ -24,8 +24,8 @@ export const notificationService = {
    * DELETE /api/v1/notifications/devices/{token}
    */
   unregisterDevice: async (expoToken: string): Promise<{ message: string }> => {
-    const response = await apiClient.delete<ApiResponse<{ message: string }>>(`/notifications/devices/${expoToken}`);
-    return response.data.data!;
+      const response = await apiClient.delete<ApiResponse<{ message: string }>>(`/notifications/devices/`, { data: { expoToken } });
+      return response.data.data!;
   },
 
   /**

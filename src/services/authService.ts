@@ -1,6 +1,6 @@
 import apiClient from './apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ApiResponse, User } from '../types/api';
+import { ApiResponse, RiderProfile, User } from '../types/api';
 
 /**
  * Authentication Service
@@ -55,8 +55,8 @@ export const authService = {
    * Get current user profile
    * GET /api/v1/auth/profile
    */
-  getProfile: async (): Promise<User> => {
-    const response = await apiClient.get<ApiResponse<User>>('/riders/my/account');
+  getProfile: async (): Promise<RiderProfile> => {
+    const response = await apiClient.get<ApiResponse<RiderProfile>>('/riders/my/account');
     return response.data.data!;
   },
 

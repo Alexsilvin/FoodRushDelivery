@@ -128,13 +128,7 @@ export default function MainStack() {
         component={NotificationsScreen}
         options={{ title: 'Notifications' }}
       />
-      <Stack.Screen 
-        name="MapDetail" 
-        component={MapScreen}
-        options={{ 
-          title: 'Navigation',
-        }}
-      />
+     
       <Stack.Screen 
         name="CallScreen" 
         component={CallScreen}

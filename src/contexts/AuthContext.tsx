@@ -107,59 +107,59 @@ const login = async (
   password: string
 ): Promise<{ success: boolean; user?: User; token?: string; state?: string }> => {
   try {
+    // Step 1: Login to get token
     const response = await riderService.login(email, password);
-
-    const { accessToken, user } = response;
-
-    if (!accessToken || !user) {
+    const { accessToken } = response;
+    if (!accessToken) {
       return { success: false };
     }
-
     await AsyncStorage.setItem('auth_token', accessToken);
-    
-    // After successful login, fetch the current rider profile to get the latest state
-    let currentUser = user;
+
+    // Step 2: Always fetch full profile after login
+    let profileUser: User | null = null;
+    let loginState: string | undefined = response?.user?.state || response?.user?.status;
     try {
       const profileResponse = await riderService.getMyAccount();
       if (profileResponse) {
-        currentUser = profileResponse;
-        console.log('✅ Fetched current rider profile:', {
-          state: currentUser.state,
-          status: currentUser.status,
-          id: currentUser.id
-        });
+        // Normalize nested user fields from backend response
+        const nested = profileResponse.user || {};
+        profileUser = {
+          ...profileResponse,
+          ...nested,
+          firstName: nested.firstName || nested.fullName?.split(' ')[0] || profileResponse.firstName || profileResponse.fullName?.split(' ')[0] || '',
+          lastName: nested.lastName || nested.fullName?.split(' ').slice(1).join(' ') || profileResponse.lastName || profileResponse.fullName?.split(' ').slice(1).join(' ') || '',
+          fullName: nested.fullName || profileResponse.fullName || '',
+          email: nested.email || profileResponse.email || '',
+          phoneNumber: nested.phoneNumber || profileResponse.phoneNumber || '',
+          role: profileResponse.role || 'rider',
+          loginState,
+          profileState: profileResponse.state || profileResponse.status,
+        };
+        await SecureStore.setItemAsync('user', JSON.stringify(profileUser));
+        setUser(profileUser);
+      } else {
+        // If profile fetch fails, clear token and user
+        await AsyncStorage.removeItem('auth_token');
+        setUser(null);
+        return { success: false };
       }
     } catch (profileError: any) {
+      // If not approved, keep token but no user
       if (profileError?.response?.status === 403) {
-        console.log('📍 User not approved yet, using login response data');
+        setUser(null);
+        return { success: true, token: accessToken };
       } else {
-        console.warn('⚠️ Could not fetch current profile, using login response:', profileError);
+        await AsyncStorage.removeItem('auth_token');
+        setUser(null);
+        return { success: false };
       }
     }
 
-    await SecureStore.setItemAsync('user', JSON.stringify(currentUser));
-
-    const normalized: User = {
-      ...currentUser,
-      firstName: currentUser.firstName || currentUser.fullName?.split(' ')[0] || '',
-      lastName: currentUser.lastName || currentUser.fullName?.split(' ').slice(1).join(' ') || '',
-      role: currentUser.role || 'rider',
-    };
-
-    setUser(normalized);
-
-    // Use the current profile state, fallback to login response state, then 'pending'
-    const finalState = normalized.state || normalized.status || 'pending';
-    
-    console.log('🔍 Final login state determination:', {
-      profileState: normalized.state,
-      profileStatus: normalized.status,
-      finalState
-    });
-
+    // Use the profile state for navigation
+    const finalState = profileUser?.profileState || profileUser?.state || profileUser?.status || 'pending';
     return {
       success: true,
-      user: normalized,
+      user: profileUser || undefined,
       token: accessToken,
       state: finalState,
     };
