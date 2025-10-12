@@ -29,6 +29,13 @@ type Props = TabScreenProps<'Profile'>;
 
 export default function ProfileScreen({ navigation, route }: Props) {
   const { user, logout, refreshUserProfile } = useAuth();
+
+  // Ensure user info is fetched on mount if missing
+  useEffect(() => {
+    if (!user) {
+      refreshUserProfile();
+    }
+  }, [user, refreshUserProfile]);
   const { theme } = useTheme();
   const { t } = useLanguage();
   const tabBarHeight = useFloatingTabBarHeight();
@@ -70,10 +77,13 @@ export default function ProfileScreen({ navigation, route }: Props) {
   }, [user]);
 
   // Use the data directly from the normalized user object
-  const displayName = user?.fullName || 'User';
-  const displayEmail = user?.email || 'No email provided';
-  const displayPhone = user?.phoneNumber || '—';
-  const vehicleType = user?.vehicleType || '';
+  // Prefer nested user fields if present
+  const displayName = user?.fullName || user?.user?.fullName || 'User';
+  const displayEmail = user?.email || user?.user?.email || 'No email provided';
+  const displayPhone = user?.phoneNumber || user?.user?.phoneNumber || '—';
+  const vehicleType = user?.vehicleType || user?.user?.vehicleType || '';
+  // Render user info directly from context
+  // ...existing code...
 
   // Animation values
   const scrollY = useRef(new Animated.Value(0)).current;

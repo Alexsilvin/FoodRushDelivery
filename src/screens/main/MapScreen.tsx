@@ -22,10 +22,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { riderService, restaurantService } from '../../services';
+import { deliveryService } from '../../services/deliveryService';
 import { mapApiDeliveries } from '../../utils/mappers';
 import { useLocation } from '../../contexts/LocationContext';
 import { Restaurant, Delivery } from '../../types/api';
-import { TabScreenProps } from '../../types/navigation.types';
+import { TabScreenProps, AppStackScreenProps } from '../../types/navigation.types';
 import CommonView from '../../components/CommonView';
 import { useFloatingTabBarHeight } from '../../hooks/useFloatingTabBarHeight';
 
@@ -168,48 +169,73 @@ const convertToDeliveryLocations = (deliveries: Delivery[]): DeliveryLocation[] 
   }));
 };
 
-type Props = TabScreenProps<'Map'>;
+type TabProps = TabScreenProps<'Map'>;
+type StackProps = AppStackScreenProps<'MapDetail'>;
 
-export default function MapScreen({ navigation, route }: Props) {
+// Accept both tab and stack props
+type Props = TabProps | StackProps;
+
+export default function MapScreen(props: Props) {
+  // Support both tab and stack navigation
+  const navigation = (props as any).navigation;
+  const route = (props as any).route;
+
   const { theme } = useTheme();
   const { t } = useLanguage();
   const tabBarHeight = useFloatingTabBarHeight();
-  const { 
-    currentLocation, 
-    isLocationTracking,
-    isInitializing,
-    locationError,
-    lastUpdateTime,
-    updateFrequency,
-    forceLocationUpdate,
-    clearLocationError,
-  } = useLocation();
+  const { currentLocation, isLocationTracking, isInitializing, locationError, lastUpdateTime, updateFrequency, forceLocationUpdate, clearLocationError } = useLocation();
+
+  // Accept deliveryId from navigation params
+  const deliveryId = route?.params && typeof route.params === 'object' && 'deliveryId' in route.params ? (route.params as any).deliveryId : undefined;
 
   // State
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryLocation | null>(null);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
-
   const [fetchingDeliveries, setFetchingDeliveries] = useState(false);
   const [fetchingRestaurants, setFetchingRestaurants] = useState(false);
   const [loading, setLoading] = useState(true);
-
   const [showDeliveriesModal, setShowDeliveriesModal] = useState(false);
   const [showRestaurantModal, setShowRestaurantModal] = useState(false);
-
   const [activeDirections, setActiveDirections] = useState<DirectionsRoute | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [showDirections, setShowDirections] = useState(false);
   const [isDrivingMode, setIsDrivingMode] = useState(false);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
-
   const [driverPosition, setDriverPosition] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
-
   const mapRef = useRef<MapView>(null);
   const animIndexRef = useRef<number>(0);
   const animIntervalRef = useRef<any>(null);
+
+  // If deliveryId is provided, fetch delivery details from backend
+  useEffect(() => {
+    if (deliveryId) {
+      deliveryService.getDeliveryById(deliveryId).then((delivery) => {
+        if (delivery) {
+          setSelectedDelivery({
+            id: delivery.id,
+            customerName: delivery.customerName || '',
+            customerPhone: delivery.customerPhone,
+            address: delivery.address || '',
+            lat: delivery.dropoffLat ?? delivery.lat ?? 0,
+            lng: delivery.dropoffLng ?? delivery.lng ?? 0,
+            status: delivery.status as 'pending' | 'accepted' | 'picked_up' | 'delivered',
+            distance: delivery.distance || '',
+            estimatedTime: delivery.estimatedTime || '',
+            restaurant: delivery.restaurant || '',
+            payment: delivery.payment || '',
+            restaurant_active: delivery.restaurant_active,
+            verificationStatus: delivery.verificationStatus,
+            restaurantLat: delivery.pickupLat ?? delivery.restaurantLat ?? 0,
+            restaurantLng: delivery.pickupLng ?? delivery.restaurantLng ?? 0,
+          });
+          setLoading(false);
+        }
+      });
+    }
+  }, [deliveryId]);
 
   // Format time helper
   const formatLastUpdate = useCallback((): string => {

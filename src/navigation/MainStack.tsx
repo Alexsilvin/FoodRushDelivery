@@ -93,6 +93,11 @@ export default function MainStack() {
         component={DeliveryDetailsScreen}
         options={{ title: 'Delivery Details' }}
       />
+      <Stack.Screen
+        name="MapDetail"
+        component={MapScreen}
+        options={{ title: 'Map' }}
+      />
       <Stack.Screen 
         name="CustomerProfile" 
         component={CustomerProfileScreen}

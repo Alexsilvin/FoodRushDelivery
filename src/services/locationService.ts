@@ -308,7 +308,7 @@ class LocationService {
     attempt: number
   ): Promise<void> {
     try {
-      await riderService.updateLocation(coordinates.latitude, coordinates.longitude);
+  await riderService.updateMyLocation(coordinates.latitude, coordinates.longitude);
       this.retryCount = 0;
     } catch (error: any) {
       const errorInfo = {

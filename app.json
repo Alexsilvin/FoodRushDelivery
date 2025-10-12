@@ -34,7 +34,8 @@
             "./assets/notification_sound.mp3"
           ]
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "googleMapsApiKey": "AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18",
@@ -57,8 +58,7 @@
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION"
-      ],
-      "useNextNotificationsApi": true
+      ]
     },
     "ios": {
       "bundleIdentifier": "food.rush.delivery.driver.app",

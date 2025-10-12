@@ -10,19 +10,22 @@ export const deliveryService = {
    * List deliveries for the authenticated rider
    * GET /api/v1/deliveries/my
    */
-  getMyDeliveries: async (params?: {
-    page?: number;
-    limit?: number;
-    status?: string;
-  }): Promise<Delivery[]> => {
-    const queryParams = new URLSearchParams();
-    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
-    if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
-    if (params?.status) queryParams.append('status', params.status);
-
-    const url = `/deliveries/my${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const response = await apiClient.get<ApiResponse<Delivery[]>>(url);
-    return response.data.data!;
+  getMyDeliveries: async (): Promise<Delivery[]> => {
+    try {
+      const response = await apiClient.get<ApiResponse<Delivery[]>>('/deliveries/my');
+      return response.data.data!;
+    } catch (error: any) {
+      if (error.response) {
+        console.error('getMyDeliveries error:', {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+      } else {
+        console.error('getMyDeliveries error:', error.message);
+      }
+      throw error;
+    }
   },
 
   /**
@@ -30,8 +33,21 @@ export const deliveryService = {
    * POST /api/v1/deliveries/{id}/accept
    */
   acceptDelivery: async (deliveryId: string): Promise<Delivery> => {
-    const response = await apiClient.post<ApiResponse<Delivery>>(`/deliveries/${deliveryId}/accept`);
-    return response.data.data!;
+    try {
+      const response = await apiClient.post<ApiResponse<Delivery>>(`/deliveries/${deliveryId}/accept`);
+      return response.data.data!;
+    } catch (error: any) {
+      if (error.response) {
+        console.error('acceptDelivery error:', {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+      } else {
+        console.error('acceptDelivery error:', error.message);
+      }
+      throw error;
+    }
   },
 
   /**
@@ -39,8 +55,21 @@ export const deliveryService = {
    * POST /api/v1/deliveries/{id}/pickup
    */
   markPickedUp: async (deliveryId: string): Promise<Delivery> => {
-    const response = await apiClient.post<ApiResponse<Delivery>>(`/deliveries/${deliveryId}/pickup`);
-    return response.data.data!;
+    try {
+      const response = await apiClient.post<ApiResponse<Delivery>>(`/deliveries/${deliveryId}/pickup`);
+      return response.data.data!;
+    } catch (error: any) {
+      if (error.response) {
+        console.error('markPickedUp error:', {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+      } else {
+        console.error('markPickedUp error:', error.message);
+      }
+      throw error;
+    }
   },
 
   /**
@@ -48,8 +77,21 @@ export const deliveryService = {
    * POST /api/v1/deliveries/{id}/out-for-delivery
    */
   markOutForDelivery: async (deliveryId: string): Promise<Delivery> => {
-    const response = await apiClient.post<ApiResponse<Delivery>>(`/deliveries/${deliveryId}/out-for-delivery`);
-    return response.data.data!;
+    try {
+      const response = await apiClient.post<ApiResponse<Delivery>>(`/deliveries/${deliveryId}/out-for-delivery`);
+      return response.data.data!;
+    } catch (error: any) {
+      if (error.response) {
+        console.error('markOutForDelivery error:', {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+      } else {
+        console.error('markOutForDelivery error:', error.message);
+      }
+      throw error;
+    }
   },
 
   /**
@@ -57,8 +99,21 @@ export const deliveryService = {
    * POST /api/v1/deliveries/{id}/deliver
    */
   markDelivered: async (deliveryId: string): Promise<Delivery> => {
-    const response = await apiClient.post<ApiResponse<Delivery>>(`/deliveries/${deliveryId}/deliver`);
-    return response.data.data!;
+    try {
+      const response = await apiClient.post<ApiResponse<Delivery>>(`/deliveries/${deliveryId}/deliver`);
+      return response.data.data!;
+    } catch (error: any) {
+      if (error.response) {
+        console.error('markDelivered error:', {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+      } else {
+        console.error('markDelivered error:', error.message);
+      }
+      throw error;
+    }
   },
 
   /**
@@ -66,8 +121,21 @@ export const deliveryService = {
    * GET /api/v1/deliveries/{id}
    */
   getDeliveryById: async (deliveryId: string): Promise<Delivery> => {
-    const response = await apiClient.get<ApiResponse<Delivery>>(`/deliveries/${deliveryId}`);
-    return response.data.data!;
+    try {
+      const response = await apiClient.get<ApiResponse<Delivery>>(`/deliveries/${deliveryId}`);
+      return response.data.data!;
+    } catch (error: any) {
+      if (error.response) {
+        console.error('getDeliveryById error:', {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+      } else {
+        console.error('getDeliveryById error:', error.message);
+      }
+      throw error;
+    }
   },
 
   /**
@@ -75,7 +143,20 @@ export const deliveryService = {
    * GET /api/v1/deliveries/by-order/{orderId}
    */
   getDeliveryByOrderId: async (orderId: string): Promise<Delivery> => {
-    const response = await apiClient.get<ApiResponse<Delivery>>(`/deliveries/by-order/${orderId}`);
-    return response.data.data!;
+    try {
+      const response = await apiClient.get<ApiResponse<Delivery>>(`/deliveries/by-order/${orderId}`);
+      return response.data.data!;
+    } catch (error: any) {
+      if (error.response) {
+        console.error('getDeliveryByOrderId error:', {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers,
+        });
+      } else {
+        console.error('getDeliveryByOrderId error:', error.message);
+      }
+      throw error;
+    }
   },
 };

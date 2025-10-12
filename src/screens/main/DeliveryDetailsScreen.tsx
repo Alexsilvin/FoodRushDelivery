@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
+import { deliveryService } from '../../services/deliveryService';
 import { useCall } from '../../contexts/CallContext';
 import * as Location from 'expo-location';
 
@@ -47,88 +48,44 @@ interface OrderItem {
 
 export default function DeliveryDetailsScreen({ route, navigation }: any) {
   const { theme } = useTheme();
-  const { startCall } = useCall();
   const { deliveryId } = route.params;
   const [delivery, setDelivery] = useState<DeliveryDetails | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadDeliveryDetails = () => {
-      // Mock delivery details - in real app, fetch from API
-      const mockDelivery: DeliveryDetails = {
-        id: deliveryId,
-        customerName: 'Sarah Johnson',
-        customerPhone: '+1 (555) 123-4567',
-        address: '123 Oak Street, Apt 4B, Downtown, NY 10001',
-        distance: '2.5 km',
-        payment: '$12.50',
-        restaurant: 'Pizza Palace',
-        restaurantPhone: '+1 (555) 987-6543',
-        restaurantAddress: '456 Main Street, Downtown, NY 10001',
-        status: 'pending',
-        estimatedTime: '25 min',
-        orderTotal: '$28.50',
-        deliveryFee: '$3.99',
-        tip: '$5.00',
-        specialInstructions: 'Extra cheese, no onions',
-        deliveryInstructions: 'Ring doorbell twice. Apartment is on the 4th floor.',
-        coordinates: {
-          lat: 40.7589,
-          lng: -73.9851,
-        },
-        orderItems: [
-          {
-            id: '1',
-            name: 'Large Pepperoni Pizza',
-            quantity: 1,
-            price: '$18.99',
-            notes: 'Extra cheese, no onions',
-          },
-          {
-            id: '2',
-            name: 'Caesar Salad',
-            quantity: 1,
-            price: '$8.99',
-          },
-          {
-            id: '3',
-            name: 'Coca Cola (500ml)',
-            quantity: 2,
-            price: '$3.99',
-          },
-        ],
-      };
-
-      setTimeout(() => {
-        setDelivery(mockDelivery);
-        setLoading(false);
-      }, 500);
-    };
-
-    loadDeliveryDetails();
+    if (deliveryId) {
+      deliveryService.getDeliveryById(deliveryId).then((data) => {
+        if (data) {
+          setDelivery({
+            id: data.id ?? '',
+            customerName: data.customerName ?? '',
+            customerPhone: data.customerPhone ?? '',
+            address: data.address ?? '',
+            distance: data.distance ?? '',
+            payment: data.payment ?? '',
+            restaurant: data.restaurant ?? '',
+            restaurantPhone: data.restaurantPhone ?? '',
+            restaurantAddress: data.restaurantAddress ?? '',
+            status: (data.status as 'pending' | 'accepted' | 'picked_up' | 'delivered'),
+            estimatedTime: data.estimatedTime ?? '',
+            orderTotal: data.orderTotal ?? '',
+            deliveryFee: data.deliveryFee ?? '',
+            tip: data.tip ?? '',
+            specialInstructions: data.specialInstructions ?? '',
+            deliveryInstructions: data.deliveryInstructions ?? '',
+            coordinates: {
+              lat: data.dropoffLat ?? data.lat ?? 0,
+              lng: data.dropoffLng ?? data.lng ?? 0,
+            },
+            orderItems: Array.isArray(data.orderItems) && data.orderItems.every(item => typeof item === 'object') ? data.orderItems as OrderItem[] : [],
+          });
+          setLoading(false);
+        }
+      });
+    }
   }, [deliveryId]);
 
-  const handleCall = (phoneNumber: string, name: string) => {
-    Alert.alert(
-      `Call ${name}`,
-      `How would you like to call ${name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Voice Call',
-          onPress: () => startCall(name, 'voice'),
-        },
-        {
-          text: 'Video Call',
-          onPress: () => startCall(name, 'video'),
-        },
-        {
-          text: 'Phone Call',
-          onPress: () => Linking.openURL(`tel:${phoneNumber}`),
-        },
-      ]
-    );
-  };
+  // Phone call UI removed. If needed, use Linking.openURL in a separate action button.
 
   const handleCustomerNamePress = () => {
     if (delivery) {
@@ -154,13 +111,8 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 
   const handleAddressPress = () => {
     if (delivery) {
-      navigation.navigate('Map', {
-        targetLocation: {
-          latitude: delivery.coordinates.lat,
-          longitude: delivery.coordinates.lng,
-        },
-        customerName: delivery.customerName,
-        address: delivery.address,
+      navigation.navigate('MapDetail', {
+        deliveryId: delivery.id,
       });
     }
   };
@@ -351,7 +303,7 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.callButton}
-                onPress={() => handleCall(delivery.customerPhone, delivery.customerName)}
+                // Phone call UI removed. If needed, use Linking.openURL in a separate action button.
               >
                 <Ionicons name="call" size={20} color={theme.colors.primary} />
               </TouchableOpacity>
@@ -379,7 +331,7 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
               <Text style={styles.restaurantName}>{delivery.restaurant}</Text>
               <TouchableOpacity
                 style={styles.callButton}
-                onPress={() => handleCall(delivery.restaurantPhone, delivery.restaurant)}
+                // Phone call UI removed. If needed, use Linking.openURL in a separate action button.
               >
                 <Ionicons name="call" size={20} color="#1E40AF" />
               </TouchableOpacity>
@@ -392,17 +344,25 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Order Details</Text>
           <View style={[styles.orderCard, { backgroundColor: theme.colors.card }]}>
-            {delivery.orderItems.map((item) => (
-              <View key={item.id} style={styles.orderItem}>
-                <View style={styles.itemInfo}>
-                  <Text style={[styles.itemName, { color: theme.colors.text }]}>{item.quantity}x {item.name}</Text>
-                  {item.notes && (
-                    <Text style={[styles.itemNotes, { color: theme.colors.textSecondary }]}>{item.notes}</Text>
-                  )}
-                </View>
-                <Text style={[styles.itemPrice, { color: theme.colors.text }]}>{item.price}</Text>
-              </View>
-            ))}
+            {Array.isArray(delivery.orderItems) && delivery.orderItems.length > 0 && (
+              typeof delivery.orderItems[0] === 'string'
+                ? delivery.orderItems.map((item, idx) => (
+                    <View key={idx} style={styles.orderItem}>
+                      <Text style={[styles.itemName, { color: theme.colors.text }]}>{String(item)}</Text>
+                    </View>
+                  ))
+                : delivery.orderItems.map((item: any) => (
+                    <View key={item.id} style={styles.orderItem}>
+                      <View style={styles.itemInfo}>
+                        <Text style={[styles.itemName, { color: theme.colors.text }]}>{item.quantity}x {item.name}</Text>
+                        {item.notes && (
+                          <Text style={[styles.itemNotes, { color: theme.colors.textSecondary }]}>{item.notes}</Text>
+                        )}
+                      </View>
+                      <Text style={[styles.itemPrice, { color: theme.colors.text }]}>{item.price}</Text>
+                    </View>
+                  ))
+            )}
             
             {delivery.specialInstructions && (
               <View style={styles.specialInstructions}>
