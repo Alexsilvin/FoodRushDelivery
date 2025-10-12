@@ -67,6 +67,15 @@ export interface Vehicle {
 
 export type DeliveryStatus = 'pending' | 'accepted' | 'picked_up' | 'delivering' | 'completed' | 'delivered' | string;
 
+// Normalized lightweight order line used in Delivery.orderItems
+export interface OrderLine {
+  id: string;            // Stable identifier (backend id or generated)
+  name: string;          // Item name
+  quantity: number;      // Quantity ordered
+  price: number;         // Raw numeric price (minor currency unit optional)
+  notes?: string;        // Optional notes / special instructions
+}
+
 export interface Delivery {
   id: string;
   code?: string; // order code / reference
@@ -81,7 +90,7 @@ export interface Delivery {
   paymentAmount?: number;
   payment?: string; // UI formatted fallback
   estimatedTime?: string;
-  orderItems?: string[];
+  orderItems?: OrderLine[]; // Always normalized to objects (no plain strings)
   customerPhone?: string;
   pickupTime?: string;
   deliveryTime?: string;

@@ -26,7 +26,7 @@ import { deliveryService } from '../../services/deliveryService';
 import { mapApiDeliveries } from '../../utils/mappers';
 import { useLocation } from '../../contexts/LocationContext';
 import { Restaurant, Delivery } from '../../types/api';
-import { TabScreenProps, AppStackScreenProps } from '../../types/navigation.types';
+import { TabScreenProps, MapScreenParams } from '../../types/navigation.types';
 import CommonView from '../../components/CommonView';
 import { useFloatingTabBarHeight } from '../../hooks/useFloatingTabBarHeight';
 
@@ -169,24 +169,18 @@ const convertToDeliveryLocations = (deliveries: Delivery[]): DeliveryLocation[] 
   }));
 };
 
-type TabProps = TabScreenProps<'Map'>;
-type StackProps = AppStackScreenProps<'MapDetail'>;
+type Props = TabScreenProps<'Map'>;
 
-// Accept both tab and stack props
-type Props = TabProps | StackProps;
-
-export default function MapScreen(props: Props) {
-  // Support both tab and stack navigation
-  const navigation = (props as any).navigation;
-  const route = (props as any).route;
+export default function MapScreen({ navigation, route }: Props) {
 
   const { theme } = useTheme();
   const { t } = useLanguage();
   const tabBarHeight = useFloatingTabBarHeight();
   const { currentLocation, isLocationTracking, isInitializing, locationError, lastUpdateTime, updateFrequency, forceLocationUpdate, clearLocationError } = useLocation();
 
-  // Accept deliveryId from navigation params
-  const deliveryId = route?.params && typeof route.params === 'object' && 'deliveryId' in route.params ? (route.params as any).deliveryId : undefined;
+  // Optional params passed via tab navigation (all optional per MapScreenParams)
+  const params: MapScreenParams | undefined = route.params;
+  const deliveryId = params?.deliveryId;
 
   // State
   const [deliveries, setDeliveries] = useState<DeliveryLocation[]>([]);

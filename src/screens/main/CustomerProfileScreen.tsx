@@ -84,7 +84,7 @@ export default function CustomerProfileScreen() {
         targetLocation: customer.location,
         customerName: customer.name,
         address: customer.address,
-      });
+      } as import('../../types/navigation.types').MapScreenParams);
     } else {
       Alert.alert('Location unavailable', 'Location information is not available for this customer.');
     }

@@ -1,5 +1,6 @@
 import apiClient from './apiClient';
 import { ApiResponse, Delivery } from '../types/api';
+import { mapApiDelivery } from '../utils/mappers';
 
 /**
  * Delivery Service
@@ -122,8 +123,8 @@ export const deliveryService = {
    */
   getDeliveryById: async (deliveryId: string): Promise<Delivery> => {
     try {
-      const response = await apiClient.get<ApiResponse<Delivery>>(`/deliveries/${deliveryId}`);
-      return response.data.data!;
+  const response = await apiClient.get<ApiResponse<any>>(`/deliveries/${deliveryId}`);
+  return mapApiDelivery(response.data.data!);
     } catch (error: any) {
       if (error.response) {
         console.error('getDeliveryById error:', {
@@ -144,8 +145,8 @@ export const deliveryService = {
    */
   getDeliveryByOrderId: async (orderId: string): Promise<Delivery> => {
     try {
-      const response = await apiClient.get<ApiResponse<Delivery>>(`/deliveries/by-order/${orderId}`);
-      return response.data.data!;
+  const response = await apiClient.get<ApiResponse<any>>(`/deliveries/by-order/${orderId}`);
+  return mapApiDelivery(response.data.data!);
     } catch (error: any) {
       if (error.response) {
         console.error('getDeliveryByOrderId error:', {

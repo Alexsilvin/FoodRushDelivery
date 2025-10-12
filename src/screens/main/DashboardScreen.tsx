@@ -233,7 +233,7 @@ export default function DashboardScreen({ navigation, route }: Props) {
       };
 
   // Navigate to the MapScreen and pass deliveryId
-  navigation.navigate('MapDetail', { deliveryId: delivery.id });
+  navigation.navigate('Map', { deliveryId: delivery.id } as import('../../types/navigation.types').MapScreenParams);
     } catch (error) {
       console.error('Error fetching location:', error);
       Alert.alert('Error', 'Unable to fetch your current location. Please try again.');
@@ -285,7 +285,7 @@ export default function DashboardScreen({ navigation, route }: Props) {
           longitude: delivery.dropoffLng || delivery.lng || -73.9851,
         };
 
-  navigation.navigate('MapDetail', { deliveryId: delivery.id });
+  navigation.navigate('Map', { deliveryId: delivery.id } as import('../../types/navigation.types').MapScreenParams);
       }
     } catch (error) {
       console.error('Error getting location for customer navigation:', error);

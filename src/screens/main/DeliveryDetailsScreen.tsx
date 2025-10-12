@@ -38,12 +38,11 @@ interface DeliveryDetails {
   };
 }
 
-interface OrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  price: string;
-  notes?: string;
+import { OrderLine } from '../../types/api';
+
+interface OrderItem extends OrderLine {
+  // Backward compatibility alias; keeps local naming while using normalized fields
+  price: number; // Ensure numeric in this screen
 }
 
 export default function DeliveryDetailsScreen({ route, navigation }: any) {
@@ -77,7 +76,7 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
               lat: data.dropoffLat ?? data.lat ?? 0,
               lng: data.dropoffLng ?? data.lng ?? 0,
             },
-            orderItems: Array.isArray(data.orderItems) && data.orderItems.every(item => typeof item === 'object') ? data.orderItems as OrderItem[] : [],
+            orderItems: Array.isArray(data.orderItems) ? (data.orderItems as any as OrderItem[]).map(i => ({ ...i, price: Number(i.price || 0) })) : [],
           });
           setLoading(false);
         }
@@ -111,9 +110,9 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 
   const handleAddressPress = () => {
     if (delivery) {
-      navigation.navigate('MapDetail', {
+      navigation.navigate('Map', {
         deliveryId: delivery.id,
-      });
+      } as import('../../types/navigation.types').MapScreenParams);
     }
   };
 
@@ -171,10 +170,10 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
           },
           deliveryId: delivery.id,
           deliveryStatus: delivery.status,
-          navigationMode: 'toRestaurant', // Start by going to restaurant
+          navigationMode: 'toRestaurant',
           customerName: delivery.customerName,
           restaurantName: delivery.restaurant,
-        });
+        } as import('../../types/navigation.types').MapScreenParams);
       } catch (error) {
         console.error('Error fetching location:', error);
         Alert.alert('Error', 'Unable to fetch your current location. Please try again.');
@@ -218,10 +217,10 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
                       },
                       deliveryId: delivery.id,
                       deliveryStatus: 'picked_up',
-                      navigationMode: 'toCustomer', // Now going to customer
+                      navigationMode: 'toCustomer',
                       customerName: delivery.customerName,
                       restaurantName: delivery.restaurant,
-                    });
+                    } as import('../../types/navigation.types').MapScreenParams);
                   }
                 } catch (error) {
                   console.error('Error getting location for customer navigation:', error);
@@ -345,23 +344,17 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Order Details</Text>
           <View style={[styles.orderCard, { backgroundColor: theme.colors.card }]}>
             {Array.isArray(delivery.orderItems) && delivery.orderItems.length > 0 && (
-              typeof delivery.orderItems[0] === 'string'
-                ? delivery.orderItems.map((item, idx) => (
-                    <View key={idx} style={styles.orderItem}>
-                      <Text style={[styles.itemName, { color: theme.colors.text }]}>{String(item)}</Text>
-                    </View>
-                  ))
-                : delivery.orderItems.map((item: any) => (
-                    <View key={item.id} style={styles.orderItem}>
-                      <View style={styles.itemInfo}>
-                        <Text style={[styles.itemName, { color: theme.colors.text }]}>{item.quantity}x {item.name}</Text>
-                        {item.notes && (
-                          <Text style={[styles.itemNotes, { color: theme.colors.textSecondary }]}>{item.notes}</Text>
-                        )}
-                      </View>
-                      <Text style={[styles.itemPrice, { color: theme.colors.text }]}>{item.price}</Text>
-                    </View>
-                  ))
+              delivery.orderItems.map((item) => (
+                <View key={item.id} style={styles.orderItem}>
+                  <View style={styles.itemInfo}>
+                    <Text style={[styles.itemName, { color: theme.colors.text }]}>{item.quantity}x {item.name}</Text>
+                    {item.notes && (
+                      <Text style={[styles.itemNotes, { color: theme.colors.textSecondary }]}>{item.notes}</Text>
+                    )}
+                  </View>
+                  <Text style={[styles.itemPrice, { color: theme.colors.text }]}>${item.price.toFixed(2)}</Text>
+                </View>
+              ))
             )}
             
             {delivery.specialInstructions && (

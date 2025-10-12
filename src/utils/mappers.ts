@@ -1,7 +1,7 @@
 // Unified mapping utilities to adapt backend payloads to internal app models
 // This allows quick adjustment if the backend field names or shapes differ.
 
-import { User, Delivery } from '../types/api';
+import { User, Delivery, OrderLine } from '../types/api';
 
 // Status normalization map (extend as backend adds values)
 const DELIVERY_STATUS_MAP: Record<string, string> = {
@@ -35,6 +35,35 @@ export function mapApiUser(apiUser: any): User {
 }
 
 export function mapApiDelivery(raw: any): Delivery {
+  // Normalize order items into OrderLine objects
+  let orderItems: OrderLine[] | undefined;
+  if (Array.isArray(raw.orderItems)) {
+    orderItems = raw.orderItems.map((i: any, idx: number) => {
+      if (typeof i === 'string') {
+        return { id: String(idx), name: i, quantity: 1, price: 0 };
+      }
+      return {
+        id: String(i.id ?? idx),
+        name: i.name || i.menuItem?.name || 'Item',
+        quantity: Number(i.quantity ?? i.qty ?? 1),
+        price: Number(i.price ?? i.unitPrice ?? i.amount ?? 0),
+        notes: i.notes || i.specialInstructions || undefined,
+      } as OrderLine;
+    });
+  } else if (Array.isArray(raw.items)) {
+    orderItems = raw.items.map((i: any, idx: number) => {
+      if (typeof i === 'string') {
+        return { id: String(idx), name: i, quantity: 1, price: 0 };
+      }
+      return {
+        id: String(i.id ?? idx),
+        name: i.name || i.menuItem?.name || 'Item',
+        quantity: Number(i.quantity ?? i.qty ?? 1),
+        price: Number(i.price ?? i.unitPrice ?? i.amount ?? 0),
+        notes: i.notes || i.specialInstructions || undefined,
+      } as OrderLine;
+    });
+  }
   return {
     id: raw.id || raw._id || Math.random().toString(36).slice(2),
     code: raw.code || raw.reference || raw.refCode,
@@ -49,7 +78,7 @@ export function mapApiDelivery(raw: any): Delivery {
     paymentAmount: raw.paymentAmount ?? raw.amount ?? raw.total,
     payment: raw.paymentAmount != null ? `$${Number(raw.paymentAmount).toFixed(2)}` : (raw.payment || undefined),
     estimatedTime: raw.estimatedTime || raw.eta || raw.estimatedMinutes && `${raw.estimatedMinutes} min` || '—',
-    orderItems: Array.isArray(raw.items) ? raw.items.map((i: any) => (typeof i === 'string' ? i : i.name || 'Item')) : (raw.orderItems || []),
+  orderItems,
     customerPhone: raw.customerPhone || raw.customer?.phone,
     pickupTime: raw.pickupTime || raw.pickedAt,
     deliveryTime: raw.deliveryTime || raw.deliveredAt,

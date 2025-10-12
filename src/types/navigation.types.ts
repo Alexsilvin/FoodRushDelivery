@@ -19,9 +19,23 @@ export type AuthStackScreenProps<T extends keyof AuthStackParamList> = RNStackSc
 
 // ====================== MAIN TAB TYPES ======================
 
+// Params accepted by the Map tab. All optional so navigation without params still works.
+export interface MapScreenParams {
+  deliveryId?: string;
+  driverLocation?: { latitude: number; longitude: number };
+  restaurantLocation?: { latitude: number; longitude: number };
+  customerLocation?: { latitude: number; longitude: number };
+  targetLocation?: { latitude: number; longitude: number };
+  deliveryStatus?: string;
+  navigationMode?: 'toRestaurant' | 'toCustomer';
+  customerName?: string;
+  restaurantName?: string;
+  address?: string;
+}
+
 export type MainTabParamList = {
   Dashboard: undefined;
-  Map: undefined;
+  Map: MapScreenParams | undefined; // Accept optional params for flexibility
   Profile: undefined;
 };
 
@@ -35,11 +49,9 @@ export type MainTabScreenProps<T extends keyof MainTabParamList> = BottomTabScre
 export type AppStackParamList = {
   // Tab Navigator
   MainTabs: NavigatorScreenParams<MainTabParamList>;
-  
   // Stack Screens
   DeliveryDetails: { deliveryId: string };
   CustomerProfile: { customerId: string };
-  MapDetail: { deliveryId?: string; mode?: 'view' | 'route' };
   Settings: undefined;
   EditProfile: undefined;
   VehicleInfo: undefined;
