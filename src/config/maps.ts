@@ -1,5 +1,7 @@
+import { GOOGLE_MAPS_API_KEY } from './env';
+
 export const MAP_CONFIG = {
-  apiKey: 'AIzaSyAYc29K0OTxkOfBxHgJNVPrPMvkakqcr18',
+  apiKey: GOOGLE_MAPS_API_KEY,
   defaultRegion: {
     latitude: 40.7128,
     longitude: -74.0060,

@@ -29,8 +29,7 @@ import { Restaurant, Delivery } from '../../types/api';
 import { TabScreenProps, MapScreenParams } from '../../types/navigation.types';
 import CommonView from '../../components/CommonView';
 import { useFloatingTabBarHeight } from '../../hooks/useFloatingTabBarHeight';
-
-const GOOGLE_MAPS_APIKEY = 'AIzaSyAlILoX4PV-nTzRcwdkP6iTOcFbV0IURMA';
+import { GOOGLE_MAPS_API_KEY } from '../../config/env';
 
 const { width, height } = Dimensions.get('window');
 
@@ -310,7 +309,7 @@ export default function MapScreen({ navigation, route }: Props) {
           `destination=${destinationStr}&` +
           `mode=driving&` +
           `avoid=tolls&` +
-          `key=${GOOGLE_MAPS_APIKEY}`;
+          `key=${GOOGLE_MAPS_API_KEY}`;
 
         const response = await fetch(url);
         const data = await response.json();
