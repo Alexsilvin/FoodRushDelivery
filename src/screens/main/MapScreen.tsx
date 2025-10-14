@@ -408,7 +408,7 @@ export default function MapScreen({ navigation, route }: Props) {
     }
   }, [currentLocation, fetchRestaurants]);
 
-  // Initialize map
+  // Initialize map - only set loading to false once we have a valid location
   useEffect(() => {
     if (currentLocation && currentLocation.latitude !== 0) {
       setLoading(false);
@@ -423,16 +423,48 @@ export default function MapScreen({ navigation, route }: Props) {
     }
   }, [currentLocation]);
 
-  // Timeout for loading
+  // Extended timeout for loading - give location service more time
   useEffect(() => {
     const timeout = setTimeout(() => {
+      // If still loading after 30 seconds and no valid location, show error
       if (loading && (!currentLocation || currentLocation.latitude === 0)) {
+        if (!locationError) {
+          // Set a more helpful error message
+          Alert.alert(
+            'Location Required',
+            'Unable to get your location. Please ensure:\n\n1. Location services are enabled on your device\n2. The app has location permissions\n3. You have a clear view of the sky for GPS signal',
+            [
+              {
+                text: 'Open Settings',
+                onPress: () => {
+                  if (Platform.OS === 'ios') {
+                    Linking.openURL('app-settings:');
+                  } else {
+                    Linking.openSettings();
+                  }
+                }
+              },
+              {
+                text: 'Try Again',
+                onPress: () => {
+                  forceLocationUpdate?.();
+                }
+              },
+              {
+                text: 'Continue Anyway',
+                onPress: () => setLoading(false),
+                style: 'cancel'
+              }
+            ]
+          );
+        }
+        // Allow map to load with default region to prevent crash
         setLoading(false);
       }
-    }, 15000);
+    }, 30000); // 30 seconds instead of 15
 
     return () => clearTimeout(timeout);
-  }, [loading, currentLocation]);
+  }, [loading, currentLocation, locationError, forceLocationUpdate]);
 
   // Driver animation
   useEffect(() => {
@@ -691,10 +723,27 @@ export default function MapScreen({ navigation, route }: Props) {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#3B82F6" />
           <Text style={styles.loadingText}>
-            {isInitializing ? 'Initializing location...' : 'Loading map...'}
+            {isInitializing ? 'Getting your location...' : 'Loading map...'}
           </Text>
           {locationError && (
-            <Text style={styles.errorText}>{locationError}</Text>
+            <>
+              <Text style={styles.errorText}>{locationError}</Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => {
+                  clearLocationError?.();
+                  forceLocationUpdate?.();
+                }}
+              >
+                <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {!locationError && isInitializing && (
+            <Text style={styles.hintText}>
+              Please ensure location services are enabled and you have a clear GPS signal
+            </Text>
           )}
         </View>
       </CommonView>
@@ -710,10 +759,11 @@ export default function MapScreen({ navigation, route }: Props) {
         style={styles.map}
         provider={PROVIDER_GOOGLE}
         initialRegion={{
-          latitude: currentLocation?.latitude || 0,
-          longitude: currentLocation?.longitude || 0,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
+          // Use current location if available, otherwise use a default region (not 0,0 to prevent crashes)
+          latitude: currentLocation?.latitude || 9.0820, // Default to Nigeria
+          longitude: currentLocation?.longitude || 8.6753,
+          latitudeDelta: currentLocation ? 0.01 : 5.0, // Zoom out if no location
+          longitudeDelta: currentLocation ? 0.01 : 5.0,
         }}
         showsUserLocation={true}
         showsMyLocationButton={false}
@@ -1309,6 +1359,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#EF4444',
     textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  retryButton: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  hintText: {
+    marginTop: 16,
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
   header: {
     position: 'absolute',

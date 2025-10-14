@@ -137,11 +137,26 @@ class LocationService {
    */
   public async getCurrentLocation(): Promise<LocationCoordinates | null> {
     try {
-      const location = await Location.getCurrentPositionAsync({
+      // Use a timeout to prevent hanging on Android
+      const locationPromise = Location.getCurrentPositionAsync({
         accuracy: this.config.enableHighAccuracy
           ? Location.Accuracy.High
           : Location.Accuracy.Balanced,
+        mayShowUserSettingsDialog: true, // Allow Android to show location settings dialog
+        timeInterval: 5000, // Maximum age of cached location (Android)
       });
+
+      // Timeout after 20 seconds
+      const timeoutPromise = new Promise<null>((_, reject) => {
+        setTimeout(() => reject(new Error('Location request timeout')), 20000);
+      });
+
+      const location = await Promise.race([locationPromise, timeoutPromise]);
+      
+      if (!location) {
+        console.warn('⚠️ Location request timed out');
+        return null;
+      }
 
       const coordinates: LocationCoordinates = {
         latitude: location.coords.latitude,
@@ -301,22 +316,50 @@ class LocationService {
   }
 
   /**
-   * Send location with exponential backoff retry
+   * Send location update to backend with retry logic
    */
   private async sendLocationWithRetry(
     coordinates: LocationCoordinates,
     attempt: number
   ): Promise<void> {
     try {
-  await riderService.updateMyLocation(coordinates.latitude, coordinates.longitude);
+      // Validate coordinates before sending
+      if (!coordinates.latitude || !coordinates.longitude) {
+        console.error('❌ Invalid coordinates:', coordinates);
+        return;
+      }
+
+      // Ensure coordinates are valid numbers
+      const lat = Number(coordinates.latitude);
+      const lng = Number(coordinates.longitude);
+
+      if (isNaN(lat) || isNaN(lng)) {
+        console.error('❌ Coordinates are not valid numbers:', { lat, lng, original: coordinates });
+        return;
+      }
+
+      // Validate coordinate ranges
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        console.error('❌ Coordinates out of valid range:', { lat, lng });
+        return;
+      }
+
+      console.log(`📤 Sending location update (attempt ${attempt + 1}):`, { latitude: lat, longitude: lng });
+
+      await riderService.updateMyLocation(lat, lng);
       this.retryCount = 0;
+      console.log('✅ Location update successful');
     } catch (error: any) {
       const errorInfo = {
         status: error?.response?.status,
         message: error?.response?.data?.message || error.message,
+        validationErrors: error?.response?.data?.errors || error?.response?.data?.error,
+        data: error?.response?.data,
         attempt: attempt + 1,
         maxRetries: this.maxRetries
       };
+      
+      console.error('❌ Location update error details:', JSON.stringify(errorInfo, null, 2));
       
       if (attempt < this.maxRetries) {
         const backoffMs = Math.pow(2, attempt) * 1000; // Exponential backoff

@@ -128,6 +128,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
           clearTimeout(initTimeoutRef.current);
         }
 
+        // Timeout warning only - don't set invalid fallback location
         initTimeoutRef.current = setTimeout(() => {
           if (
             isActive &&
@@ -135,23 +136,14 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
             isLocationTracking === false
           ) {
             console.warn(
-              '⚠️ Location initialization timeout'
+              '⚠️ Location initialization taking longer than expected'
             );
-            const fallbackLocation: LocationCoordinates = {
-              latitude: 0,
-              longitude: 0,
-              accuracy: 5000,
-              timestamp: Date.now(),
-            };
-            setCurrentLocation(fallbackLocation);
             setLocationError(
-              'Location services taking longer than expected. Please enable location access.'
+              'Location services are starting up. Please wait...'
             );
-            onLocationError?.(
-              'Timeout acquiring location'
-            );
+            // Don't set invalid fallback location - let initialization complete naturally
           }
-        }, 15000);
+        }, 10000);
 
         const success = await locationService.initialize({
           updateInterval: 30000,
@@ -166,12 +158,29 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
         if (success) {
           setIsLocationPermissionGranted(true);
 
-          const location = await locationService.getCurrentLocation();
+          // Try to get location with retries (up to 3 attempts)
+          let location = null;
+          let retryCount = 0;
+          const maxRetries = 3;
+          
+          while (!location && retryCount < maxRetries && isActive) {
+            console.log(`🔄 Attempting to get location (attempt ${retryCount + 1}/${maxRetries})...`);
+            location = await locationService.getCurrentLocation();
+            
+            if (!location && retryCount < maxRetries - 1) {
+              // Wait 3 seconds before retrying
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+            retryCount++;
+          }
+          
           if (location && isActive) {
             setCurrentLocation(location);
             setLastUpdateTime(Date.now());
             clearTimeout(initTimeoutRef.current);
+            setLocationError(null); // Clear any error messages
             onLocationSuccess?.(location);
+            console.log('✅ Location obtained successfully:', location);
 
             if (isActive) {
               const trackingStarted =
@@ -185,6 +194,12 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
                 '✅ Location service initialized and tracking started'
               );
             }
+          } else {
+            // Failed to get location after retries
+            console.warn('⚠️ Failed to get location after retries');
+            setLocationError(
+              'Unable to get your location. Please check GPS settings and ensure you have a clear view of the sky.'
+            );
           }
         } else {
           if (isActive) {
@@ -193,14 +208,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
             );
             setIsLocationPermissionGranted(false);
             onLocationError?.('Location permission denied');
-
-            const fallbackLocation: LocationCoordinates = {
-              latitude: 0,
-              longitude: 0,
-              accuracy: 5000,
-              timestamp: Date.now(),
-            };
-            setCurrentLocation(fallbackLocation);
+            // Don't set invalid fallback location
           }
         }
       } catch (error) {
@@ -213,14 +221,7 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({
           setLocationError(errorMsg);
           setIsLocationPermissionGranted(false);
           onLocationError?.(errorMsg);
-
-          const fallbackLocation: LocationCoordinates = {
-            latitude: 0,
-            longitude: 0,
-            accuracy: 5000,
-            timestamp: Date.now(),
-          };
-          setCurrentLocation(fallbackLocation);
+          // Don't set invalid fallback location
         }
       } finally {
         if (isActive) {

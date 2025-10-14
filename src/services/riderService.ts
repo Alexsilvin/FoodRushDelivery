@@ -130,8 +130,8 @@ export const riderService = {
    */
   updateMyLocation: async (latitude: number, longitude: number): Promise<{ message: string }> => {
     const response = await apiClient.patch<ApiResponse<{ message: string }>>('/riders/my/location', {
-      latitude,
-      longitude
+      lat: latitude,  // Backend expects 'lat', not 'latitude'
+      lng: longitude  // Backend expects 'lng', not 'longitude'
     });
     return response.data.data!;
   },
@@ -263,8 +263,8 @@ export const riderService = {
    */
   updateLocation: async (latitude: number, longitude: number): Promise<{ message: string }> => {
     const response = await apiClient.patch<ApiResponse<{ message: string }>>('/riders/location', {
-      latitude,
-      longitude
+      lat: latitude,  // Backend expects 'lat', not 'latitude'
+      lng: longitude  // Backend expects 'lng', not 'longitude'
     });
     return response.data.data!;
   },
