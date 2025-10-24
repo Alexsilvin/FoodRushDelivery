@@ -99,6 +99,14 @@ export interface Delivery {
   pickupLng?: number;
   dropoffLat?: number;
   dropoffLng?: number;
+  // Additional delivery details
+  orderTotal?: string;
+  deliveryFee?: string;
+  tip?: string;
+  restaurantPhone?: string;
+  restaurantAddress?: string;
+  specialInstructions?: string;
+  deliveryInstructions?: string;
   [key: string]: any;
 }
 

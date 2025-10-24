@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
-import { deliveryService } from '../../services/deliveryService';
+import { useDeliveryById } from '../../hooks/useDeliveries';
 import { useCall } from '../../contexts/CallContext';
 import * as Location from 'expo-location';
 
@@ -48,41 +48,32 @@ interface OrderItem extends OrderLine {
 export default function DeliveryDetailsScreen({ route, navigation }: any) {
   const { theme } = useTheme();
   const { deliveryId } = route.params;
-  const [delivery, setDelivery] = useState<DeliveryDetails | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: apiDelivery, isLoading, error } = useDeliveryById(deliveryId);
 
-  useEffect(() => {
-    if (deliveryId) {
-      deliveryService.getDeliveryById(deliveryId).then((data) => {
-        if (data) {
-          setDelivery({
-            id: data.id ?? '',
-            customerName: data.customerName ?? '',
-            customerPhone: data.customerPhone ?? '',
-            address: data.address ?? '',
-            distance: data.distance ?? '',
-            payment: data.payment ?? '',
-            restaurant: data.restaurant ?? '',
-            restaurantPhone: data.restaurantPhone ?? '',
-            restaurantAddress: data.restaurantAddress ?? '',
-            status: (data.status as 'pending' | 'accepted' | 'picked_up' | 'delivered'),
-            estimatedTime: data.estimatedTime ?? '',
-            orderTotal: data.orderTotal ?? '',
-            deliveryFee: data.deliveryFee ?? '',
-            tip: data.tip ?? '',
-            specialInstructions: data.specialInstructions ?? '',
-            deliveryInstructions: data.deliveryInstructions ?? '',
-            coordinates: {
-              lat: data.dropoffLat ?? data.lat ?? 0,
-              lng: data.dropoffLng ?? data.lng ?? 0,
-            },
-            orderItems: Array.isArray(data.orderItems) ? (data.orderItems as any as OrderItem[]).map(i => ({ ...i, price: Number(i.price || 0) })) : [],
-          });
-          setLoading(false);
-        }
-      });
-    }
-  }, [deliveryId]);
+  // Map API delivery to local interface
+  const delivery = apiDelivery ? {
+    id: apiDelivery.id ?? '',
+    customerName: apiDelivery.customerName ?? '',
+    customerPhone: apiDelivery.customerPhone ?? '',
+    address: apiDelivery.address ?? '',
+    distance: apiDelivery.distance ?? '',
+    payment: apiDelivery.payment ?? '',
+    restaurant: apiDelivery.restaurant ?? '',
+    restaurantPhone: apiDelivery.restaurantPhone ?? '',
+    restaurantAddress: apiDelivery.restaurantAddress ?? '',
+    status: (apiDelivery.status as 'pending' | 'accepted' | 'picked_up' | 'delivered'),
+    estimatedTime: apiDelivery.estimatedTime ?? '',
+    orderTotal: apiDelivery.orderTotal ?? '',
+    deliveryFee: apiDelivery.deliveryFee ?? '',
+    tip: apiDelivery.tip ?? '',
+    specialInstructions: apiDelivery.specialInstructions ?? '',
+    deliveryInstructions: apiDelivery.deliveryInstructions ?? '',
+    coordinates: {
+      lat: apiDelivery.dropoffLat ?? apiDelivery.lat ?? 0,
+      lng: apiDelivery.dropoffLng ?? apiDelivery.lng ?? 0,
+    },
+    orderItems: Array.isArray(apiDelivery.orderItems) ? (apiDelivery.orderItems as any as OrderItem[]).map(i => ({ ...i, price: Number(i.price || 0) })) : [],
+  } : null;
 
   // Phone call UI removed. If needed, use Linking.openURL in a separate action button.
 
@@ -126,7 +117,7 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
           {
             text: 'Accept',
             onPress: () => {
-              setDelivery({ ...delivery, status: 'accepted' });
+              // TODO: Use accept delivery mutation hook
               Alert.alert('Success', 'Delivery accepted! You can now start navigation.');
             },
           },
@@ -192,7 +183,7 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
           {
             text: 'Confirm',
             onPress: async () => {
-              setDelivery({ ...delivery, status: newStatus });
+              // TODO: Use appropriate mutation hook based on status
               
               if (newStatus === 'picked_up') {
                 // Navigate to customer location after pickup
@@ -239,11 +230,23 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
         <Ionicons name="bicycle" size={48} color={theme.colors.primary} />
         <Text style={[styles.loadingText, { color: theme.colors.text }]}>Loading delivery details...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.colors.background }]}>
+        <Ionicons name="alert-circle" size={48} color="#EF4444" />
+        <Text style={[styles.errorText, { color: theme.colors.text }]}>Failed to load delivery details</Text>
+        <Text style={[styles.errorText, { color: theme.colors.textSecondary, fontSize: 14, marginTop: 8 }]}>
+          {error.message || 'Please try again later'}
+        </Text>
       </View>
     );
   }

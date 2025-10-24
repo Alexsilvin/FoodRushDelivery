@@ -309,11 +309,8 @@ const login = async (
       
       console.log('🔄 Updating profile with data:', data);
       
-      // Use the correct JWT-authenticated profile endpoint
+      // Backend expects fullName, not separate firstName/lastName fields
       const profileData = {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
         fullName: `${data.firstName} ${data.lastName}`.trim()
       };
       

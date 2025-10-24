@@ -20,7 +20,7 @@ export const useMyDeliveries = (params?: {
 }) => {
   return useQuery({
     queryKey: deliveryKeys.my(params),
-    queryFn: () => deliveryService.getMyDeliveries(params),
+    queryFn: () => deliveryService.getMyDeliveries(),
     staleTime: 30 * 1000, // 30 seconds
   });
 };

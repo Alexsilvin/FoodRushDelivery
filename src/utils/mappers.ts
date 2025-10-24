@@ -86,6 +86,14 @@ export function mapApiDelivery(raw: any): Delivery {
   pickupLng: raw.pickupLng ?? raw.pickupLongitude ?? raw.pickup_location?.lng ?? raw.pickup?.lng,
   dropoffLat: raw.dropoffLat ?? raw.dropoffLatitude ?? raw.dropoff_location?.lat ?? raw.dropoff?.lat,
   dropoffLng: raw.dropoffLng ?? raw.dropoffLongitude ?? raw.dropoff_location?.lng ?? raw.dropoff?.lng,
+    // Additional fields for delivery details screen
+    orderTotal: raw.orderTotal ?? raw.subtotal ?? raw.orderSubtotal ?? '',
+    deliveryFee: raw.deliveryFee ?? raw.fee ?? '',
+    tip: raw.tip ?? raw.driverTip ?? raw.gratuity ?? '',
+    restaurantPhone: raw.restaurantPhone ?? raw.restaurant?.phone ?? '',
+    restaurantAddress: raw.restaurantAddress ?? raw.restaurant?.address ?? '',
+    specialInstructions: raw.specialInstructions ?? raw.instructions ?? '',
+    deliveryInstructions: raw.deliveryInstructions ?? raw.customerInstructions ?? raw.notes ?? '',
   } as Delivery;
 }
 
