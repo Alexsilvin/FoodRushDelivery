@@ -366,7 +366,7 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
                       <Text style={[styles.itemNotes, { color: theme.colors.textSecondary }]}>{item.notes}</Text>
                     )}
                   </View>
-                  <Text style={[styles.itemPrice, { color: theme.colors.text }]}>${item.price.toFixed(2)}</Text>
+                  <Text style={[styles.itemPrice, { color: theme.colors.text }]}>XAF {Math.round(item.price)}</Text>
                 </View>
               ))
             )}
@@ -424,11 +424,6 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 
       {/* Action Buttons - Positioned absolutely at bottom */}
       <View style={[styles.actionButtonsContainer, { backgroundColor: theme.colors.surface }]}>
-        {/* Debug info - remove this in production */}
-        <Text style={{ fontSize: 10, color: 'blue', textAlign: 'center', marginBottom: -10 }}>
-          Status: {delivery.status} | ID: {delivery.id}
-        </Text>
-
         {delivery.status === 'pending' && (
           <TouchableOpacity
             style={[styles.acceptButton, { backgroundColor: theme.colors.primary }]}

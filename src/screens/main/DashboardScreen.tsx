@@ -43,8 +43,8 @@ const driverImg = require('../../../assets/driver.png');
 
 // Local UI fallback formatting helpers
 const formatCurrency = (amount?: number) => {
-  if (amount == null) return '$0.00';
-  try { return `$${amount.toFixed(2)}`; } catch { return `$${amount}`; }
+  if (amount == null) return 'XAF 0';
+  try { return `XAF ${Math.round(amount)}`; } catch { return `XAF ${Math.round(amount)}`; }
 };
 
 import { TabScreenProps } from '../../types/navigation.types';
@@ -70,7 +70,7 @@ const DeliveryFeeDisplay = ({ delivery }: { delivery: Delivery }) => {
     
     const orderTotal = delivery.order.subtotal ? Number(delivery.order.subtotal) : 0;
     const deliveryFee = feeEstimate ? feeEstimate.deliveryFee : (delivery.order.deliveryFee ? Number(delivery.order.deliveryFee) : 0);
-    return `$${(orderTotal + deliveryFee).toFixed(2)}`;
+    return `XAF ${Math.round(orderTotal + deliveryFee)}`;
   })();
 
   return (
@@ -692,6 +692,7 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     zIndex: 1,
+    marginBottom: 10,
   },
   backgroundImage: {
     position: 'absolute',
@@ -702,6 +703,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     zIndex: 0,
+    pointerEvents: 'none',
   },
   darkBackground: {
     position: 'absolute',
@@ -732,13 +734,15 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 30,
+    paddingBottom: 25,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 20,
+    marginTop: -20,
+    paddingBottom: -10,
   },
   greetingContainer: {
     flex: 1,

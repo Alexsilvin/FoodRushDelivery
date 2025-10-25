@@ -78,7 +78,7 @@ export function mapApiDelivery(raw: any): Delivery {
     distanceKm: order.deliveryDistanceKm ? Number(order.deliveryDistanceKm) : (raw.distanceKm || raw.distance_km || raw.distance),
     distance: order.deliveryDistanceKm ? `${order.deliveryDistanceKm} km` : (raw.distance ? `${raw.distance} km` : (raw.distanceKm ? `${raw.distanceKm} km` : undefined)),
     paymentAmount: order.total ? Number(order.total) : (raw.paymentAmount ?? raw.amount ?? raw.total),
-    payment: order.total ? `$${Number(order.total).toFixed(2)}` : (raw.paymentAmount != null ? `$${Number(raw.paymentAmount).toFixed(2)}` : (raw.payment || undefined)),
+    payment: order.total ? `XAF ${Math.round(Number(order.total))}` : (raw.paymentAmount != null ? `XAF ${Math.round(Number(raw.paymentAmount))}` : (raw.payment || undefined)),
     estimatedTime: order.deliveryEtaMinutes ? `${order.deliveryEtaMinutes} min` : (raw.estimatedTime || raw.eta || raw.estimatedMinutes && `${raw.estimatedMinutes} min` || '—'),
     orderItems,
     customerPhone: '', // API doesn't provide customer phone
@@ -89,8 +89,8 @@ export function mapApiDelivery(raw: any): Delivery {
     dropoffLat: order.deliveryLatitude ? Number(order.deliveryLatitude) : (raw.dropoffLat ?? raw.dropoffLatitude ?? raw.dropoff_location?.lat ?? raw.dropoff?.lat),
     dropoffLng: order.deliveryLongitude ? Number(order.deliveryLongitude) : (raw.dropoffLng ?? raw.dropoffLongitude ?? raw.dropoff_location?.lng ?? raw.dropoff?.lng),
     // Additional fields for delivery details screen
-    orderTotal: order.subtotal ? `$${Number(order.subtotal).toFixed(2)}` : (raw.orderTotal ?? raw.subtotal ?? raw.orderSubtotal ?? ''),
-    deliveryFee: order.deliveryFee ? `$${Number(order.deliveryFee).toFixed(2)}` : (raw.deliveryFee ?? raw.fee ?? ''),
+    orderTotal: order.subtotal ? `XAF ${Math.round(Number(order.subtotal))}` : (raw.orderTotal ?? raw.subtotal ?? raw.orderSubtotal ?? ''),
+    deliveryFee: order.deliveryFee ? `XAF ${Math.round(Number(order.deliveryFee))}` : (raw.deliveryFee ?? raw.fee ?? ''),
     tip: raw.tip ?? raw.driverTip ?? raw.gratuity ?? '',
     restaurantPhone: restaurant.phone ?? raw.restaurantPhone ?? raw.restaurant?.phone ?? '',
     restaurantAddress: restaurant.address ?? raw.restaurantAddress ?? raw.restaurant?.address ?? '',
