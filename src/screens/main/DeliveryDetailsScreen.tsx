@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useDeliveryById } from '../../hooks/useDeliveries';
+import { useDeliveryById, useAcceptDelivery, useMarkPickedUp, useMarkOutForDelivery, useMarkDelivered } from '../../hooks/useDeliveries';
 import { useCall } from '../../contexts/CallContext';
 import * as Location from 'expo-location';
 
@@ -50,6 +50,12 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
   const { theme } = useTheme();
   const { deliveryId } = route.params;
   const { data: apiDelivery, isLoading, error } = useDeliveryById(deliveryId);
+  
+  // Mutation hooks for delivery status updates
+  const acceptDeliveryMutation = useAcceptDelivery();
+  const markPickedUpMutation = useMarkPickedUp();
+  const markOutForDeliveryMutation = useMarkOutForDelivery();
+  const markDeliveredMutation = useMarkDelivered();
 
   // Map API delivery to local interface
   const delivery = apiDelivery ? {
@@ -108,22 +114,14 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
     }
   };
 
-  const handleAcceptDelivery = () => {
+  const handleAcceptDelivery = async () => {
     if (delivery) {
-      Alert.alert(
-        'Accept Delivery',
-        'Are you sure you want to accept this delivery?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Accept',
-            onPress: () => {
-              // TODO: Use accept delivery mutation hook
-              Alert.alert('Success', 'Delivery accepted! You can now start navigation.');
-            },
-          },
-        ]
-      );
+      try {
+        await acceptDeliveryMutation.mutateAsync(delivery.id);
+        Alert.alert('Success', 'Delivery accepted! You can now start delivering.');
+      } catch (error) {
+        Alert.alert('Error', 'Failed to accept delivery. Please try again.');
+      }
     }
   };
 
@@ -173,62 +171,82 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
     }
   };
 
-  const handleUpdateStatus = async (newStatus: 'picked_up' | 'delivered') => {
-    if (delivery) {
-      const statusText = newStatus === 'picked_up' ? 'Picked Up' : 'Delivered';
-      Alert.alert(
-        `Mark as ${statusText}`,
-        `Are you sure you want to mark this delivery as ${statusText.toLowerCase()}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Confirm',
-            onPress: async () => {
-              // TODO: Use appropriate mutation hook based on status
-              
-              if (newStatus === 'picked_up') {
-                // Navigate to customer location after pickup
-                try {
-                  const { status } = await Location.requestForegroundPermissionsAsync();
-                  if (status === 'granted') {
-                    const location = await Location.getCurrentPositionAsync({
-                      accuracy: Location.Accuracy.High,
-                    });
+  const handleStartDelivering = async () => {
+    if (!delivery) return;
 
-                    const driverLocation = {
-                      latitude: location.coords.latitude,
-                      longitude: location.coords.longitude,
-                    };
+    try {
+      // Request location permissions
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required for navigation.');
+        return;
+      }
 
-                    // Navigate to customer location
-                    navigation.navigate('Map', {
-                      driverLocation,
-                      customerLocation: {
-                        latitude: delivery.coordinates.lat,
-                        longitude: delivery.coordinates.lng,
-                      },
-                      deliveryId: delivery.id,
-                      deliveryStatus: 'picked_up',
-                      navigationMode: 'toCustomer',
-                      customerName: delivery.customerName,
-                      restaurantName: delivery.restaurant,
-                    } as import('../../types/navigation.types').MapScreenParams);
-                  }
-                } catch (error) {
-                  console.error('Error getting location for customer navigation:', error);
-                  Alert.alert('Success', `Delivery marked as ${statusText.toLowerCase()}!`);
-                }
-              } else {
-                Alert.alert('Success', `Delivery marked as ${statusText.toLowerCase()}!`);
-                if (newStatus === 'delivered') {
-                  setTimeout(() => navigation.goBack(), 1500);
-                }
-              }
-            },
-          },
-        ]
-      );
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const driverLocation = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+
+      // If delivery is already picked up, mark as delivered
+      if (delivery.status === 'picked_up') {
+        await markDeliveredMutation.mutateAsync(delivery.id);
+        Alert.alert('Success', 'Delivery marked as completed!');
+        setTimeout(() => navigation.goBack(), 1500);
+        return;
+      }
+
+      // Otherwise, start navigation to restaurant
+      await markOutForDeliveryMutation.mutateAsync(delivery.id);
+
+      // Navigate to Map screen with routing information
+      navigation.navigate('Map', {
+        deliveryId: delivery.id,
+        driverLocation,
+        restaurantLocation: {
+          latitude: apiDelivery?.pickupLat ?? delivery.coordinates.lat, // Use pickup coordinates for restaurant
+          longitude: apiDelivery?.pickupLng ?? delivery.coordinates.lng,
+        },
+        customerLocation: {
+          latitude: delivery.coordinates.lat,
+          longitude: delivery.coordinates.lng,
+        },
+        deliveryStatus: 'accepted',
+        navigationMode: 'toRestaurant',
+        customerName: delivery.customerName,
+        restaurantName: delivery.restaurant,
+      } as import('../../types/navigation.types').MapScreenParams);
+
+    } catch (error) {
+      console.error('Error starting delivery:', error);
+      Alert.alert('Error', 'Failed to start delivery. Please try again.');
     }
+  };
+
+  const handleMarkPickedUp = async () => {
+    if (!delivery) return;
+
+    Alert.alert(
+      'Mark as Picked Up',
+      'Confirm that you have picked up the order from the restaurant?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            try {
+              await markPickedUpMutation.mutateAsync(delivery.id);
+              Alert.alert('Success', 'Order marked as picked up! You can now deliver to the customer.');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to mark as picked up. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (isLoading) {
@@ -308,12 +326,6 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
               <TouchableOpacity onPress={handleCustomerNamePress}>
                 <Text style={[styles.customerName, { color: theme.colors.text }]}>{delivery.customerName}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.callButton}
-                // Phone call UI removed. If needed, use Linking.openURL in a separate action button.
-              >
-                <Ionicons name="call" size={20} color={theme.colors.primary} />
-              </TouchableOpacity>
             </View>
             <Text style={[styles.customerPhone, { color: theme.colors.textSecondary }]}>{delivery.customerPhone}</Text>
             <TouchableOpacity style={styles.addressContainer} onPress={handleAddressPress}>
@@ -336,12 +348,6 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
           <View style={styles.restaurantCard}>
             <View style={styles.restaurantHeader}>
               <Text style={styles.restaurantName}>{delivery.restaurant}</Text>
-              <TouchableOpacity
-                style={styles.callButton}
-                // Phone call UI removed. If needed, use Linking.openURL in a separate action button.
-              >
-                <Ionicons name="call" size={20} color="#1E40AF" />
-              </TouchableOpacity>
             </View>
             <Text style={styles.restaurantAddress}>{delivery.restaurantAddress}</Text>
           </View>
@@ -418,31 +424,45 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 
       {/* Action Buttons - Positioned absolutely at bottom */}
       <View style={[styles.actionButtonsContainer, { backgroundColor: theme.colors.surface }]}>
+        {/* Debug info - remove this in production */}
+        <Text style={{ fontSize: 10, color: 'blue', textAlign: 'center', marginBottom: -10 }}>
+          Status: {delivery.status} | ID: {delivery.id}
+        </Text>
+
         {delivery.status === 'pending' && (
           <TouchableOpacity
             style={[styles.acceptButton, { backgroundColor: theme.colors.primary }]}
             onPress={handleAcceptDelivery}
+            disabled={acceptDeliveryMutation.isPending}
           >
             <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
-            <Text style={styles.acceptButtonText}>Accept Delivery</Text>
+            <Text style={styles.acceptButtonText}>
+              {acceptDeliveryMutation.isPending ? 'Accepting...' : 'Accept Delivery'}
+            </Text>
           </TouchableOpacity>
         )}
 
         {delivery.status === 'accepted' && (
           <>
             <TouchableOpacity
-              style={[styles.navigationButton, { backgroundColor: theme.colors.primary }]}
-              onPress={handleStartNavigation}
+              style={[styles.startDeliveringButton, { backgroundColor: theme.colors.primary }]}
+              onPress={handleStartDelivering}
+              disabled={markOutForDeliveryMutation.isPending}
             >
               <Ionicons name="navigate" size={24} color="#FFFFFF" />
-              <Text style={styles.navigationButtonText}>Start Navigation</Text>
+              <Text style={styles.startDeliveringButtonText}>
+                {markOutForDeliveryMutation.isPending ? 'Starting...' : 'Start Delivering'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.pickupButton}
-              onPress={() => handleUpdateStatus('picked_up')}
+              onPress={handleMarkPickedUp}
+              disabled={markPickedUpMutation.isPending}
             >
               <Ionicons name="bag-check" size={24} color="#FFFFFF" />
-              <Text style={styles.pickupButtonText}>Mark as Picked Up</Text>
+              <Text style={styles.pickupButtonText}>
+                {markPickedUpMutation.isPending ? 'Marking...' : 'Mark as Picked Up'}
+              </Text>
             </TouchableOpacity>
           </>
         )}
@@ -450,11 +470,26 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
         {delivery.status === 'picked_up' && (
           <TouchableOpacity
             style={styles.deliveredButton}
-            onPress={() => handleUpdateStatus('delivered')}
+            onPress={handleStartDelivering}
+            disabled={markDeliveredMutation.isPending}
           >
             <Ionicons name="checkmark-done" size={24} color="#FFFFFF" />
-            <Text style={styles.deliveredButtonText}>Mark as Delivered</Text>
+            <Text style={styles.deliveredButtonText}>
+              {markDeliveredMutation.isPending ? 'Completing...' : 'Mark as Delivered'}
+            </Text>
           </TouchableOpacity>
+        )}
+
+        {delivery.status === 'delivered' && (
+          <View style={{ padding: 16, alignItems: 'center' }}>
+            <Ionicons name="checkmark-circle" size={48} color="#10B981" />
+            <Text style={{ color: theme.colors.text, marginTop: 8, fontSize: 16 }}>
+              Delivery Completed
+            </Text>
+            <Text style={{ color: theme.colors.textSecondary, marginTop: 4, fontSize: 12 }}>
+              This delivery has been successfully delivered
+            </Text>
+          </View>
         )}
       </View>
     </View>
@@ -538,11 +573,6 @@ const styles = StyleSheet.create({
   customerPhone: {
     fontSize: 16,
     marginBottom: 12,
-  },
-  callButton: {
-    padding: 8,
-    backgroundColor: '#EBF4FF',
-    borderRadius: 8,
   },
   addressContainer: {
     flexDirection: 'row',
@@ -721,6 +751,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   navigationButtonText: {
+    marginLeft: 8,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  startDeliveringButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  startDeliveringButtonText: {
     marginLeft: 8,
     fontSize: 18,
     fontWeight: 'bold',
