@@ -123,8 +123,10 @@ export const deliveryService = {
    */
   getDeliveryById: async (deliveryId: string): Promise<Delivery> => {
     try {
-  const response = await apiClient.get<ApiResponse<any>>(`/deliveries/${deliveryId}`);
-  return mapApiDelivery(response.data.data!);
+      const response = await apiClient.get<ApiResponse<any>>(`/deliveries/${deliveryId}`);
+      // API returns data as an array, take the first item
+      const deliveryData = Array.isArray(response.data.data) ? response.data.data[0] : response.data.data;
+      return mapApiDelivery(deliveryData);
     } catch (error: any) {
       if (error.response) {
         console.error('getDeliveryById error:', {
@@ -140,22 +142,37 @@ export const deliveryService = {
   },
 
   /**
-   * Get delivery by order id
-   * GET /api/v1/deliveries/by-order/{orderId}
+   * Estimate delivery fee for a location and restaurant
+   * GET /api/v1/deliveries/estimate
    */
-  getDeliveryByOrderId: async (orderId: string): Promise<Delivery> => {
+  estimateDeliveryFee: async (params: {
+    restaurantId: string;
+    lat: number;
+    lng: number;
+    orderTotal: number;
+  }): Promise<{ deliveryFee: number; estimatedTime?: number }> => {
     try {
-  const response = await apiClient.get<ApiResponse<any>>(`/deliveries/by-order/${orderId}`);
-  return mapApiDelivery(response.data.data!);
+      const response = await apiClient.get<ApiResponse<any>>('/deliveries/estimate', {
+        params: {
+          restaurantId: params.restaurantId,
+          lat: params.lat,
+          lng: params.lng,
+          orderTotal: params.orderTotal,
+        },
+      });
+      return {
+        deliveryFee: response.data.data?.deliveryFee || 0,
+        estimatedTime: response.data.data?.estimatedTime,
+      };
     } catch (error: any) {
       if (error.response) {
-        console.error('getDeliveryByOrderId error:', {
+        console.error('estimateDeliveryFee error:', {
           status: error.response.status,
           data: error.response.data,
           headers: error.response.headers,
         });
       } else {
-        console.error('getDeliveryByOrderId error:', error.message);
+        console.error('estimateDeliveryFee error:', error.message);
       }
       throw error;
     }

@@ -41,11 +41,11 @@ export {
 export {
   useMyDeliveries,
   useDeliveryById,
-  useDeliveryByOrderId,
   useAcceptDelivery as useAcceptDeliveryDirect,
   useMarkPickedUp,
   useMarkOutForDelivery,
   useMarkDelivered,
+  useEstimateDeliveryFee,
   deliveryKeys,
 } from './useDeliveries';
 

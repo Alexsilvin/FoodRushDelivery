@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../lib/queryClient';
 import { AuthProvider } from '../contexts/AuthContext';
+import { NetworkProvider } from '../contexts/NetworkContext';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { LanguageProvider } from '../contexts/LanguageContext';
 import { CallProvider } from '../contexts/CallContext';
@@ -30,28 +31,30 @@ interface AppProvidersProps {
  */
 const AppProviders: React.FC<AppProvidersProps> = memo(({ children }) => {
   return (
-    <QueryClientProvider client={queryClient}>
-      <LanguageProvider>
-        <ThemeProvider>
-          <AuthProvider>
-            <CallProvider>
-              <LocationProvider
-                config={{
-                  updateInterval: 30000, // 30 seconds
-                  distanceInterval: 50, // 50 meters
-                  enableHighAccuracy: true,
-                }}
-              >
-                <NotificationProvider>
-                  {children}
-                  {/* React Query DevTools removed for mobile - causes 'div' component errors */}
-                </NotificationProvider>
-              </LocationProvider>
-            </CallProvider>
-          </AuthProvider>
-        </ThemeProvider>
-      </LanguageProvider>
-    </QueryClientProvider>
+    <NetworkProvider>
+      <QueryClientProvider client={queryClient}>
+        <LanguageProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <CallProvider>
+                <LocationProvider
+                  config={{
+                    updateInterval: 30000, // 30 seconds
+                    distanceInterval: 50, // 50 meters
+                    enableHighAccuracy: true,
+                  }}
+                >
+                  <NotificationProvider>
+                    {children}
+                    {/* React Query DevTools removed for mobile - causes 'div' component errors */}
+                  </NotificationProvider>
+                </LocationProvider>
+              </CallProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </LanguageProvider>
+      </QueryClientProvider>
+    </NetworkProvider>
   );
 });
 

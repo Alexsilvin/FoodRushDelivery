@@ -67,6 +67,69 @@ export interface Vehicle {
 
 export type DeliveryStatus = 'pending' | 'accepted' | 'picked_up' | 'delivering' | 'completed' | 'delivered' | string;
 
+// Order item from API response
+export interface OrderItem {
+  id: string;
+  menuItem?: {
+    id: string;
+    name: string;
+    description?: string;
+    price: string;
+    isAvailable: boolean;
+    pictureUrl?: string;
+    category?: string;
+    startAt?: string;
+    endAt?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+  quantity: number;
+  unitPrice: string;
+  specialInstructions?: string;
+}
+
+// Delivery fee breakdown
+export interface DeliveryFeeBreakdown {
+  base: number;
+  capped: boolean;
+  freeApplied: boolean;
+  perKmComponent: number;
+  surgeMultiplier: number;
+}
+
+// Order from API response
+export interface Order {
+  id: string;
+  restaurant: Restaurant;
+  items: OrderItem[];
+  subtotal: string;
+  deliveryFee: string;
+  deliveryDistanceKm: string;
+  deliveryFeeBreakdown: DeliveryFeeBreakdown;
+  deliveryEtaMinutes?: number;
+  deliveryFeeLocked: boolean;
+  deliveryFeeLockedAt?: string;
+  total: string;
+  serviceFee: string;
+  paymentMethod: string;
+  deliveryAddress: string;
+  deliveryLatitude: string;
+  deliveryLongitude: string;
+  status: string;
+  rejectionReason?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Rider info from API response
+export interface RiderInfo {
+  id: string;
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+}
+
 // Normalized lightweight order line used in Delivery.orderItems
 export interface OrderLine {
   id: string;            // Stable identifier (backend id or generated)
@@ -107,6 +170,15 @@ export interface Delivery {
   restaurantAddress?: string;
   specialInstructions?: string;
   deliveryInstructions?: string;
+  // Nested API response fields
+  order?: Order;
+  rider?: RiderInfo;
+  deliveredAt?: string;
+  acceptedAt?: string;
+  customerConfirmed?: boolean;
+  customerConfirmedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   [key: string]: any;
 }
 

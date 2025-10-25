@@ -28,7 +28,8 @@ import {
   useAcceptDelivery, 
   useMarkPickedUp, 
   useMarkOutForDelivery,
-  useMarkDelivered 
+  useMarkDelivered,
+  useEstimateDeliveryFee
 } from '../../hooks/useDeliveries';
 import { useRiderSummary, useRiderBalance } from '../../hooks/useAnalytics';
 import { useCompleteDelivery } from '../../hooks/useRider';
@@ -47,6 +48,37 @@ const formatCurrency = (amount?: number) => {
 };
 
 import { TabScreenProps } from '../../types/navigation.types';
+const DeliveryFeeDisplay = ({ delivery }: { delivery: Delivery }) => {
+  const { theme } = useTheme();
+  
+  const { data: feeEstimate } = useEstimateDeliveryFee(
+    delivery.order ? {
+      restaurantId: delivery.order.restaurant?.id || '',
+      lat: delivery.order.deliveryLatitude ? Number(delivery.order.deliveryLatitude) : 0,
+      lng: delivery.order.deliveryLongitude ? Number(delivery.order.deliveryLongitude) : 0,
+      orderTotal: delivery.order.subtotal ? Number(delivery.order.subtotal) : 0,
+    } : {
+      restaurantId: '',
+      lat: 0,
+      lng: 0,
+      orderTotal: 0,
+    }
+  );
+
+  const totalEarnings = (() => {
+    if (!delivery.order) return delivery.payment;
+    
+    const orderTotal = delivery.order.subtotal ? Number(delivery.order.subtotal) : 0;
+    const deliveryFee = feeEstimate ? feeEstimate.deliveryFee : (delivery.order.deliveryFee ? Number(delivery.order.deliveryFee) : 0);
+    return `$${(orderTotal + deliveryFee).toFixed(2)}`;
+  })();
+
+  return (
+    <Text style={[styles.payment, { color: theme.colors.success }]}>
+      {totalEarnings}
+    </Text>
+  );
+};
 
 type Props = TabScreenProps<'Dashboard'>;
 
@@ -479,7 +511,7 @@ export default function DashboardScreen({ navigation, route }: Props) {
     >
       <View style={styles.deliveryHeader}>
         <Text style={[styles.customerName, { color: theme.colors.text }]}>{delivery.customerName}</Text>
-  <Text style={[styles.payment, { color: theme.colors.success }]}>{delivery.payment}</Text>
+        <DeliveryFeeDisplay delivery={delivery} />
       </View>
       
       <View style={styles.deliveryInfo}>

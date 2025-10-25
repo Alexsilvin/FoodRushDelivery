@@ -1,8 +1,5 @@
-import React, { useEffect } from 'react';
 import { createStackNavigator, StackNavigationOptions } from '@react-navigation/stack';
-import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
-import { useAuth } from '../contexts/AuthContext';
 import { PLATFORM_STYLES } from './platformStyles';
 import { AuthStackParamList } from '../types/navigation.types';
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -13,10 +10,8 @@ import RejectedScreen from '../screens/auth/RejectedScreen';
 
 const Stack = createStackNavigator<AuthStackParamList>();
 
-function AuthStackNavigator() {
+export default function AuthStack() {
   const { theme } = useTheme();
-  const { user } = useAuth();
-  const navigation = useNavigation<any>();
 
   const screenOptions: StackNavigationOptions = {
     headerShown: false,
@@ -28,52 +23,10 @@ function AuthStackNavigator() {
     ...screenOptions,
   };
 
-  // Helper function to normalize state strings
-  const normalizeState = (state: string | undefined) => {
-    if (!state) return '';
-    return state.replace(/\s+/g, '_').replace(/-/g, '_').replace(/\W/g, '').toUpperCase();
-  };
-
-  // Auto-navigate based on user state when user exists but is not ready
-  useEffect(() => {
-    if (user) {
-      const userState = normalizeState(user.state || user.status);
-      console.log('🔍 AuthStack - Auto-navigation check:', {
-        userState,
-        originalState: user.state,
-        originalStatus: user.status
-      });
-
-      // If user is authenticated but not ready, navigate to appropriate screen
-      if (userState === 'REJECTED') {
-        console.log('❌ Navigating to Rejected screen');
-        navigation.navigate('Rejected');
-      } else if (userState !== 'READY' && userState !== 'ACTIVE' && userState !== 'APPROVED') {
-        console.log('⏳ Navigating to Waiting screen for state:', userState);
-        navigation.navigate('Waiting');
-      }
-    }
-  }, [user, navigation]);
-
-  // Determine initial route based on user state
-  const getInitialRouteName = () => {
-    if (!user) return 'Login';
-    
-    const userState = normalizeState(user.state || user.status);
-    
-    if (userState === 'REJECTED') {
-      return 'Rejected';
-    } else if (userState !== 'READY' && userState !== 'ACTIVE' && userState !== 'APPROVED') {
-      return 'Waiting';
-    }
-    
-    return 'Login';
-  };
-
   return (
     <Stack.Navigator
       screenOptions={screenOptions}
-      initialRouteName={getInitialRouteName()}
+      initialRouteName="Login"
     >
       <Stack.Screen
         name="Login"
@@ -108,8 +61,4 @@ function AuthStackNavigator() {
       />
     </Stack.Navigator>
   );
-}
-
-export default function AuthStack() {
-  return <AuthStackNavigator />;
 }

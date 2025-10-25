@@ -35,9 +35,23 @@ export function mapApiUser(apiUser: any): User {
 }
 
 export function mapApiDelivery(raw: any): Delivery {
+  // Handle nested order structure from API
+  const order = raw.order || {};
+  const restaurant = order.restaurant || {};
+  const rider = raw.rider || {};
+
   // Normalize order items into OrderLine objects
   let orderItems: OrderLine[] | undefined;
-  if (Array.isArray(raw.orderItems)) {
+  if (Array.isArray(order.items)) {
+    orderItems = order.items.map((i: any, idx: number) => ({
+      id: String(i.id ?? idx),
+      name: i.menuItem?.name || i.name || 'Item',
+      quantity: Number(i.quantity ?? 1),
+      price: Number(i.unitPrice ?? i.price ?? 0),
+      notes: i.specialInstructions || undefined,
+    } as OrderLine));
+  } else if (Array.isArray(raw.orderItems)) {
+    // Fallback for old structure
     orderItems = raw.orderItems.map((i: any, idx: number) => {
       if (typeof i === 'string') {
         return { id: String(idx), name: i, quantity: 1, price: 0 };
@@ -50,48 +64,36 @@ export function mapApiDelivery(raw: any): Delivery {
         notes: i.notes || i.specialInstructions || undefined,
       } as OrderLine;
     });
-  } else if (Array.isArray(raw.items)) {
-    orderItems = raw.items.map((i: any, idx: number) => {
-      if (typeof i === 'string') {
-        return { id: String(idx), name: i, quantity: 1, price: 0 };
-      }
-      return {
-        id: String(i.id ?? idx),
-        name: i.name || i.menuItem?.name || 'Item',
-        quantity: Number(i.quantity ?? i.qty ?? 1),
-        price: Number(i.price ?? i.unitPrice ?? i.amount ?? 0),
-        notes: i.notes || i.specialInstructions || undefined,
-      } as OrderLine;
-    });
   }
+
   return {
     id: raw.id || raw._id || Math.random().toString(36).slice(2),
-    code: raw.code || raw.reference || raw.refCode,
-    customerName: raw.customerName || raw.customer?.name || 'Customer',
-    restaurantName: raw.restaurantName || raw.restaurant?.name || raw.restaurant,
-    restaurant: raw.restaurantName || raw.restaurant?.name || raw.restaurant || 'Restaurant',
-    address: raw.address || raw.customerAddress || raw.dropoffAddress || 'Unknown address',
-    customerAddress: raw.customerAddress || raw.address,
+    code: order.id || raw.code || raw.reference || raw.refCode,
+    customerName: 'Customer', // API doesn't provide customer name
+    restaurantName: restaurant.name || raw.restaurantName || raw.restaurant,
+    restaurant: restaurant.name || raw.restaurantName || raw.restaurant || 'Restaurant',
+    address: order.deliveryAddress || raw.address || raw.customerAddress || raw.dropoffAddress || 'Unknown address',
+    customerAddress: order.deliveryAddress || raw.customerAddress || raw.address,
     status: normalizeStatus(raw.status),
-    distanceKm: raw.distanceKm || raw.distance_km || raw.distance,
-    distance: raw.distance ? `${raw.distance} km` : (raw.distanceKm ? `${raw.distanceKm} km` : undefined),
-    paymentAmount: raw.paymentAmount ?? raw.amount ?? raw.total,
-    payment: raw.paymentAmount != null ? `$${Number(raw.paymentAmount).toFixed(2)}` : (raw.payment || undefined),
-    estimatedTime: raw.estimatedTime || raw.eta || raw.estimatedMinutes && `${raw.estimatedMinutes} min` || '—',
-  orderItems,
-    customerPhone: raw.customerPhone || raw.customer?.phone,
-    pickupTime: raw.pickupTime || raw.pickedAt,
-    deliveryTime: raw.deliveryTime || raw.deliveredAt,
-  pickupLat: raw.pickupLat ?? raw.pickupLatitude ?? raw.pickup_location?.lat ?? raw.pickup?.lat,
-  pickupLng: raw.pickupLng ?? raw.pickupLongitude ?? raw.pickup_location?.lng ?? raw.pickup?.lng,
-  dropoffLat: raw.dropoffLat ?? raw.dropoffLatitude ?? raw.dropoff_location?.lat ?? raw.dropoff?.lat,
-  dropoffLng: raw.dropoffLng ?? raw.dropoffLongitude ?? raw.dropoff_location?.lng ?? raw.dropoff?.lng,
+    distanceKm: order.deliveryDistanceKm ? Number(order.deliveryDistanceKm) : (raw.distanceKm || raw.distance_km || raw.distance),
+    distance: order.deliveryDistanceKm ? `${order.deliveryDistanceKm} km` : (raw.distance ? `${raw.distance} km` : (raw.distanceKm ? `${raw.distanceKm} km` : undefined)),
+    paymentAmount: order.total ? Number(order.total) : (raw.paymentAmount ?? raw.amount ?? raw.total),
+    payment: order.total ? `$${Number(order.total).toFixed(2)}` : (raw.paymentAmount != null ? `$${Number(raw.paymentAmount).toFixed(2)}` : (raw.payment || undefined)),
+    estimatedTime: order.deliveryEtaMinutes ? `${order.deliveryEtaMinutes} min` : (raw.estimatedTime || raw.eta || raw.estimatedMinutes && `${raw.estimatedMinutes} min` || '—'),
+    orderItems,
+    customerPhone: '', // API doesn't provide customer phone
+    pickupTime: raw.acceptedAt || raw.pickupTime || raw.pickedAt,
+    deliveryTime: raw.deliveredAt || raw.deliveryTime || raw.deliveredAt,
+    pickupLat: restaurant.latitude ? Number(restaurant.latitude) : (raw.pickupLat ?? raw.pickupLatitude ?? raw.pickup_location?.lat ?? raw.pickup?.lat),
+    pickupLng: restaurant.longitude ? Number(restaurant.longitude) : (raw.pickupLng ?? raw.pickupLongitude ?? raw.pickup_location?.lng ?? raw.pickup?.lng),
+    dropoffLat: order.deliveryLatitude ? Number(order.deliveryLatitude) : (raw.dropoffLat ?? raw.dropoffLatitude ?? raw.dropoff_location?.lat ?? raw.dropoff?.lat),
+    dropoffLng: order.deliveryLongitude ? Number(order.deliveryLongitude) : (raw.dropoffLng ?? raw.dropoffLongitude ?? raw.dropoff_location?.lng ?? raw.dropoff?.lng),
     // Additional fields for delivery details screen
-    orderTotal: raw.orderTotal ?? raw.subtotal ?? raw.orderSubtotal ?? '',
-    deliveryFee: raw.deliveryFee ?? raw.fee ?? '',
+    orderTotal: order.subtotal ? `$${Number(order.subtotal).toFixed(2)}` : (raw.orderTotal ?? raw.subtotal ?? raw.orderSubtotal ?? ''),
+    deliveryFee: order.deliveryFee ? `$${Number(order.deliveryFee).toFixed(2)}` : (raw.deliveryFee ?? raw.fee ?? ''),
     tip: raw.tip ?? raw.driverTip ?? raw.gratuity ?? '',
-    restaurantPhone: raw.restaurantPhone ?? raw.restaurant?.phone ?? '',
-    restaurantAddress: raw.restaurantAddress ?? raw.restaurant?.address ?? '',
+    restaurantPhone: restaurant.phone ?? raw.restaurantPhone ?? raw.restaurant?.phone ?? '',
+    restaurantAddress: restaurant.address ?? raw.restaurantAddress ?? raw.restaurant?.address ?? '',
     specialInstructions: raw.specialInstructions ?? raw.instructions ?? '',
     deliveryInstructions: raw.deliveryInstructions ?? raw.customerInstructions ?? raw.notes ?? '',
   } as Delivery;

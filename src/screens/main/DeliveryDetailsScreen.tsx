@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -282,7 +283,11 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         {/* Back Button and Status at top of content */}
         <View style={styles.topSection}>
           <TouchableOpacity
@@ -411,8 +416,8 @@ export default function DeliveryDetailsScreen({ route, navigation }: any) {
         </View>
       </ScrollView>
 
-      {/* Action Buttons */}
-      <View style={[styles.actionButtons, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
+      {/* Action Buttons - Positioned absolutely at bottom */}
+      <View style={[styles.actionButtonsContainer, { backgroundColor: theme.colors.surface }]}>
         {delivery.status === 'pending' && (
           <TouchableOpacity
             style={[styles.acceptButton, { backgroundColor: theme.colors.primary }]}
@@ -499,6 +504,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  scrollContent: {
+    paddingBottom: 120, // Extra padding for absolutely positioned action buttons
   },
   section: {
     marginBottom: 24,
@@ -753,5 +761,16 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 18,
     marginTop: 16,
+  },
+  actionButtonsContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16, // Account for home indicator on iOS
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
   },
 });

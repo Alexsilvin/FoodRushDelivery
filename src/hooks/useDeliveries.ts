@@ -7,7 +7,6 @@ export const deliveryKeys = {
   all: ['deliveries'] as const,
   my: (params?: any) => [...deliveryKeys.all, 'my', params] as const,
   byId: (id: string) => [...deliveryKeys.all, 'byId', id] as const,
-  byOrderId: (orderId: string) => [...deliveryKeys.all, 'byOrderId', orderId] as const,
 };
 
 /**
@@ -34,18 +33,6 @@ export const useDeliveryById = (deliveryId: string) => {
     queryFn: () => deliveryService.getDeliveryById(deliveryId),
     staleTime: 60 * 1000, // 1 minute
     enabled: !!deliveryId,
-  });
-};
-
-/**
- * Hook to get delivery by order ID
- */
-export const useDeliveryByOrderId = (orderId: string) => {
-  return useQuery({
-    queryKey: deliveryKeys.byOrderId(orderId),
-    queryFn: () => deliveryService.getDeliveryByOrderId(orderId),
-    staleTime: 60 * 1000, // 1 minute
-    enabled: !!orderId,
   });
 };
 
@@ -135,5 +122,22 @@ export const useMarkDelivered = () => {
       queryClient.invalidateQueries({ queryKey: deliveryKeys.my() });
       queryClient.invalidateQueries({ queryKey: ['analytics'] });
     },
+  });
+};
+
+/**
+ * Hook to estimate delivery fee
+ */
+export const useEstimateDeliveryFee = (params: {
+  restaurantId: string;
+  lat: number;
+  lng: number;
+  orderTotal: number;
+}) => {
+  return useQuery({
+    queryKey: [...deliveryKeys.all, 'estimate', params],
+    queryFn: () => deliveryService.estimateDeliveryFee(params),
+    staleTime: 5 * 60 * 1000, // 5 minutes - delivery fees don't change often
+    enabled: !!(params.restaurantId && params.lat && params.lng && params.orderTotal),
   });
 };
