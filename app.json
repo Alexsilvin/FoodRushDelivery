@@ -2,6 +2,7 @@
   "expo": {
     "name": "Rusher",
     "slug": "delivery-driver-mobile",
+    "owner": "foodrushapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
