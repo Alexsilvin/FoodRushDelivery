@@ -24,22 +24,27 @@ const expo = appJson.expo || {};
 // Prefer environment variable (EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) then fallback to existing extra.googleMapsApiKey
 const googleKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || (expo.extra && expo.extra.googleMapsApiKey) || null;
 
-// Inject native google maps keys and expose on extra for runtime
-expo.extra = Object.assign({}, expo.extra || {}, { googleMapsApiKey: googleKey });
+// Inject native google maps keys and expose on extra for runtime (only when present)
+if (googleKey) {
+  expo.extra = Object.assign({}, expo.extra || {}, { googleMapsApiKey: googleKey });
 
-// Android native config
-expo.android = Object.assign({}, expo.android || {});
-expo.android.config = Object.assign({}, expo.android.config || {}, {
-  googleMaps: {
-    apiKey: googleKey || '',
-  },
-});
+  // Android native config
+  expo.android = Object.assign({}, expo.android || {});
+  expo.android.config = Object.assign({}, expo.android.config || {}, {
+    googleMaps: {
+      apiKey: googleKey,
+    },
+  });
 
-// iOS native config
-expo.ios = Object.assign({}, expo.ios || {});
-expo.ios.config = Object.assign({}, expo.ios.config || {}, {
-  googleMapsApiKey: googleKey || '',
-});
+  // iOS native config
+  expo.ios = Object.assign({}, expo.ios || {});
+  expo.ios.config = Object.assign({}, expo.ios.config || {}, {
+    googleMapsApiKey: googleKey,
+  });
+} else {
+  // Keep existing extras if any, but do not inject empty native keys.
+  expo.extra = Object.assign({}, expo.extra || {});
+}
 
 module.exports = {
   expo,
