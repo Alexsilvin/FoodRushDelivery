@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": "remote"
+    "version": ">= 16.27.0"
   },
   "build": {
     "development": {
@@ -26,8 +26,7 @@
         "buildType": "app-bundle"
       },
       "ios": {}
-    },
-    "autoIncrement": true
+    }
   },
   "submit": {
     "production": {}
