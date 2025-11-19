@@ -2,7 +2,7 @@
   "expo": {
     "name": "Rusher",
     "slug": "delivery-driver-mobile",
-    "owner": "alex4.0",
+    "owner": "mr_calculus",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -40,7 +40,8 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "426d0b7d-9f04-4fb3-ace5-9ec5b7503c1b"
+        "projectId": "bacdb34b-93c0-41c5-b664-b6705bc0b105"
+
       }
     },
     "android": {
