@@ -1,59 +1,129 @@
-# EAS build & Google Maps API key (secure setup)
+# EAS Build & Google Maps API Key - Quick Reference
 
-## Prerequisites
+> 📖 **For complete setup instructions, see [GOOGLE_MAPS_API_SETUP.md](./GOOGLE_MAPS_API_SETUP.md)**
 
-Install and login to EAS CLI:
+## Quick Start
 
-```powershell
+### 1. Install & Login to EAS
+
+```bash
 npm install -g eas-cli
 eas login
 ```
 
-## 1) Add the secret to EAS
+### 2. Create EAS Secret
 
-Create the secret (replace with your real key):
-
-```powershell
-# Creates a secret named GOOGLE_MAPS_API_KEY that will be available during builds
-eas secret:create --name GOOGLE_MAPS_API_KEY --value "YOUR_REAL_GOOGLE_MAPS_API_KEY"
+```bash
+eas secret:create --scope project --name GOOGLE_MAPS_API_KEY --value "YOUR_ACTUAL_API_KEY"
 ```
 
-## 2) Build an internal preview APK (cloud build)
+### 3. Verify Secret
 
-```powershell
-# This uses the `preview` profile in eas.json which produces an APK and
-# injects the secret into EXPO_PUBLIC_GOOGLE_MAPS_API_KEY during the build.
+```bash
+eas secret:list
+```
+
+### 4. Build Your App
+
+```bash
+# Android Preview (APK)
 eas build --platform android --profile preview
+
+# iOS Preview
+eas build --platform ios --profile preview
+
+# Production
+eas build --platform android --profile production
+eas build --platform ios --profile production
 ```
 
-## 3) Why this is secure and how keys are used
+---
 
-- The secret is injected only at build time by EAS and is not stored in the repository.
-- `app.config.js` reads `process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` at build time and, when present, injects it into `expo.extra` and native config. `src/config/env.ts` then reads from `process.env` or `Constants.expoConfig.extra` at runtime.
-- The built APK will have the key baked into its native manifest; this is required for the Google Maps SDK to work. Do not commit the key to source control.
+## How It Works
 
-## 4) If you use API key restrictions
+1. **EAS Secrets** store your API key securely (not in git)
+2. **`eas.json`** references the secret with `@GOOGLE_MAPS_API_KEY`
+3. **Build time**: EAS injects the secret into `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`
+4. **`app.config.js`** reads the environment variable and configures native apps
+5. **Runtime**: App reads from `Constants.expoConfig.extra.googleMapsApiKey`
 
-- If you restrict the key by Android apps (package name + SHA-1), then the SHA-1 depends on the signing key used to sign the APK. For EAS-managed builds, EAS generates a keystore by default; you can either:
-  - Upload your own keystore (so the SHA-1 matches your existing Google restrictions), or
-  - After the first EAS build, retrieve the SHA-1 and add it to the allowed credentials in Google Cloud Console.
+---
 
-## 5) Local development
+## Project Configuration Status
 
-- You can keep a local `.env` with a placeholder or development key, but do NOT commit it. The repo `.gitignore` already ignores `.env` files.
-- For local native builds (`expo run:android`) you still need a local Android SDK and `adb` in PATH. Using EAS cloud builds avoids that requirement.
+✅ **Your project is properly configured!**
 
-## 6) Troubleshooting
+- ✓ `eas.json` - All profiles reference `@GOOGLE_MAPS_API_KEY`
+- ✓ `app.config.js` - Dynamically injects key into native configs
+- ✓ `src/config/env.ts` - Runtime configuration with fallbacks
+- ✓ `.gitignore` - Excludes `.env` files from git
+- ✓ `.env.example` - Template for local development
 
-- If maps crash after installing the APK, check the following:
-  - Google Cloud: Maps SDK for Android / iOS are enabled.
-  - Directions API is enabled for the HTTP requests used by the app.
-  - If you used key restrictions (package name + SHA-1), verify the SHA-1 matches the signing key used for the APK.
+---
 
-If you want, I can add a small check in `src/config/env.ts` to warn at runtime when no valid API key is found (helpful for debugging).
+## Local Development
 
-## How the API key is injected securely
+For local development, create a `.env` file (already in `.gitignore`):
 
-- For Android: The API key is injected at build time using Gradle's `manifestPlaceholders`. The `AndroidManifest.xml` uses `${GOOGLE_MAPS_API_KEY}`, and `build.gradle` sets `manifestPlaceholders` from the `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` environment variable.
-- For iOS: If needed, similar approach with Info.plist placeholders.
-- This ensures the key is not hardcoded in source code, and EAS secrets provide the value at build time.
+```bash
+# .env (local only - NOT committed)
+EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=your_development_key_here
+```
+
+---
+
+## Troubleshooting
+
+### Maps don't load
+
+```bash
+# Check secret exists
+eas secret:list
+
+# Recreate if needed
+eas secret:delete --name GOOGLE_MAPS_API_KEY
+eas secret:create --scope project --name GOOGLE_MAPS_API_KEY --value "YOUR_KEY"
+
+# Rebuild with clean cache
+eas build --platform android --profile preview --clear-cache
+```
+
+### Get SHA-1 for API Key Restrictions
+
+```bash
+eas credentials
+# Select: Android → Production → Keystore → View
+# Copy the SHA-1 fingerprint and add to Google Cloud Console
+```
+
+---
+
+## Important Notes
+
+### Security
+- **Never commit API keys to git**
+- Use EAS Secrets for production builds
+- Restrict keys in Google Cloud Console by package name + SHA-1
+
+### Google Cloud Console
+Enable these APIs:
+- Maps SDK for Android
+- Maps SDK for iOS
+- Directions API
+- Geocoding API
+
+### Package/Bundle IDs
+- Android: `food.rush.delivery.driver.app`
+- iOS: `food.rush.delivery.driver.app`
+
+---
+
+## Complete Documentation
+
+For detailed instructions, troubleshooting, and best practices:
+
+👉 **[GOOGLE_MAPS_API_SETUP.md](./GOOGLE_MAPS_API_SETUP.md)**
+
+---
+
+**EAS Project ID:** `bacdb34b-93c0-41c5-b664-b6705bc0b105`
