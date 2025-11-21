@@ -21,6 +21,11 @@ try {
 
 const expo = appJson.expo || {};
 
+// Ensure EAS projectId is present when running builds locally so the CLI
+// can link the local repo to the EAS project. This value was detected
+// during an attempted build and is safe to set here (it's not a secret).
+expo.extra = Object.assign({}, expo.extra || {}, { eas: { projectId: '426d0b7d-9f04-4fb3-ace5-9ec5b7503c1b' } });
+
 // Prefer environment variable (EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) then fallback to existing extra.googleMapsApiKey
 const googleKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || (expo.extra && expo.extra.googleMapsApiKey) || null;
 

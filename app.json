@@ -38,12 +38,7 @@
       ],
       "expo-font"
     ],
-    "extra": {
-      "eas": {
-        "projectId": "bacdb34b-93c0-41c5-b664-b6705bc0b105"
-
-      }
-    },
+    
     "android": {
       "package": "food.rush.delivery.driver.app",
       "permissions": [
