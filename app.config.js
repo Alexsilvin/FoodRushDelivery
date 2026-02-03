@@ -1,56 +1,92 @@
-const { ExpoConfig } = require('@expo/config');
-const fs = require('fs');
-const path = require('path');
+// Dynamic Expo config with Google Maps key injection and secure-store plugin
+try { require('dotenv').config(); } catch (_) {}
 
-// Load .env for local development (if present)
-try {
-  require('dotenv').config();
-} catch (e) {
-  // dotenv may not be installed in all environments — that's fine
-}
+const googleKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || null;
 
-// Read app.json to preserve current config
-const appJsonPath = path.resolve(__dirname, 'app.json');
-let appJson = {};
-try {
-  appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
-} catch (e) {
-  console.warn('Could not read app.json, falling back to minimal config');
-  appJson = { expo: {} };
-}
-
-const expo = appJson.expo || {};
-
-// Ensure EAS projectId is present when running builds locally so the CLI
-// can link the local repo to the EAS project. This value was detected
-// during an attempted build and is safe to set here (it's not a secret).
-expo.extra = Object.assign({}, expo.extra || {}, { eas: { projectId: '426d0b7d-9f04-4fb3-ace5-9ec5b7503c1b' } });
-
-// Prefer environment variable (EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) then fallback to existing extra.googleMapsApiKey
-const googleKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || (expo.extra && expo.extra.googleMapsApiKey) || null;
-
-// Inject native google maps keys and expose on extra for runtime (only when present)
-if (googleKey) {
-  expo.extra = Object.assign({}, expo.extra || {}, { googleMapsApiKey: googleKey });
-
-  // Android native config
-  expo.android = Object.assign({}, expo.android || {});
-  expo.android.config = Object.assign({}, expo.android.config || {}, {
-    googleMaps: {
-      apiKey: googleKey,
+const expo = {
+  name: "Rusher",
+  slug: "delivery-driver-mobile",
+  owner: "alex4.0",
+  version: "1.0.0",
+  orientation: "portrait",
+  icon: "./assets/icon.png",
+  newArchEnabled: true,
+  splash: {
+    image: "./assets/splash-icon.png",
+    resizeMode: "contain",
+    backgroundColor: "#ffffff"
+  },
+  web: {
+    favicon: "./assets/favicon.png"
+  },
+  plugins: [
+    [
+      "expo-location",
+      {
+        locationAlwaysAndWhenInUsePermission:
+          "This app needs location access to provide accurate delivery tracking and navigation to customers, even when the app is in the background.",
+        locationAlwaysPermission:
+          "This app needs location access to provide accurate delivery tracking and navigation to customers, even when the app is in the background.",
+        locationWhenInUsePermission:
+          "This app needs location access to provide accurate delivery tracking and navigation to customers.",
+        isIosBackgroundLocationEnabled: true,
+        isAndroidBackgroundLocationEnabled: true
+      }
+    ],
+    [
+      "expo-notifications",
+      {
+        icon: "./assets/icon.png",
+        color: "#3B82F6",
+        sounds: ["./assets/notification_sound.mp3"]
+      }
+    ],
+    "expo-font",
+    "expo-secure-store"
+  ],
+  android: {
+    package: "food.rush.delivery.driver.app",
+    statusBar: {
+      backgroundColor: "transparent",
+      translucent: true,
+      barStyle: "light"
     },
-  });
-
-  // iOS native config
-  expo.ios = Object.assign({}, expo.ios || {});
-  expo.ios.config = Object.assign({}, expo.ios.config || {}, {
-    googleMapsApiKey: googleKey,
-  });
-} else {
-  // Keep existing extras if any, but do not inject empty native keys.
-  expo.extra = Object.assign({}, expo.extra || {});
-}
-
-module.exports = {
-  expo,
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#ffffff"
+    },
+    permissions: [
+      "ACCESS_COARSE_LOCATION",
+      "ACCESS_FINE_LOCATION",
+      "ACCESS_BACKGROUND_LOCATION",
+      "RECEIVE_BOOT_COMPLETED",
+      "VIBRATE",
+      "WAKE_LOCK",
+      "com.google.android.c2dm.permission.RECEIVE",
+      "android.permission.ACCESS_COARSE_LOCATION",
+      "android.permission.ACCESS_FINE_LOCATION",
+      "android.permission.ACCESS_BACKGROUND_LOCATION",
+      "android.permission.FOREGROUND_SERVICE",
+      "android.permission.FOREGROUND_SERVICE_LOCATION"
+    ],
+    ...(googleKey
+      ? { config: { googleMaps: { apiKey: googleKey } } }
+      : {})
+  },
+  ios: {
+    bundleIdentifier: "food.rush.delivery.driver.app",
+    infoPlist: {
+      UIBackgroundModes: ["location", "background-fetch", "background-processing"],
+      ITSAppUsesNonExemptEncryption: false,
+      UIStatusBarStyle: "UIStatusBarStyleLightContent",
+      UIViewControllerBasedStatusBarAppearance: false
+    },
+    ...(googleKey ? { config: { googleMapsApiKey: googleKey } } : {})
+  },
+  extra: {
+    eas: { projectId: "426d0b7d-9f04-4fb3-ace5-9ec5b7503c1b" },
+    ...(googleKey ? { googleMapsApiKey: googleKey } : {})
+  }
 };
+
+module.exports = { expo };

@@ -4,6 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService, riderService } from '../services';
 import { User as ApiUser } from '../types/api';
 
+// 🔧 DEVELOPMENT MODE - Set to true to bypass authentication
+const BYPASS_AUTH = false;
+
 // Local User extends API user ensuring required fields while tolerating optional backend omissions
 interface User extends ApiUser {
   // Enforce role presence
@@ -47,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-  // Initialize auth from persisted storage (do NOT wipe token here)
+        // Initialize auth from persisted storage (do NOT wipe token here)
         const token = await AsyncStorage.getItem('auth_token');
         if (token) {
           try {
@@ -107,6 +110,34 @@ const login = async (
   password: string
 ): Promise<{ success: boolean; user?: User; token?: string; state?: string }> => {
   try {
+    // 🔧 BYPASS AUTH MODE - Skip API call
+    if (BYPASS_AUTH) {
+      console.log('⚠️ BYPASS_AUTH ENABLED - Skipping login API call');
+      const mockUser: User = {
+        id: 'mock-user-123',
+        email: email || 'driver@test.com',
+        firstName: 'Test',
+        lastName: 'Driver',
+        phoneNumber: '+1234567890',
+        role: 'rider',
+        state: 'ACTIVE',
+        status: 'ACTIVE',
+        isVerified: true,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const mockToken = 'mock-token-' + Date.now();
+      await AsyncStorage.setItem('auth_token', mockToken);
+      setUser(mockUser);
+      return {
+        success: true,
+        user: mockUser,
+        token: mockToken,
+        state: 'ACTIVE',
+      };
+    }
+
     // Step 1: Login to get token
     const response = await riderService.login(email, password);
     const { accessToken } = response;

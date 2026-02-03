@@ -49,6 +49,13 @@ export {
   deliveryKeys,
 } from './useDeliveries';
 
+// ====================== UTILITY HOOKS ======================
+export {
+  calculateDistance,
+  useDistanceCalculation,
+  useSortedDeliveries,
+} from './useDistanceCalculation';
+
 // Export pickup alias for backward compatibility
 export { useMarkPickedUp as usePickupDelivery } from './useDeliveries';
 

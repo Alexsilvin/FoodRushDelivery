@@ -1,0 +1,237 @@
+import { Delivery } from '../types/api';
+
+/**
+ * Mock data for development and offline testing
+ * Shows various delivery states and scenarios
+ */
+
+export const MOCK_DELIVERIES: Delivery[] = [
+  {
+    id: 'delivery-001',
+    customerName: 'John Doe',
+    customerPhone: '+237671234567',
+    restaurant: 'Pizza Palace',
+    address: 'Yaoundé, Biyemassi',
+    lat: 3.8667,
+    lng: 11.5167,
+    dropoffLat: 3.8700,
+    dropoffLng: 11.5200,
+    status: 'pending',
+    distance: '2.3 km',
+    estimatedTime: '15 min',
+    payment: 'XAF 5,500',
+    order: {
+      id: 'order-001',
+      subtotal: 4500,
+      deliveryFee: 1000,
+      restaurant: {
+        id: 'rest-001',
+        name: 'Pizza Palace',
+      },
+      deliveryLatitude: 3.8700,
+      deliveryLongitude: 11.5200,
+    },
+  } as Delivery,
+
+  {
+    id: 'delivery-002',
+    customerName: 'Marie Durand',
+    customerPhone: '+237691234567',
+    restaurant: 'Café Central',
+    address: 'Yaoundé, Nlongkak',
+    lat: 3.8600,
+    lng: 11.5100,
+    dropoffLat: 3.8650,
+    dropoffLng: 11.5150,
+    status: 'accepted',
+    distance: '1.8 km',
+    estimatedTime: '12 min',
+    payment: 'XAF 4,200',
+    order: {
+      id: 'order-002',
+      subtotal: 3500,
+      deliveryFee: 700,
+      restaurant: {
+        id: 'rest-002',
+        name: 'Café Central',
+      },
+      deliveryLatitude: 3.8650,
+      deliveryLongitude: 11.5150,
+    },
+  } as Delivery,
+
+  {
+    id: 'delivery-003',
+    customerName: 'Ahmed Hassan',
+    customerPhone: '+237681234567',
+    restaurant: 'Burger King',
+    address: 'Yaoundé, Mokolo',
+    lat: 3.8500,
+    lng: 11.5050,
+    dropoffLat: 3.8550,
+    dropoffLng: 11.5100,
+    status: 'accepted',
+    distance: '3.5 km',
+    estimatedTime: '22 min',
+    payment: 'XAF 6,800',
+    order: {
+      id: 'order-003',
+      subtotal: 5800,
+      deliveryFee: 1000,
+      restaurant: {
+        id: 'rest-003',
+        name: 'Burger King',
+      },
+      deliveryLatitude: 3.8550,
+      deliveryLongitude: 11.5100,
+    },
+  } as Delivery,
+
+  {
+    id: 'delivery-004',
+    customerName: 'Sophie Martin',
+    customerPhone: '+237661234567',
+    restaurant: 'Restaurant Français',
+    address: 'Yaoundé, Tsinga',
+    lat: 3.8400,
+    lng: 11.4950,
+    dropoffLat: 3.8450,
+    dropoffLng: 11.5000,
+    status: 'picked_up',
+    distance: '4.2 km',
+    estimatedTime: '28 min',
+    payment: 'XAF 8,900',
+    order: {
+      id: 'order-004',
+      subtotal: 7800,
+      deliveryFee: 1100,
+      restaurant: {
+        id: 'rest-004',
+        name: 'Restaurant Français',
+      },
+      deliveryLatitude: 3.8450,
+      deliveryLongitude: 11.5000,
+    },
+  } as Delivery,
+
+  {
+    id: 'delivery-005',
+    customerName: 'Carlos García',
+    customerPhone: '+237651234567',
+    restaurant: 'Taco Fiesta',
+    address: 'Yaoundé, Bastos',
+    lat: 3.8300,
+    lng: 11.4850,
+    dropoffLat: 3.8350,
+    dropoffLng: 11.4900,
+    status: 'delivering',
+    distance: '1.5 km',
+    estimatedTime: '8 min',
+    payment: 'XAF 3,900',
+    order: {
+      id: 'order-005',
+      subtotal: 3200,
+      deliveryFee: 700,
+      restaurant: {
+        id: 'rest-005',
+        name: 'Taco Fiesta',
+      },
+      deliveryLatitude: 3.8350,
+      deliveryLongitude: 11.4900,
+    },
+  } as Delivery,
+
+  {
+    id: 'delivery-006',
+    customerName: 'Amina Sow',
+    customerPhone: '+237641234567',
+    restaurant: 'Jollof Express',
+    address: 'Yaoundé, Simbock',
+    lat: 3.8200,
+    lng: 11.4750,
+    dropoffLat: 3.8250,
+    dropoffLng: 11.4800,
+    status: 'pending',
+    distance: '5.1 km',
+    estimatedTime: '32 min',
+    payment: 'XAF 7,200',
+    order: {
+      id: 'order-006',
+      subtotal: 6200,
+      deliveryFee: 1000,
+      restaurant: {
+        id: 'rest-006',
+        name: 'Jollof Express',
+      },
+      deliveryLatitude: 3.8250,
+      deliveryLongitude: 11.4800,
+    },
+  } as Delivery,
+
+  {
+    id: 'delivery-007',
+    customerName: 'Kwame Asante',
+    customerPhone: '+237631234567',
+    restaurant: 'Seafood Paradise',
+    address: 'Yaoundé, Elig-Essono',
+    lat: 3.8100,
+    lng: 11.4650,
+    dropoffLat: 3.8150,
+    dropoffLng: 11.4700,
+    status: 'completed',
+    distance: '2.8 km',
+    estimatedTime: '18 min',
+    payment: 'XAF 9,500',
+    order: {
+      id: 'order-007',
+      subtotal: 8200,
+      deliveryFee: 1300,
+      restaurant: {
+        id: 'rest-007',
+        name: 'Seafood Paradise',
+      },
+      deliveryLatitude: 3.8150,
+      deliveryLongitude: 11.4700,
+    },
+  } as Delivery,
+
+  {
+    id: 'delivery-008',
+    customerName: 'Fatima Al-Rashid',
+    customerPhone: '+237621234567',
+    restaurant: 'Lebanese Kitchen',
+    address: 'Yaoundé, Gynéco',
+    lat: 3.8000,
+    lng: 11.4550,
+    dropoffLat: 3.8050,
+    dropoffLng: 11.4600,
+    status: 'pending',
+    distance: '3.3 km',
+    estimatedTime: '20 min',
+    payment: 'XAF 5,800',
+    order: {
+      id: 'order-008',
+      subtotal: 5000,
+      deliveryFee: 800,
+      restaurant: {
+        id: 'rest-008',
+        name: 'Lebanese Kitchen',
+      },
+      deliveryLatitude: 3.8050,
+      deliveryLongitude: 11.4600,
+    },
+  } as Delivery,
+];
+
+export const MOCK_ANALYTICS = {
+  todayEarnings: 38_900,
+  completedDeliveries: 5,
+  rating: 4.8,
+  totalOrders: 12,
+  acceptanceRate: 92,
+};
+
+export const MOCK_BALANCE = {
+  balance: 125_450,
+  currency: 'XAF',
+};

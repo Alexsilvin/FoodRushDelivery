@@ -89,6 +89,37 @@ export default function ProfileScreen({ navigation, route }: Props) {
   const scrollY = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Collapsing header animations
+  const avatarSize = scrollY.interpolate({
+    inputRange: [0, 200],
+    outputRange: [100, 40],
+    extrapolate: 'clamp',
+  });
+
+  const avatarPositionY = scrollY.interpolate({
+    inputRange: [0, 200],
+    outputRange: [0, -40],
+    extrapolate: 'clamp',
+  });
+
+  const avatarPositionX = scrollY.interpolate({
+    inputRange: [0, 200],
+    outputRange: [0, 120],
+    extrapolate: 'clamp',
+  });
+
+  const profileInfoOpacity = scrollY.interpolate({
+    inputRange: [0, 150],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const headerHeight = scrollY.interpolate({
+    inputRange: [0, 200],
+    outputRange: [280, 70],
+    extrapolate: 'clamp',
+  });
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -550,72 +581,106 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         )}
         scrollEventThrottle={16}
       >
-        {/* Header Section */}
-        <LinearGradient 
-          colors={theme.isDark ? [theme.colors.primary, '#1E40AF'] : ['#3B82F6', '#1E40AF']} 
-          style={styles.header}
+        {/* Collapsing Header Section */}
+        <Animated.View 
+          style={[
+            styles.collapsibleHeader,
+            { 
+              height: headerHeight,
+              backgroundColor: theme.isDark ? '#0F172A' : '#F8FAFC',
+              overflow: 'hidden'
+            }
+          ]}
         >
-          <View style={styles.profileSection}>
-            <View style={styles.avatarContainer}>
+          <LinearGradient 
+            colors={theme.isDark ? ['#0F172A', '#1E3A8A'] : ['#F0F9FF', '#E0F2FE']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.headerGradient}
+          >
+            {/* Large Avatar */}
+            <Animated.View 
+              style={[
+                styles.largeAvatarContainer,
+                {
+                  width: avatarSize,
+                  height: avatarSize,
+                  transform: [
+                    { translateY: avatarPositionY },
+                    { translateX: avatarPositionX },
+                  ]
+                }
+              ]}
+            >
               <Text style={styles.avatarText}>
                 {user?.fullName ? user.fullName.split(' ').map(name => name[0]).join('').substring(0, 2).toUpperCase() : 'U'}
               </Text>
-            </View>
-            
-            <View style={styles.profileInfo}>
-              <Text style={styles.name}>
+            </Animated.View>
+
+            {/* Profile Info - Fades out on scroll */}
+            <Animated.View 
+              style={[
+                styles.profileInfoContainer,
+                { opacity: profileInfoOpacity }
+              ]}
+            >
+              <Text style={[styles.headerName, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                 {String(displayName || 'User')}
               </Text>
-              <Text style={styles.email}>{String(displayEmail || 'No email')}</Text>
+              <Text style={[styles.headerEmail, { color: theme.isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.6)' }]}>{String(displayEmail || 'No email')}</Text>
               
-              <View style={styles.badgeContainer}>
+              <View style={styles.headerBadgeContainer}>
                 {user?.isVerified && (
-                  <View style={styles.verifiedBadge}>
-                    <Ionicons name="checkmark-circle" size={14} color="#FFFFFF" />
-                    <Text style={styles.badgeText}>Verified</Text>
+                  <View style={[styles.headerVerifiedBadge, { backgroundColor: theme.isDark ? '#10B981' : '#D1FAE5' }]}>
+                    <Ionicons name="checkmark-circle" size={13} color={theme.isDark ? '#FFFFFF' : '#059669'} />
+                    <Text style={[styles.headerBadgeText, { color: theme.isDark ? '#FFFFFF' : '#059669' }]}>Verified</Text>
                   </View>
                 )}
                 {vehicleType && (
-                  <View style={styles.vehicleBadge}>
-                    <Ionicons name="car-outline" size={14} color="#3B82F6" />
-                    <Text style={styles.vehicleBadgeText}>{String(vehicleType || 'Vehicle')}</Text>
+                  <View style={[styles.headerVehicleBadge, { backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(59, 130, 246, 0.1)', borderColor: theme.isDark ? 'rgba(96, 165, 250, 0.3)' : 'rgba(59, 130, 246, 0.2)' }]}>
+                    <Ionicons name="car-outline" size={13} color={theme.isDark ? '#60A5FA' : '#3B82F6'} />
+                    <Text style={[styles.headerVehicleBadgeText, { color: theme.isDark ? '#93C5FD' : '#1E40AF' }]}>{String(vehicleType || 'Vehicle')}</Text>
                   </View>
                 )}
               </View>
-            </View>
-            
-            <View style={styles.statusContainer}>
-              <Text style={styles.statusLabel}>{t('availableForDeliveries')}</Text>
-              <Switch
-                value={isOnline}
-                onValueChange={toggleOnline}
-                trackColor={{ false: 'rgba(255,255,255,0.3)', true: 'rgba(255,255,255,0.6)' }}
-                thumbColor={(updateStatusMutation.isPending || updateAvailabilityMutation.isPending) ? '#F59E0B' : (isOnline ? '#FFFFFF' : '#E5E7EB')}
-                disabled={updateStatusMutation.isPending || updateAvailabilityMutation.isPending}
-              />
-            </View>
-          </View>
-        </LinearGradient>
+
+              {/* Status Toggle */}
+              <View style={[styles.headerStatusContainer, { backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(59, 130, 246, 0.08)', borderColor: theme.isDark ? 'rgba(96, 165, 250, 0.2)' : 'rgba(59, 130, 246, 0.2)' }]}>
+                <Text style={[styles.headerStatusLabel, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>Available for Deliveries</Text>
+                <Switch
+                  value={isOnline}
+                  onValueChange={toggleOnline}
+                  trackColor={{ false: theme.isDark ? 'rgba(255,255,255,0.3)' : 'rgba(100, 116, 139, 0.3)', true: theme.isDark ? 'rgba(255,255,255,0.6)' : 'rgba(59, 130, 246, 0.4)' }}
+                  thumbColor={(updateStatusMutation.isPending || updateAvailabilityMutation.isPending) ? '#F59E0B' : (isOnline ? (theme.isDark ? '#FFFFFF' : '#3B82F6') : '#E5E7EB')}
+                  disabled={updateStatusMutation.isPending || updateAvailabilityMutation.isPending}
+                />
+              </View>
+            </Animated.View>
+          </LinearGradient>
+        </Animated.View>
 
         {/* Stats Section */}
-        <View style={styles.statsSection}>
+        <View style={[styles.statsSection, { backgroundColor: theme.isDark ? '#0F172A' : '#F8FAFC' }]}>
           <View style={styles.statsGrid}>
             {profileStats.map((stat, index) => (
               <Animated.View
                 key={index}
                 style={[
                   styles.statCard,
-                  { backgroundColor: theme.colors.card },
+                  { 
+                    backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(59, 130, 246, 0.08)',
+                    borderColor: theme.isDark ? 'rgba(96, 165, 250, 0.2)' : 'rgba(59, 130, 246, 0.15)'
+                  },
                   { opacity: statAnimations[index] }
                 ]}
               >
-                <View style={[styles.statIconContainer, { backgroundColor: stat.color + '15' }]}>
+                <View style={[styles.statIconContainer, { backgroundColor: theme.isDark ? stat.color + '15' : stat.color + '20' }]}>
                   <Ionicons name={stat.icon as any} size={24} color={stat.color} />
                 </View>
-                <Text style={[styles.statValue, { color: theme.colors.text }]}>
+                <Text style={[styles.statValue, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                   {String(countUps[index] || '—')}
                 </Text>
-                <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
+                <Text style={[styles.statLabel, { color: theme.isDark ? '#93C5FD' : '#1E40AF' }]}>
                   {stat.label}
                 </Text>
               </Animated.View>
@@ -626,65 +691,79 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         <SectionSeparator />
 
         {/* Account Details Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+        <View style={[styles.section, { backgroundColor: theme.isDark ? '#0F172A' : '#F8FAFC' }]}>
+          <Text style={[styles.sectionTitle, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
             {t('account')}
           </Text>
           
-          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>
+          <View style={[
+            styles.card, 
+            { 
+              backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(59, 130, 246, 0.05)',
+              borderWidth: 1,
+              borderColor: theme.isDark ? 'rgba(96, 165, 250, 0.2)' : 'rgba(59, 130, 246, 0.15)'
+            }
+          ]}>
+            <View style={[styles.detailRow, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]}>
+              <Text style={[styles.detailLabel, { color: theme.isDark ? '#93C5FD' : '#1E40AF' }]}>
                 Full Name
               </Text>
-              <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+              <Text style={[styles.detailValue, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                 {String(displayName || 'User')}
               </Text>
             </View>
             
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>
+            <View style={[styles.detailRow, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]}>
+              <Text style={[styles.detailLabel, { color: theme.isDark ? '#93C5FD' : '#1E40AF' }]}>
                 Email
               </Text>
-              <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+              <Text style={[styles.detailValue, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                 {String(displayEmail || 'No email')}
               </Text>
             </View>
             
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>
+            <View style={[styles.detailRow, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]}>
+              <Text style={[styles.detailLabel, { color: theme.isDark ? '#93C5FD' : '#1E40AF' }]}>
                 Phone
               </Text>
-              <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+              <Text style={[styles.detailValue, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                 {String(displayPhone || '—')}
               </Text>
             </View>
             
-            <View style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>
+            <View style={[styles.detailRow, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]}>
+              <Text style={[styles.detailLabel, { color: theme.isDark ? '#93C5FD' : '#1E40AF' }]}>
                 Vehicle Type
               </Text>
-              <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+              <Text style={[styles.detailValue, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                 {String(vehicleType || '—')}
               </Text>
             </View>
             
             <View style={[styles.detailRow, styles.lastDetailRow]}>
-              <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>
+              <Text style={[styles.detailLabel, { color: theme.isDark ? '#93C5FD' : '#1E40AF' }]}>
                 Verified
               </Text>
-              <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+              <Text style={[styles.detailValue, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                 {user?.isVerified ? 'Yes' : 'No'}
               </Text>
             </View>
           </View>
 
           <TouchableOpacity 
-            style={[styles.refreshButton, { backgroundColor: theme.colors.card }]} 
+            style={[
+              styles.refreshButton, 
+              { 
+                backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(59, 130, 246, 0.08)',
+                borderWidth: 1,
+                borderColor: theme.isDark ? 'rgba(96, 165, 250, 0.2)' : 'rgba(59, 130, 246, 0.15)'
+              }
+            ]} 
             onPress={refreshProfile} 
             disabled={profileLoading}
           >
-            <Ionicons name="refresh" size={18} color="#3B82F6" />
-            <Text style={styles.refreshText}>
+            <Ionicons name="refresh" size={18} color={theme.isDark ? '#60A5FA' : '#3B82F6'} />
+            <Text style={[styles.refreshText, { color: theme.isDark ? '#60A5FA' : '#3B82F6' }]}>
               {profileLoading ? 'Refreshing...' : 'Refresh Profile'}
             </Text>
           </TouchableOpacity>
@@ -693,30 +772,37 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         <SectionSeparator />
 
         {/* Settings Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+        <View style={[styles.section, { backgroundColor: theme.isDark ? '#0F172A' : '#F8FAFC' }]}>
+          <Text style={[styles.sectionTitle, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
             Settings
           </Text>
           
-          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
-            <TouchableOpacity style={styles.menuItem} onPress={handleEditProfile}>
+          <View style={[
+            styles.card, 
+            { 
+              backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(59, 130, 246, 0.05)',
+              borderWidth: 1,
+              borderColor: theme.isDark ? 'rgba(96, 165, 250, 0.2)' : 'rgba(59, 130, 246, 0.15)'
+            }
+          ]}>
+            <TouchableOpacity style={[styles.menuItem, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]} onPress={handleEditProfile}>
               <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIconContainer, { backgroundColor: '#3B82F615' }]}>
+                <View style={[styles.menuIconContainer, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.2)' }]}>
                   <Ionicons name="person-outline" size={20} color="#3B82F6" />
                 </View>
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>
+                <Text style={[styles.menuItemText, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                   {t('editProfile')}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+              <Ionicons name="chevron-forward" size={20} color={theme.isDark ? '#64748B' : '#94A3B8'} />
             </TouchableOpacity>
 
-            <View style={styles.menuItem}>
+            <View style={[styles.menuItem, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]}>
               <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIconContainer, { backgroundColor: '#F59E0B15' }]}>
+                <View style={[styles.menuIconContainer, { backgroundColor: theme.isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.2)' }]}>
                   <Ionicons name="notifications-outline" size={20} color="#F59E0B" />
                 </View>
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>
+                <Text style={[styles.menuItemText, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                   {t('pushNotifications')}
                 </Text>
               </View>
@@ -763,22 +849,22 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.menuItem, styles.lastMenuItem]}
+              style={[styles.menuItem, styles.lastMenuItem, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]}
               onPress={() => navigation.navigate('PhoneNumbers' as never)}
             >
               <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIconContainer, { backgroundColor: '#10B98115' }]}>
+                <View style={[styles.menuIconContainer, { backgroundColor: theme.isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.2)' }]}>
                   <Ionicons name="call-outline" size={20} color="#10B981" />
                 </View>
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>
+                <Text style={[styles.menuItemText, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                   {t('phoneNumber')}
                 </Text>
               </View>
               <View style={styles.menuItemRight}>
-                <Text style={[styles.menuItemSubtext, { color: theme.colors.textSecondary }]}>
+                <Text style={[styles.menuItemSubtext, { color: theme.isDark ? '#64748B' : '#94A3B8' }]}>
                   {displayPhone === '—' ? (t('notSet') || 'Not set') : displayPhone}
                 </Text>
-                <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+                <Ionicons name="chevron-forward" size={20} color={theme.isDark ? '#64748B' : '#94A3B8'} />
               </View>
             </TouchableOpacity>
           </View>
@@ -787,46 +873,53 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         <SectionSeparator />
 
         {/* Support Section */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+        <View style={[styles.section, { backgroundColor: theme.isDark ? '#0F172A' : '#F8FAFC' }]}>
+          <Text style={[styles.sectionTitle, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
             {t('support')}
           </Text>
           
-          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
-            <TouchableOpacity style={styles.menuItem} onPress={handleSupport}>
+          <View style={[
+            styles.card, 
+            { 
+              backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(59, 130, 246, 0.05)',
+              borderWidth: 1,
+              borderColor: theme.isDark ? 'rgba(96, 165, 250, 0.2)' : 'rgba(59, 130, 246, 0.15)'
+            }
+          ]}>
+            <TouchableOpacity style={[styles.menuItem, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]} onPress={handleSupport}>
               <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIconContainer, { backgroundColor: '#3B82F615' }]}>
+                <View style={[styles.menuIconContainer, { backgroundColor: theme.isDark ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.2)' }]}>
                   <Ionicons name="help-circle-outline" size={20} color="#3B82F6" />
                 </View>
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>
+                <Text style={[styles.menuItemText, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                   {t('helpSupport')}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+              <Ionicons name="chevron-forward" size={20} color={theme.isDark ? '#64748B' : '#94A3B8'} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.menuItem} onPress={handlePrivacy}>
+            <TouchableOpacity style={[styles.menuItem, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]} onPress={handlePrivacy}>
               <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIconContainer, { backgroundColor: '#10B98115' }]}>
+                <View style={[styles.menuIconContainer, { backgroundColor: theme.isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.2)' }]}>
                   <Ionicons name="shield-outline" size={20} color="#10B981" />
                 </View>
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>
+                <Text style={[styles.menuItemText, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                   {t('privacyPolicy')}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+              <Ionicons name="chevron-forward" size={20} color={theme.isDark ? '#64748B' : '#94A3B8'} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.menuItem, styles.lastMenuItem]} onPress={handleTerms}>
+            <TouchableOpacity style={[styles.menuItem, styles.lastMenuItem, { borderBottomColor: theme.isDark ? 'rgba(96, 165, 250, 0.1)' : 'rgba(59, 130, 246, 0.1)' }]} onPress={handleTerms}>
               <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIconContainer, { backgroundColor: '#F59E0B15' }]}>
+                <View style={[styles.menuIconContainer, { backgroundColor: theme.isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.2)' }]}>
                   <Ionicons name="document-text-outline" size={20} color="#F59E0B" />
                 </View>
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>
+                <Text style={[styles.menuItemText, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
                   {t('termsService')}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+              <Ionicons name="chevron-forward" size={20} color={theme.isDark ? '#64748B' : '#94A3B8'} />
             </TouchableOpacity>
           </View>
         </View>
@@ -835,11 +928,18 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         {notificationList.length > 0 && (
           <>
             <SectionSeparator />
-            <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            <View style={[styles.section, { backgroundColor: theme.isDark ? '#0F172A' : '#F8FAFC' }]}>
+            <Text style={[styles.sectionTitle, { color: theme.isDark ? '#FFFFFF' : '#0F172A' }]}>
               Notifications
             </Text>
-            <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
+            <View style={[
+              styles.card, 
+              { 
+                backgroundColor: theme.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(59, 130, 246, 0.05)',
+                borderWidth: 1,
+                borderColor: theme.isDark ? 'rgba(96, 165, 250, 0.2)' : 'rgba(59, 130, 246, 0.15)'
+              }
+            ]}>
               {renderNotifications()}
             </View>
             </View>
@@ -849,12 +949,19 @@ FoodRush may revise these Terms from time to time. We will provide notice of cha
         <SectionSeparator />
 
         {/* Logout Button */}
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: theme.isDark ? '#0F172A' : '#F8FAFC' }]}>
           <TouchableOpacity 
-            style={[styles.logoutButton, { backgroundColor: theme.colors.card }]} 
+            style={[
+              styles.logoutButton, 
+              { 
+                backgroundColor: theme.isDark ? 'rgba(220, 38, 38, 0.15)' : 'rgba(220, 38, 38, 0.1)',
+                borderWidth: 1,
+                borderColor: theme.isDark ? 'rgba(220, 38, 38, 0.3)' : 'rgba(220, 38, 38, 0.2)'
+              }
+            ]} 
             onPress={handleLogout}
           >
-            <View style={[styles.menuIconContainer, { backgroundColor: '#DC262615' }]}>
+            <View style={[styles.menuIconContainer, { backgroundColor: theme.isDark ? 'rgba(220, 38, 38, 0.25)' : 'rgba(220, 38, 38, 0.2)' }]}>
               <Ionicons name="log-out-outline" size={20} color="#DC2626" />
             </View>
             <Text style={styles.logoutText}>{t('logout')}</Text>
@@ -879,92 +986,94 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  header: {
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-  },
-  profileSection: {
+  collapsibleHeader: {
+    backgroundColor: '#0F172A',
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 20,
   },
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  headerGradient: {
+    flex: 1,
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    paddingHorizontal: 20,
+  },
+  largeAvatarContainer: {
+    backgroundColor: 'rgba(96, 165, 250, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(96, 165, 250, 0.4)',
+    position: 'absolute',
+    left: 20,
+    top: 20,
+    borderRadius: 100,
   },
   avatarText: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
-  profileInfo: {
+  profileInfoContainer: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginTop: 10,
   },
-  name: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  headerName: {
+    fontSize: 26,
+    fontWeight: '700',
     marginBottom: 4,
   },
-  email: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+  headerEmail: {
+    fontSize: 13,
     marginBottom: 12,
   },
-  badgeContainer: {
+  headerBadgeContainer: {
     flexDirection: 'row',
     gap: 8,
+    marginBottom: 16,
   },
-  verifiedBadge: {
+  headerVerifiedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#10B981',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
     gap: 4,
   },
-  vehicleBadge: {
+  headerBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  headerVehicleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
     gap: 4,
+    borderWidth: 1,
   },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
+  headerVehicleBadgeText: {
+    fontSize: 11,
     fontWeight: '600',
   },
-  vehicleBadgeText: {
-    color: '#3B82F6',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  statusContainer: {
+  headerStatusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 20,
-    paddingVertical: 8,
+    borderRadius: 24,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     gap: 12,
+    borderWidth: 1,
   },
-  statusLabel: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
+  headerStatusLabel: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   statsSection: {
     paddingHorizontal: 20,
     paddingTop: 20,
+    paddingBottom: 20,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -977,6 +1086,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
+    borderWidth: 1,
   },
   statIconContainer: {
     width: 48,
@@ -987,18 +1097,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '700',
     marginBottom: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     textAlign: 'center',
     fontWeight: '500',
   },
   section: {
     paddingHorizontal: 20,
-    paddingTop: 28,
+    paddingTop: 24,
     paddingBottom: 4,
   },
   sectionTitle: {
@@ -1010,36 +1120,27 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-    marginBottom: 4,
+    marginBottom: 12,
   },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
     minHeight: 56,
   },
   lastDetailRow: {
     borderBottomWidth: 0,
   },
   detailLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '500',
     letterSpacing: 0.2,
   },
   detailValue: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0.1,
   },
@@ -1055,16 +1156,14 @@ const styles = StyleSheet.create({
   refreshText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#3B82F6',
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
     minHeight: 60,
   },
   lastMenuItem: {

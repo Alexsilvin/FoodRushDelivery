@@ -140,95 +140,124 @@ export default function LoginScreen({ navigation, route }: Props) {
   return (
     <CommonView showStatusBar={true} paddingHorizontal={0}>
       <LinearGradient 
-        colors={theme.isDark 
-          ? [theme.colors.background, theme.colors.surface, theme.colors.primary + '40'] 
-          : ['#0f1419', '#1a2332', '#2a3441']} 
+        colors={['#0F172A', '#1E3A8A', '#0F172A']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={styles.container}
       >
+        {/* Decorative shapes */}
+        <View style={styles.shapeContainer}>
+          <View style={[styles.shape, styles.shapeTop]} />
+          <View style={[styles.shape, styles.shapeBottom]} />
+        </View>
+
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
         >
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Logo Header - positioned where splash screen logo transitions to */}
-          <Animated.View style={[styles.logoHeader, { opacity: logoOpacity }]}>
-            <Image
-              source={require('../../../assets/outoloyout.png')}
-              style={styles.logoImage}
-              resizeMode="contain"
-              alt="Food Rush Logo"
-            />
-            <View style={styles.logoTextContainer}>
-              <Text style={styles.logoText}>Food Rush</Text>
-              <Text style={styles.logoSubText}>Driver App</Text>
-            </View>
-          </Animated.View>
-
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.colors.text }]}>Welcome Back!</Text>
-            <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>Sign in to continue delivering</Text>
-          </View>
-
-          <View style={styles.form}>
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Ionicons name="mail-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                style={[styles.input, { color: theme.colors.text }]}
-                placeholder="Email"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                placeholderTextColor={theme.colors.textSecondary}
-              />
-            </View>
-
-            <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                style={[styles.input, { paddingRight: 50, color: theme.colors.text }]}
-                placeholder="Password"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                placeholderTextColor={theme.colors.textSecondary}
-              />
-              <TouchableOpacity
-                style={styles.eyeIcon}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={20}
-                  color={theme.colors.textSecondary}
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent} 
+            showsVerticalScrollIndicator={false}
+            scrollEnabled={false}
+          >
+            {/* Logo and Branding */}
+            <Animated.View style={[styles.logoHeader, { opacity: logoOpacity }]}>
+              <View style={styles.brandContainer}>
+                <Text style={styles.brandNameGradient}>FOOD</Text>
+                <Image
+                  source={require('../../../assets/outoloyout.png')}
+                  style={styles.rushImage}
+                  resizeMode="contain"
+                  alt="Rush Logo"
                 />
-              </TouchableOpacity>
+              </View>
+            </Animated.View>
+
+            {/* Main Card */}
+            <View style={styles.card}>
+              {/* Welcome Text */}
+              <View style={styles.header}>
+                <Text style={styles.title}>Welcome Back</Text>
+              </View>
+
+              {/* Form Section */}
+              <View style={styles.form}>
+                {/* Email Input */}
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.inputLabel}>Email address</Text>
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="your@email.com"
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      placeholderTextColor="rgba(255, 255, 255, 0.4)"
+                    />
+                  </View>
+                </View>
+
+                {/* Password Input */}
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.inputLabel}>Password</Text>
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="••••••••"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      placeholderTextColor="rgba(255, 255, 255, 0.4)"
+                    />
+                    <TouchableOpacity
+                      style={styles.eyeIcon}
+                      onPress={() => setShowPassword(!showPassword)}
+                    >
+                      <Ionicons
+                        name={showPassword ? 'eye-off' : 'eye'}
+                        size={20}
+                        color="rgba(255, 255, 255, 0.6)"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Forgot Password Link */}
+                <TouchableOpacity
+                  style={styles.forgotPasswordContainer}
+                  onPress={() => navigation.navigate('ForgotPassword')}
+                >
+                  <Text style={styles.forgotPasswordText}>Forgot Password ?</Text>
+                </TouchableOpacity>
+
+                {/* Login Button */}
+                <LinearGradient
+                  colors={['#6366F1', '#3B82F6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.loginButton}
+                >
+                  <TouchableOpacity
+                    onPress={handleLogin}
+                    disabled={loading}
+                    style={styles.buttonContent}
+                  >
+                    <Text style={styles.loginButtonText}>
+                      {loading ? 'Signing In...' : 'Login'}
+                    </Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+
+              {/* Sign Up Link */}
+              <View style={styles.signUpContainer}>
+                <Text style={styles.signUpText}>Are You New Member? </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+                  <Text style={styles.signUpLink}>Sign UP</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-
-            <TouchableOpacity
-              style={styles.forgotPassword}
-              onPress={() => navigation.navigate('ForgotPassword')}
-            >
-              <Text style={[styles.forgotPasswordText, { color: theme.colors.primary }]}>Forgot Password?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.loginButton, { backgroundColor: theme.colors.primary }, loading && styles.buttonDisabled]}
-              onPress={handleLogin}
-              disabled={loading}
-            >
-              <Text style={styles.loginButtonText}>
-                {loading ? 'Signing In...' : 'Sign In'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: theme.colors.textSecondary }]}>Don&apos;t have an account? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-              <Text style={[styles.signUpText, { color: theme.colors.primary }]}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
@@ -240,6 +269,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  shapeContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    overflow: 'hidden',
+  },
+  shape: {
+    position: 'absolute',
+    borderRadius: 500,
+    opacity: 0.15,
+  },
+  shapeTop: {
+    width: 400,
+    height: 400,
+    top: -150,
+    right: -100,
+    backgroundColor: '#60A5FA',
+  },
+  shapeBottom: {
+    width: 350,
+    height: 350,
+    bottom: -120,
+    left: -80,
+    backgroundColor: '#3B82F6',
+  },
   keyboardView: {
     flex: 1,
   },
@@ -247,98 +301,154 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-  },
-  form: {
-    marginBottom: 30,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  inputIcon: {
-    paddingHorizontal: 12,
-  },
-  input: {
-    flex: 1,
-    height: 56,
-    fontSize: 16,
-  },
-  eyeIcon: {
-    position: 'absolute',
-    right: 12,
-    height: '100%',
-    justifyContent: 'center',
-  },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginBottom: 24,
-  },
-  forgotPasswordText: {
-    fontSize: 14,
-  },
-  loginButton: {
-    height: 56,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  loginButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  footerText: {
-    fontSize: 14,
-  },
-  signUpText: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    paddingVertical: 40,
   },
   logoHeader: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 50,
+    zIndex: 10,
   },
-  logoTextContainer: {
-    marginLeft: 10,
-  },
-  logoText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#ff6b00',
-  },
-  logoSubText: {
-    fontSize: 14,
-    color: '#ff9a4d',
-    fontStyle: 'italic',
+  logoCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(96, 165, 250, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(96, 165, 250, 0.3)',
   },
   logoImage: {
-    width: 60,
-    height: 60,
+    width: 45,
+    height: 45,
+  },
+  rushImage: {
+    width: 140,
+    height: 140,
+    marginLeft: 12,
+  },
+  brandName: {
+    fontSize: 29,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    letterSpacing: 3,
+    marginLeft: 0,
+  },
+  brandContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 0,
+  },
+  brandNameGradient: {
+    fontSize: 29,
+    fontWeight: '700',
+    color: '#3B82F6',
+    letterSpacing: 3,
+    marginRight: 8,
+  },
+  card: {
+    backgroundColor: 'rgba(30, 58, 138, 0.25)',
+    borderRadius: 30,
+    borderWidth: 1.5,
+    borderColor: 'rgba(96, 165, 250, 0.2)',
+    padding: 32,
+    zIndex: 10,
+    backdropFilter: 'blur(20px)',
+  },
+  header: {
+    alignItems: 'flex-start',
+    marginBottom: 32,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    lineHeight: 36,
+  },
+  form: {
+    marginBottom: 24,
+  },
+  inputWrapper: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    marginBottom: 8,
+    fontWeight: '500',
+    letterSpacing: 0.5,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.25)',
+    paddingHorizontal: 14,
+    height: 52,
+    overflow: 'hidden',
+  },
+  input: {
+    flex: 1,
+    height: 52,
+    fontSize: 15,
+    color: '#FFFFFF',
+    padding: 0,
+  },
+  eyeIcon: {
+    padding: 8,
+  },
+  forgotPasswordContainer: {
+    alignSelf: 'flex-end',
+    marginBottom: 28,
+  },
+  forgotPasswordText: {
+    fontSize: 13,
+    color: '#93C5FD',
+    fontWeight: '500',
+  },
+  loginButton: {
+    height: 52,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  buttonContent: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loginButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  signUpContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(96, 165, 250, 0.2)',
+  },
+  signUpText: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  signUpLink: {
+    fontSize: 13,
+    color: '#60A5FA',
+    fontWeight: '700',
   },
 });

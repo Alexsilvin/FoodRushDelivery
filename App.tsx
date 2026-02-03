@@ -1,9 +1,8 @@
 import React, { useState, memo } from 'react';
-import { Modal, Text } from 'react-native';
+import { Modal, Text, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNetwork } from './src/contexts/NetworkContext';
 import { NavigationContainer } from '@react-navigation/native';
-import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet } from 'react-native';
 import { useTheme } from './src/contexts/ThemeContext';
 import { useAuth } from './src/contexts/AuthContext';
@@ -52,7 +51,12 @@ const AppContent = memo(() => {
 
   return (
     <NavigationContainer>
-      <StatusBar style={theme.isDark ? "light" : "dark"} backgroundColor={theme.colors.statusBar} />
+      <StatusBar 
+        backgroundColor="transparent"
+        translucent={true}
+        barStyle="light-content"
+        hidden={false}
+      />
       {canAccessMainApp() ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );

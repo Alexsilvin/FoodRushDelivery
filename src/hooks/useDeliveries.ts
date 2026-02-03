@@ -20,7 +20,9 @@ export const useMyDeliveries = (params?: {
   return useQuery({
     queryKey: deliveryKeys.my(params),
     queryFn: () => deliveryService.getMyDeliveries(),
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes garbage collection
+    retry: 2,
   });
 };
 
@@ -31,7 +33,8 @@ export const useDeliveryById = (deliveryId: string) => {
   return useQuery({
     queryKey: deliveryKeys.byId(deliveryId),
     queryFn: () => deliveryService.getDeliveryById(deliveryId),
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 3 * 60 * 1000, // 3 minutes (increased from 1 minute)
+    gcTime: 10 * 60 * 1000, // 10 minutes garbage collection
     enabled: !!deliveryId,
   });
 };

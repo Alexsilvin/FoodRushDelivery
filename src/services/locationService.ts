@@ -45,9 +45,9 @@ class LocationService {
   private maxRetries = 3;
 
   private config: LocationServiceConfig = {
-    updateInterval: 30000, // 30 seconds
-    distanceInterval: 50, // 50 meters
-    enableHighAccuracy: true,
+    updateInterval: 60000, // 60 seconds (increased from 30 seconds)
+    distanceInterval: 100, // 100 meters (increased from 50 meters)
+    enableHighAccuracy: false, // Use balanced accuracy to reduce battery drain
     maxBatchSize: 50,
     batchTimeout: 300000, // 5 minutes
     enableLocationCaching: true,

@@ -43,8 +43,8 @@ const driverImg = require('../../../assets/driver.png');
 
 // Local UI fallback formatting helpers
 const formatCurrency = (amount?: number) => {
-  if (amount == null) return 'XAF 0';
-  try { return `XAF ${Math.round(amount)}`; } catch { return `XAF ${Math.round(amount)}`; }
+  if (amount == null) return 'FCFA 0';
+  try { return `FCFA ${Math.round(amount)}`; } catch { return `FCFA ${Math.round(amount)}`; }
 };
 
 import { TabScreenProps } from '../../types/navigation.types';
@@ -70,7 +70,7 @@ const DeliveryFeeDisplay = ({ delivery }: { delivery: Delivery }) => {
     
     const orderTotal = delivery.order.subtotal ? Number(delivery.order.subtotal) : 0;
     const deliveryFee = feeEstimate ? feeEstimate.deliveryFee : (delivery.order.deliveryFee ? Number(delivery.order.deliveryFee) : 0);
-    return `XAF ${Math.round(orderTotal + deliveryFee)}`;
+    return `FCFA ${Math.round(orderTotal + deliveryFee).toLocaleString()}`;
   })();
 
   return (
@@ -139,15 +139,24 @@ export default function DashboardScreen({ navigation, route }: Props) {
 
   // Convert new API format to legacy format for existing UI
   const deliveries = useMemo(() => {
-    if (!Array.isArray(deliveryItems)) return [];
-    // If deliveryItems are already in Delivery format, use them directly
-    // Otherwise, convert from DeliveryItem format
-    if (deliveryItems.length > 0 && 'order' in deliveryItems[0]) {
-      // This is DeliveryItem[] format
-      const legacyDeliveries = mapDeliveryItemsToLegacy(deliveryItems as any);
-      return legacyDeliveries.map(mapLegacyToDelivery);
-    } else {
-      // This is already Delivery[] format
+    if (!deliveryItems || !Array.isArray(deliveryItems) || deliveryItems.length === 0) {
+      return [];
+    }
+    
+    try {
+      // Check if it's DeliveryItem format (has 'order' property) vs Delivery format
+      const firstItem = deliveryItems[0];
+      if (firstItem && typeof firstItem === 'object' && 'order' in firstItem) {
+        // This is DeliveryItem[] format - needs mapping
+        const legacyDeliveries = mapDeliveryItemsToLegacy(deliveryItems as any);
+        return legacyDeliveries.map(mapLegacyToDelivery);
+      } else {
+        // This is already Delivery[] format (from mock data)
+        return deliveryItems as Delivery[];
+      }
+    } catch (error) {
+      console.error('Error processing deliveries:', error);
+      // If mapping fails, assume it's already Delivery format
       return deliveryItems as Delivery[];
     }
   }, [deliveryItems]);
@@ -396,42 +405,66 @@ export default function DashboardScreen({ navigation, route }: Props) {
       ]}
     >
       <LinearGradient 
-        colors={theme.isDark 
-          ? [theme.colors.primary, theme.colors.secondary] 
-          : ['#1E40AF', '#3B82F6']} 
+        colors={['#0F172A', '#1E3A8A', '#0F172A']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: 60 }]}
       >
-        <View style={styles.headerTop}>
-          <View style={styles.greetingContainer}>
-            <Text style={styles.greeting}>{t('welcomeBack') || 'Welcome back'}, {user?.firstName || 'User'}!</Text>
-            <Text style={styles.subGreeting}>{t('readyToDeliver')}</Text>
+        {/* Profile Section */}
+        <View style={styles.profileSection}>
+          <View style={styles.profileLeft}>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarInitial}>{user?.firstName?.charAt(0) || 'D'}</Text>
+            </View>
+            <View style={styles.profileText}>
+              <Text style={styles.greeting}>Hi, {user?.firstName || 'User'}!</Text>
+              <View style={styles.balanceBadge}>
+                <Text style={styles.balanceLabel}>Total Balance</Text>
+              </View>
+            </View>
           </View>
-          <View style={styles.notificationContainer}>
-            <NotificationBadge size="medium" navigation={navigation} />
-          </View>
+          <NotificationBadge size="medium" navigation={navigation} />
         </View>
 
-        {/* Driver image with reduced opacity */}
-        <View style={styles.driverImageContainer}>
-          <Image source={driverImg} style={styles.driverImage} resizeMode="contain" alt="" />
+        {/* Balance Display */}
+        <View style={styles.balanceContainer}>
+          <Text style={styles.balanceValue}>FCFA {stats.balance ? Math.round(stats.balance).toLocaleString() : '0'}</Text>
+          <Text style={styles.balanceChange}>↑ 10.88 %</Text>
         </View>
 
+        {/* Quick Action Icons */}
+        <View style={styles.quickActionsContainer}>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="wallet-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.actionLabel}>Withdraw</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="document-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.actionLabel}>Document</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="calculator-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.actionLabel}>Calculator</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <Ionicons name="ellipsis-horizontal" size={20} color="#FFFFFF" />
+            <Text style={styles.actionLabel}>More</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Stats Cards */}
         <View style={styles.statsContainer}>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}> 
-            <Text style={[styles.statValue, { color: theme.colors.text }]}>XAF {stats.todayEarnings}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('todayEarnings')}</Text>
+          <View style={[styles.statCard, { borderColor: 'rgba(96, 165, 250, 0.2)' }]}> 
+            <Text style={styles.statValue}>{stats.todayEarnings}</Text>
+            <Text style={styles.statLabel}>{t('todayEarnings')}</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.completedDeliveries}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('completed')}</Text>
+          <View style={[styles.statCard, { borderColor: 'rgba(96, 165, 250, 0.2)' }]}>
+            <Text style={styles.statValue}>{stats.completedDeliveries}</Text>
+            <Text style={styles.statLabel}>{t('completed')}</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.rating}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('rating')}</Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.statValue, { color: theme.colors.text }]}>XAF {typeof stats.balance === 'number' ? stats.balance : 0}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>{t('balance')}</Text>
+          <View style={[styles.statCard, { borderColor: 'rgba(96, 165, 250, 0.2)' }]}>
+            <Text style={styles.statValue}>{stats.rating}</Text>
+            <Text style={styles.statLabel}>{t('rating')}</Text>
           </View>
         </View>
       </LinearGradient>
@@ -736,67 +769,129 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 25,
   },
-  headerTop: {
+  profileSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-    marginTop: -20,
-    paddingBottom: -10,
+    alignItems: 'center',
+    marginBottom: 24,
   },
-  greetingContainer: {
+  profileLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
-    paddingRight: 16,
   },
-  greeting: {
+  avatarCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(96, 165, 250, 0.3)',
+    marginRight: 12,
+  },
+  avatarInitial: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  profileText: {
+    flex: 1,
+  },
+  greeting: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
     marginBottom: 4,
-    lineHeight: 30,
   },
-  subGreeting: {
+  balanceBadge: {
+    backgroundColor: 'rgba(96, 165, 250, 0.2)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  balanceLabel: {
+    fontSize: 11,
+    color: '#93C5FD',
+    fontWeight: '500',
+  },
+  balanceContainer: {
+    marginBottom: 24,
+  },
+  balanceValue: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  balanceChange: {
     fontSize: 14,
-    color: '#DBEAFE',
-    lineHeight: 20,
+    color: '#86EFAC',
+    fontWeight: '500',
   },
-  notificationContainer: {
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  quickActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  actionButton: {
+    flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 48,
-    minHeight: 48,
+    paddingVertical: 12,
+    marginHorizontal: 4,
+    backgroundColor: 'rgba(30, 58, 138, 0.25)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.25)',
+    overflow: 'hidden',
+    shadowColor: 'rgba(59, 130, 246, 0.2)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  actionLabel: {
+    fontSize: 10,
+    color: '#FFFFFF',
+    marginTop: 4,
+    fontWeight: '500',
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
     gap: 8,
   },
   statCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: 'rgba(30, 58, 138, 0.25)',
+    borderRadius: 16,
+    padding: 16,
     alignItems: 'center',
     flex: 1,
     minWidth: 70,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(96, 165, 250, 0.25)',
+    overflow: 'hidden',
+    shadowColor: 'rgba(59, 130, 246, 0.2)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
   },
   statValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 4,
+    marginBottom: 6,
     textAlign: 'center',
   },
   statLabel: {
-    fontSize: 10,
-    color: '#DBEAFE',
+    fontSize: 11,
+    color: '#93C5FD',
     textAlign: 'center',
     lineHeight: 14,
+    fontWeight: '500',
   },
   content: {
     padding: 20,
@@ -862,37 +957,38 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   deliveryCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    backgroundColor: 'rgba(30, 58, 138, 0.25)',
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     marginHorizontal: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
+    borderColor: 'rgba(96, 165, 250, 0.25)',
+    overflow: 'hidden',
+    shadowColor: 'rgba(59, 130, 246, 0.2)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
   },
   deliveryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   customerName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   payment: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#059669',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#86EFAC',
   },
   deliveryInfo: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   infoRow: {
     flexDirection: 'row',
@@ -900,8 +996,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   infoText: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: 13,
+    color: '#93C5FD',
     marginLeft: 8,
     flex: 1,
   },
@@ -911,48 +1007,54 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   declineButton: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#F87171',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
     borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   declineButtonText: {
-    color: '#DC2626',
+    color: '#FCA5A5',
     fontWeight: '600',
     textAlign: 'center',
+    fontSize: 14,
   },
   acceptButton: {
-    backgroundColor: '#1E40AF',
-    borderRadius: 8,
-    paddingVertical: 10,
+    backgroundColor: 'linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%)',
+    borderRadius: 12,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.3)',
   },
   acceptButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
     textAlign: 'center',
+    fontSize: 14,
   },
   statusContainer: {
     alignItems: 'center',
   },
   statusBadge: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: 'rgba(96, 165, 250, 0.2)',
     borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.3)',
   },
   statusText: {
-    color: '#1E40AF',
+    color: '#93C5FD',
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 12,
   },
   emptyState: {
     alignItems: 'center',
@@ -960,14 +1062,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#6B7280',
+    fontWeight: '600',
+    color: '#93C5FD',
     marginTop: 16,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#9CA3AF',
+    color: '#64748B',
     textAlign: 'center',
   },
   navigateButton: {

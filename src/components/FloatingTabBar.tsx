@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -6,9 +6,12 @@ import {
   Platform,
   Dimensions,
   StyleSheet,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -27,10 +30,24 @@ const FloatingTabBar: React.FC<FloatingTabBarProps> = ({
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
 
+  // Animation for the moving ball
+  const ballPosition = useRef(new Animated.Value(0)).current;
+
   // Calculate tab bar dimensions
-  const tabBarWidth = screenWidth * 0.9; // 90% of screen width
+  const tabBarWidth = screenWidth * 0.9;
   const tabBarHeight = 70;
   const bottomMargin = Platform.OS === 'ios' ? insets.bottom + 20 : 35;
+  const itemWidth = (tabBarWidth - 24) / state.routes.length; // Accounting for padding
+
+  // Animate ball position when tab changes
+  useEffect(() => {
+    Animated.spring(ballPosition, {
+      toValue: state.index * itemWidth,
+      useNativeDriver: false,
+      tension: 50,
+      friction: 8,
+    }).start();
+  }, [state.index, itemWidth]);
 
   const getIconName = (routeName: string, focused: boolean): keyof typeof Ionicons.glyphMap => {
     switch (routeName) {
@@ -55,7 +72,6 @@ const FloatingTabBar: React.FC<FloatingTabBarProps> = ({
       return label;
     }
 
-    // If label is a function, call it and convert to string
     if (typeof label === 'function') {
       const result = label({ focused: false, color: '', position: 'beside-icon', children: '' });
       return String(result || descriptor.route.name);
@@ -66,100 +82,119 @@ const FloatingTabBar: React.FC<FloatingTabBarProps> = ({
 
   return (
     <View style={[styles.container, { bottom: bottomMargin }]}>
-      <View
-        style={[
-          styles.tabBar,
-          {
-            width: tabBarWidth,
-            height: tabBarHeight,
-            backgroundColor: theme.colors.card,
-            shadowColor: theme.isDark ? '#000' : '#000',
-            borderWidth: theme.isDark ? 0.5 : 0,
-            borderColor: theme.isDark ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-          },
-        ]}
-      >
-        {state.routes.map((route, index) => {
-          const { options } = descriptors[route.key];
-          const isFocused = state.index === index;
+      <BlurView intensity={90} style={styles.blurContainer}>
+        <LinearGradient
+          colors={theme.isDark 
+            ? ['rgba(30, 58, 138, 0.3)', 'rgba(15, 23, 42, 0.3)']
+            : ['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.9)']
+          }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            styles.tabBar,
+            {
+              width: tabBarWidth,
+              height: tabBarHeight,
+              borderWidth: 1,
+              borderColor: theme.isDark 
+                ? 'rgba(96, 165, 250, 0.2)' 
+                : 'rgba(0, 0, 0, 0.08)',
+            },
+          ]}
+        >
+          {/* Animated ball indicator */}
+          <Animated.View
+            style={[
+              styles.animatedBall,
+              {
+                transform: [{ translateX: ballPosition }],
+                width: itemWidth - 8,
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={['#60A5FA', '#3B82F6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.ballGradient}
+            />
+          </Animated.View>
 
-          const onPress = () => {
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
+          {state.routes.map((route, index) => {
+            const { options } = descriptors[route.key];
+            const isFocused = state.index === index;
 
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate(route.name, route.params);
-            }
-          };
+            const onPress = () => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
 
-          const onLongPress = () => {
-            navigation.emit({
-              type: 'tabLongPress',
-              target: route.key,
-            });
-          };
+              if (!isFocused && !event.defaultPrevented) {
+                navigation.navigate(route.name, route.params);
+              }
+            };
 
-          const iconName = getIconName(route.name, isFocused);
-          const label = getTabLabel(route.key);
+            const onLongPress = () => {
+              navigation.emit({
+                type: 'tabLongPress',
+                target: route.key,
+              });
+            };
 
-          return (
-            <TouchableOpacity
-              key={route.key}
-              accessibilityRole="button"
-              accessibilityState={isFocused ? { selected: true } : {}}
-              accessibilityLabel={options.tabBarAccessibilityLabel}
-              onPress={onPress}
-              onLongPress={onLongPress}
-              style={[
-                styles.tabItem,
-                {
-                  backgroundColor: isFocused
-                    ? `${theme.colors.primary}15`
-                    : 'transparent',
-                },
-              ]}
-              activeOpacity={0.7}
-            >
-              <View style={styles.iconContainer}>
-                <Ionicons
-                  name={iconName}
-                  size={24}
-                  color={
-                    isFocused
-                      ? theme.colors.primary
-                      : theme.colors.textSecondary
-                  }
-                />
-                {isFocused && (
-                  <View
-                    style={[
-                      styles.indicator,
-                      { backgroundColor: theme.colors.primary },
-                    ]}
-                  />
-                )}
-              </View>
-              <Text
+            const iconName = getIconName(route.name, isFocused);
+            const label = getTabLabel(route.key);
+
+            return (
+              <TouchableOpacity
+                key={route.key}
+                accessibilityRole="button"
+                accessibilityState={isFocused ? { selected: true } : {}}
+                accessibilityLabel={options.tabBarAccessibilityLabel}
+                onPress={onPress}
+                onLongPress={onLongPress}
                 style={[
-                  styles.label,
-                  {
-                    color: isFocused
-                      ? theme.colors.primary
-                      : theme.colors.textSecondary,
-                    opacity: isFocused ? 1 : 0.7,
-                  },
+                  styles.tabItem,
+                  { width: itemWidth },
                 ]}
-                numberOfLines={1}
+                activeOpacity={0.7}
               >
-                {label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+                <View style={styles.iconContainer}>
+                  <Ionicons
+                    name={iconName}
+                    size={24}
+                    color={
+                      isFocused
+                        ? '#FFFFFF'
+                        : theme.isDark
+                        ? theme.colors.textSecondary
+                        : '#64748B'
+                    }
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.label,
+                    {
+                      color: isFocused
+                        ? '#FFFFFF'
+                        : theme.isDark
+                        ? theme.colors.textSecondary
+                        : '#64748B',
+                      fontSize: isFocused ? 11 : 10,
+                      fontWeight: isFocused ? '700' : '500',
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </LinearGradient>
+      </BlurView>
     </View>
   );
 };
@@ -172,6 +207,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1000,
   },
+  blurContainer: {
+    borderRadius: 25,
+    overflow: 'hidden',
+  },
   tabBar: {
     flexDirection: 'row',
     borderRadius: 25,
@@ -179,43 +218,44 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'space-around',
-    // Enhanced shadow for better floating effect
+    position: 'relative',
     ...Platform.select({
       ios: {
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 20,
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.2,
+        shadowRadius: 24,
       },
       android: {
-        elevation: 15,
+        elevation: 20,
       },
     }),
   },
-  tabItem: {
+  animatedBall: {
+    position: 'absolute',
+    height: 50,
+    left: 12,
+    top: 10,
+    borderRadius: 25,
+    zIndex: 0,
+  },
+  ballGradient: {
     flex: 1,
+    borderRadius: 25,
+  },
+  tabItem: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: 20,
-    minHeight: 50,
+    paddingHorizontal: 4,
+    zIndex: 10,
+    minHeight: 60,
   },
   iconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
     marginBottom: 2,
   },
-  indicator: {
-    position: 'absolute',
-    bottom: -6,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-  },
   label: {
-    fontSize: 11,
-    fontWeight: '600',
     textAlign: 'center',
     marginTop: 2,
   },
